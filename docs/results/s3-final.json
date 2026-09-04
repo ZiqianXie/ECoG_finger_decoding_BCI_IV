@@ -1,6 +1,11 @@
 {
   "channel_policy": "retain physical channel 49; remove physical channel 50 (array index 49), yielding the paper-stated 63 channels",
   "legacy_62_channel_sensitivity_macro_five": 0.6450894301872493,
+  "output_projection": {
+    "method": "pointwise maximum(prediction, 0)",
+    "test_labels_used_for_selection": false,
+    "unconstrained_arrays_preserved": true
+  },
   "selection": {
     "thumb": {
       "left": "TCN",
@@ -33,7 +38,7 @@
       "validation_morphology": 0.46709253687862795
     }
   },
-  "validation_cleaned_metrics": {
+  "unconstrained_validation_cleaned_metrics": {
     "pearson_by_finger": {
       "thumb": 0.7679934135271886,
       "index": 0.5480183948337395,
@@ -45,7 +50,7 @@
     "pearson_historical_four": 0.6496827298186969,
     "rmse": 0.18532065734556077
   },
-  "validation_raw_metrics": {
+  "unconstrained_validation_raw_metrics": {
     "pearson_by_finger": {
       "thumb": 0.7406406219275753,
       "index": 0.5245944180257793,
@@ -57,7 +62,7 @@
     "pearson_historical_four": 0.6230164404663112,
     "rmse": 0.8943487823691765
   },
-  "test_cleaned_metrics": {
+  "unconstrained_test_cleaned_metrics": {
     "pearson_by_finger": {
       "thumb": 0.7472690013468754,
       "index": 0.5828801659489208,
@@ -69,7 +74,7 @@
     "pearson_historical_four": 0.6918431544213114,
     "rmse": 0.1663321877075102
   },
-  "test_raw_metrics": {
+  "unconstrained_test_raw_metrics": {
     "pearson_by_finger": {
       "thumb": 0.7172020442402927,
       "index": 0.5131125254528893,
@@ -80,5 +85,53 @@
     "pearson_macro_five": 0.6390157672520179,
     "pearson_historical_four": 0.6328798241460114,
     "rmse": 0.798647018777075
+  },
+  "validation_cleaned_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7719965557798901,
+      "index": 0.5519109962932397,
+      "middle": 0.709987883152143,
+      "ring": 0.6617701119596172,
+      "little": 0.5868908243232682
+    },
+    "pearson_macro_five": 0.6565112743016316,
+    "pearson_historical_four": 0.6551965641747726,
+    "rmse": 0.1842819292994642
+  },
+  "validation_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7455693930519777,
+      "index": 0.5283482753070744,
+      "middle": 0.6528220325903115,
+      "ring": 0.6386090435584129,
+      "little": 0.5880312464259813
+    },
+    "pearson_macro_five": 0.6306759981867515,
+    "pearson_historical_four": 0.6286927367809655,
+    "rmse": 0.895595099111435
+  },
+  "test_cleaned_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7494737364574783,
+      "index": 0.5931622309681768,
+      "middle": 0.747546827056732,
+      "ring": 0.7019608392423221,
+      "little": 0.7109937587266372
+    },
+    "pearson_macro_five": 0.7006274784902693,
+    "pearson_historical_four": 0.7002941383446823,
+    "rmse": 0.1646875678327032
+  },
+  "test_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7200001777479963,
+      "index": 0.5251423475146499,
+      "middle": 0.6318512852711434,
+      "ring": 0.6657802020036824,
+      "little": 0.6870749491147453
+    },
+    "pearson_macro_five": 0.6459697923304435,
+    "pearson_historical_four": 0.6410171899121337,
+    "rmse": 0.8008178103144186
   }
 }

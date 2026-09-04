@@ -1,7 +1,12 @@
 {
   "subject": 1,
-  "method": "positive affine least-squares normalization fit on the cleaned chronological validation target only; no clipping",
+  "method": "positive affine least-squares normalization fit on the cleaned chronological validation target only, followed by parameter-free pointwise nonnegative projection",
   "target": "local_w2_q10",
+  "output_projection": {
+    "method": "pointwise maximum(prediction, 0)",
+    "test_labels_used_for_selection": false,
+    "unconstrained_arrays_preserved": true
+  },
   "selection": {
     "thumb": {
       "status": "normalized",
@@ -95,7 +100,7 @@
       }
     }
   },
-  "validation_raw_metrics": {
+  "unconstrained_validation_raw_metrics": {
     "pearson_by_finger": {
       "thumb": 0.6130632583463741,
       "index": 0.8445901629915626,
@@ -107,7 +112,7 @@
     "pearson_historical_four": 0.5767445350033834,
     "rmse": 0.8762368152908068
   },
-  "test_raw_metrics": {
+  "unconstrained_test_raw_metrics": {
     "pearson_by_finger": {
       "thumb": 0.7284035432398845,
       "index": 0.8085664091808625,
@@ -118,5 +123,29 @@
     "pearson_macro_five": 0.5742263361759897,
     "pearson_historical_four": 0.5631939630769196,
     "rmse": 0.9146240178378143
+  },
+  "validation_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.6145895437895533,
+      "index": 0.8445901629915626,
+      "middle": 0.41424855147373616,
+      "ring": 0.6091984346453265,
+      "little": 0.46374536249332805
+    },
+    "pearson_macro_five": 0.5892744110787013,
+    "pearson_historical_four": 0.5842934051735769,
+    "rmse": 0.8768373285386127
+  },
+  "test_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7295080845580832,
+      "index": 0.8085664091808625,
+      "middle": 0.3081998649031826,
+      "ring": 0.61835582857227,
+      "little": 0.4264690460165257
+    },
+    "pearson_macro_five": 0.5782198466461848,
+    "pearson_historical_four": 0.5681858511646635,
+    "rmse": 0.9147894871150948
   }
 }

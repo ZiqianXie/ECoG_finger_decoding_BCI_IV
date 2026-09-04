@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ecog_decoding.postprocessing import project_nonnegative
 from ecog_decoding.training import FINGER_NAMES, trajectory_metrics
 
 
@@ -83,6 +84,11 @@ def main() -> None:
     parser.add_argument("--output", default="outputs/prediction_viz_current/data.json")
     parser.add_argument("--window-seconds", type=float, default=12.0)
     parser.add_argument("--windows-per-subject", type=int, default=3)
+    parser.add_argument(
+        "--allow-negative",
+        action="store_true",
+        help="display unconstrained model outputs instead of the default nonnegative projection",
+    )
     args = parser.parse_args()
 
     predictions = dict(args.prediction)
@@ -95,7 +101,12 @@ def main() -> None:
     width = int(round(args.window_seconds * args.sampling_rate_hz))
     for subject, prediction_path in sorted(predictions.items()):
         prepared = Path(args.prepared_root) / f"sub{subject}"
-        prediction = np.load(prediction_path)
+        unconstrained_prediction = np.load(prediction_path)
+        prediction = (
+            unconstrained_prediction
+            if args.allow_negative
+            else project_nonnegative(unconstrained_prediction)
+        )
         cleaned = np.load(prepared / args.target_name)[args.excluded_initial_bins :]
         raw = np.load(prepared / args.raw_target_name)[args.excluded_initial_bins :]
         if prediction.shape != cleaned.shape or prediction.shape != raw.shape:
@@ -111,14 +122,23 @@ def main() -> None:
                 {
                     "start_seconds": round((start + args.excluded_initial_bins) / args.sampling_rate_hz, 2),
                     "prediction": rounded(pred_window),
+                    "unconstrained_prediction": rounded(
+                        unconstrained_prediction[start:stop]
+                    ),
                     "target": rounded(true_window),
                     "metrics": trajectory_metrics(pred_window, true_window),
                 }
             )
         result["subjects"][str(subject)] = {
             "method": methods.get(subject, Path(prediction_path).parent.name),
+            "output_constraint": (
+                "none" if args.allow_negative else "pointwise maximum(prediction, 0)"
+            ),
             "test_raw_metrics": trajectory_metrics(prediction, raw),
             "test_cleaned_metrics": trajectory_metrics(prediction, cleaned),
+            "unconstrained_test_raw_metrics": trajectory_metrics(
+                unconstrained_prediction, raw
+            ),
             "morphology": morphology(prediction, cleaned, args.movement_threshold),
             "windows": windows,
         }

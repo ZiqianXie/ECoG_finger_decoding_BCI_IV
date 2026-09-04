@@ -20,7 +20,8 @@ can be improved. It retains the paper's biorthogonal wavelet initialization,
 energy-binning idea, FastICA spatial initialization, and recurrent comparison,
 while adding stricter leakage controls, per-finger model selection, modern
 sequence backbones, explicit zero-phase notch filtering at 60 Hz and its 120/180
-Hz harmonics, and visual trajectory diagnostics.
+Hz harmonics, a nonnegative output-domain constraint, and visual trajectory
+diagnostics.
 
 The full methods, experiment history, numerical tables, limitations, and visual
 diagnosis are in the [project report](docs/project-report.md).
@@ -35,16 +36,41 @@ aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 | Subject | Result | Thumb | Index | Middle | Ring | Little | Macro-5 |
 |---|---|---:|---:|---:|---:|---:|---:|
 | S1 | Paper | 0.750 | 0.790 | 0.170 | 0.600 | 0.470 | 0.556 |
-| S1 | Reimplementation | 0.728 | 0.809 | 0.296 | 0.618 | 0.420 | **0.574** |
+| S1 | Non-stacked per-finger baseline, unconstrained | 0.696 | 0.809 | 0.296 | 0.612 | 0.395 | 0.561 |
+| S1 | Exploratory stacked system + output projection | 0.730 | 0.809 | 0.308 | 0.618 | 0.426 | **0.578** |
 | S2 | Paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
-| S2 | Reimplementation | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | **0.429** |
+| S2 | Selected per-finger system + output projection | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | **0.429** |
 | S3 | Paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
-| S3 | Reimplementation | 0.717 | 0.513 | 0.628 | 0.664 | 0.673 | **0.639** |
+| S3 | Selected per-finger system + output projection | 0.720 | 0.525 | 0.632 | 0.666 | 0.687 | **0.646** |
 
-The reimplementation improves the five-finger aggregate for all three subjects
-and exceeds the paper value on eight of fifteen individual fingers. Numerical
-scores are complemented by held-out trajectory plots and morphology diagnostics
-in the project report.
+The selected systems improve the five-finger aggregate for all three subjects
+and exceed the paper value on eight of fifteen individual fingers. S1's highest
+number is explicitly exploratory: thumb and little are learned second-stage
+stacks over candidate predictions, index and middle use their selected base
+models, and ring uses a separately calibrated base prediction. It is not a
+single end-to-end model and is therefore shown beside the non-stacked baseline.
+Numerical scores are complemented by held-out trajectory plots and morphology
+diagnostics in the project report.
+
+Here, a **learned filter** specifically means that the ICA/spatial projection
+and wavelet taps were updated by end-to-end gradient training. Fixed wavelet
+features, CSP filters estimated from training data, and learned downstream
+LSTM/TCN heads are not counted as end-to-end learned spectral filters.
+
+| Subject | Thumb | Index | Middle | Ring | Little |
+|---|---|---|---|---|---|
+| S1 final route | fixed/mixed stack | learned | fixed CSP | fixed wavelet | mixed stack with a small learned-filter contribution |
+| S2 final route | fixed wavelet | learned | learned | fixed wavelet | fixed wavelet |
+| S3 final route | fixed bands + CSP | fixed bands + CSP | fixed bands + CSP | fixed bands + CSP | fixed bands + CSP |
+
+For S1 thumb the end-to-end candidate received zero stack weight, whereas S1
+little retained a small standardized weight of 0.0465. The complete
+machine-readable routing audit is in
+[`docs/results/learned-filter-map.json`](docs/results/learned-filter-map.json).
+This table reports the frozen final routing, not every validation benefit. In
+particular, the later S2-thumb end-to-end run improved validation PCC from
+0.600 to 0.630 but reduced held-out test PCC from 0.599 to 0.579; it is reported
+as a sensitivity result rather than silently selected using the test labels.
 
 ![Subject 1 held-out movement windows](docs/figures/s1-movement-windows.png)
 
@@ -92,8 +118,10 @@ An experimental nonnegative ridge stack combines diverse S1 candidates for
 thumb and little finger; its regularization is selected with blocked splits
 inside validation, and its weights never read the released test labels.
 Prediction amplitude and offset can then be normalized on the cleaned validation
-target with a positive affine transform. Because the scale is positive and no
-clipping is used, this changes calibration without changing PCC.
+target with a positive affine transform. This changes calibration without
+changing PCC. Final exported flexion is then projected onto its physical domain
+with `maximum(prediction, 0)`. The projection is parameter-free; unconstrained
+model outputs are retained for auditing rather than silently discarded.
 
 The 2018 implementation's four-second training blocks were a Theano static-graph
 constraint, not a physiological assumption; modern training can operate on the
@@ -124,6 +152,14 @@ python scripts/preprocess_dataset.py --subjects 1 2 3
 python scripts/prepare_paper_baseline_targets.py --subjects 1 2 3
 python scripts/compare_target_baselines.py --subjects 1 2 3
 python scripts/audit_wavelet_frequency_response.py
+
+# After producing a selected prediction directory, make the public-facing
+# arrays nonnegative while retaining exact unconstrained arrays for audit.
+python scripts/project_prediction_nonnegative.py --subject 1 \
+  --prepared-root outputs/preprocessed_v2 \
+  --prediction-root outputs/s1_validation_stack_affine_v1/sub1 \
+  --target local_w2_q10 --output outputs/final_nonnegative/sub1
+
 python -m pytest -q
 ```
 
@@ -137,6 +173,8 @@ listed in the [project report](docs/project-report.md#reproduction-recipes).
 - Select candidates on one chronological validation partition.
 - Evaluate the final frozen candidate against the original released glove
   trajectory, not a cleaned surrogate.
+- Report the deterministic nonnegative projection as the default flexion
+  output, while retaining and reporting unconstrained predictions separately.
 - Report every finger, `Macro-5`, and competition-style `Hist-4`.
 - Inspect movement windows, rest false positives, derivative PCC, state F1,
   movement peak ratio, and peak-triggered shape; PCC alone can be misleading.

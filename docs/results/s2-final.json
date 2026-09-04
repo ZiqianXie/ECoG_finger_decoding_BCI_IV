@@ -1,6 +1,11 @@
 {
   "subject": 2,
   "selection_rule": "highest validation PCC independently for each finger",
+  "output_projection": {
+    "method": "pointwise maximum(prediction, 0)",
+    "test_labels_used_for_selection": false,
+    "effect": "none; selected predictions were already nonnegative"
+  },
   "candidate_methods": [
     "h40",
     "e2e_index",

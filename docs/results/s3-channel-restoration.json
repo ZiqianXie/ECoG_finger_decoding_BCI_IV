@@ -21,13 +21,18 @@
   },
   "corrected_63_channel": {
     "removed_physical_channels": [50],
-    "validation_raw_pearson_macro_five": 0.6260241661274978,
-    "validation_cleaned_pearson_macro_five": 0.6517473007221662,
-    "pearson_macro_five": 0.6390157672520179,
-    "pearson_historical_four": 0.6328798241460114,
-    "rest_rms_macro": 0.146830,
+    "unconstrained_validation_raw_pearson_macro_five": 0.6260241661274978,
+    "unconstrained_validation_cleaned_pearson_macro_five": 0.6517473007221662,
+    "unconstrained_test_pearson_macro_five": 0.6390157672520179,
+    "unconstrained_test_pearson_historical_four": 0.6328798241460114,
+    "projected_validation_raw_pearson_macro_five": 0.6306759981867515,
+    "projected_validation_cleaned_pearson_macro_five": 0.6565112743016316,
+    "projected_test_pearson_macro_five": 0.6459697923304435,
+    "projected_test_pearson_historical_four": 0.6410171899121337,
+    "output_projection": "pointwise maximum(prediction, 0); no fitted parameters",
+    "rest_rms_macro": 0.145462,
     "state_f1_macro": 0.660103,
-    "derivative_pearson_macro": 0.343591,
+    "derivative_pearson_macro": 0.349631,
     "peak_ratio": {
       "thumb": 1.032,
       "middle": 0.736,
@@ -35,5 +40,5 @@
       "little": 0.646
     }
   },
-  "interpretation": "The 63-channel result is primary because it wins on validation, matches the paper's input count, and agrees with the raw artifact location. It improves peak scaling but has slightly more rest leakage; the higher test-PCC 62-channel result is retained only as a sensitivity result."
+  "interpretation": "The 63-channel result is primary because it wins on validation, matches the paper's input count, and agrees with the raw artifact location. Parameter-free nonnegative projection is applied after channel-policy selection. The legacy 62-channel result is retained only as a sensitivity result."
 }

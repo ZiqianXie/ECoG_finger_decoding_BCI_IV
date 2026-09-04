@@ -1,0 +1,85 @@
+{
+  "definition": "learned_filter means the ICA/spatial projection and wavelet taps were updated by end-to-end gradient training; analytically estimated CSP, fixed wavelet features, and learned downstream sequence heads are not counted",
+  "scope": "status records the frozen final routing, not every candidate that improved validation",
+  "training_rates": {
+    "frontend": 1e-05,
+    "temporal_head": 0.001,
+    "note": "verified from launch commands, which used script defaults"
+  },
+  "subjects": {
+    "1": {
+      "thumb": {
+        "status": "no",
+        "route": "validation ridge stack over fixed-feature candidates; end-to-end thumb candidate considered but selected standardized coefficient was 0.0"
+      },
+      "index": {
+        "status": "yes",
+        "route": "exact end-to-end trainable ICA/wavelet index-finger model"
+      },
+      "middle": {
+        "status": "no",
+        "route": "fixed CSP-energy LARS model"
+      },
+      "ring": {
+        "status": "no",
+        "route": "fixed ICA/wavelet local-target ridge model with validation-only morphology calibration"
+      },
+      "little": {
+        "status": "mixed",
+        "route": "validation ridge stack with a small end-to-end little-finger component",
+        "end_to_end_standardized_coefficient": 0.04647952690720558
+      }
+    },
+    "2": {
+      "thumb": {
+        "status": "no",
+        "route": "fixed ICA/wavelet h40 LSTM",
+        "later_end_to_end_sensitivity": {
+          "fixed_validation_pcc": 0.6002341508865356,
+          "learned_validation_pcc": 0.630185067653656,
+          "fixed_test_pcc": 0.5991333723068237,
+          "learned_test_pcc": 0.5785349011421204,
+          "interpretation": "learned filters benefited validation but were not retrospectively selected using the test comparison"
+        }
+      },
+      "index": {
+        "status": "yes",
+        "route": "exact end-to-end trainable ICA/wavelet index-finger model"
+      },
+      "middle": {
+        "status": "yes",
+        "route": "exact end-to-end trainable ICA/wavelet middle-finger model"
+      },
+      "ring": {
+        "status": "no",
+        "route": "fixed ICA/wavelet h40 LSTM"
+      },
+      "little": {
+        "status": "no",
+        "route": "fixed ICA/wavelet h40 LSTM"
+      }
+    },
+    "3": {
+      "thumb": {
+        "status": "no",
+        "route": "fixed frequency bands and training-estimated CSP with learned temporal/calibration heads"
+      },
+      "index": {
+        "status": "no",
+        "route": "fixed frequency bands and training-estimated CSP with learned temporal and beta-gated/high-gamma heads"
+      },
+      "middle": {
+        "status": "no",
+        "route": "fixed frequency bands and training-estimated CSP with learned temporal and beta-gated/high-gamma heads"
+      },
+      "ring": {
+        "status": "no",
+        "route": "fixed frequency bands and training-estimated CSP with learned temporal and beta-gated/high-gamma heads"
+      },
+      "little": {
+        "status": "no",
+        "route": "fixed frequency bands and training-estimated CSP with learned temporal and beta-gated/high-gamma heads"
+      }
+    }
+  }
+}

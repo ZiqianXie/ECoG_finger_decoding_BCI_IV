@@ -1,0 +1,45 @@
+{
+  "method": "pointwise maximum(prediction, 0)",
+  "selection": "deterministic physical-domain constraint; no fitted parameters",
+  "test_labels_used_for_selection": false,
+  "subjects": {
+    "1": {
+      "raw_test_macro_five_before": 0.5742263361759897,
+      "raw_test_macro_five_after": 0.5782198466461848,
+      "raw_test_historical_four_after": 0.5681858511646635,
+      "after_by_finger": {
+        "thumb": 0.7295080845580832,
+        "index": 0.8085664091808625,
+        "middle": 0.3081998649031826,
+        "ring": 0.61835582857227,
+        "little": 0.4264690460165257
+      },
+      "macro_rest_rms_before": 0.09385542273521423,
+      "macro_rest_rms_after": 0.09339659661054611,
+      "macro_derivative_pcc_before": 0.33582541048526765,
+      "macro_derivative_pcc_after": 0.3396232098340988
+    },
+    "2": {
+      "raw_test_macro_five_before": 0.42932061832226226,
+      "raw_test_macro_five_after": 0.42932061832226226,
+      "raw_test_historical_four_after": 0.4129435003072818,
+      "note": "selected prediction was already nonnegative"
+    },
+    "3": {
+      "raw_test_macro_five_before": 0.6390157672520179,
+      "raw_test_macro_five_after": 0.6459697923304435,
+      "raw_test_historical_four_after": 0.6410171899121337,
+      "after_by_finger": {
+        "thumb": 0.7200001777479963,
+        "index": 0.5251423475146499,
+        "middle": 0.6318512852711434,
+        "ring": 0.6657802020036824,
+        "little": 0.6870749491147453
+      },
+      "macro_rest_rms_before": 0.14682998955249787,
+      "macro_rest_rms_after": 0.14546160399913788,
+      "macro_derivative_pcc_before": 0.3435912489891052,
+      "macro_derivative_pcc_after": 0.34963132739067077
+    }
+  }
+}

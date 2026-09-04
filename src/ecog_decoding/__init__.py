@@ -30,6 +30,7 @@ from .preprocessing import (
     local_lower_envelope_baseline,
     preprocess_ecog,
 )
+from .postprocessing import project_nonnegative
 
 __all__ = [
     "BAD_CHANNELS_ONE_BASED",
@@ -60,4 +61,5 @@ __all__ = [
     "local_baseline_correct",
     "local_lower_envelope_baseline",
     "preprocess_ecog",
+    "project_nonnegative",
 ]

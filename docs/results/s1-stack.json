@@ -2,6 +2,7 @@
   "subject": 1,
   "method": "nonnegative ridge stack fit on chronological validation predictions; alpha selected by blocked TimeSeriesSplit within validation",
   "base_candidate": "current",
+  "downstream_output_projection": "the public final prediction applies pointwise maximum(prediction, 0); this file retains the unconstrained stack metrics",
   "selection": {
     "thumb": {
       "status": "stacked",

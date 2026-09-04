@@ -25,14 +25,20 @@ Pearson correlation.
 The rebuilt preprocessing also explicitly applies zero-phase notch filters at
 60 Hz and its 120/180 Hz harmonics to suppress power-line contamination.
 
-The current raw-test `Macro-5` PCC is 0.574 for S1, 0.429 for S2, and 0.639 for
+The current raw-test `Macro-5` PCC is 0.578 for S1, 0.429 for S2, and 0.646 for
 S3. The paper's aggregate is a five-finger average, so these values—not
 `Hist-4`—are the correct comparison. S1's preceding reconstruction already
-matched the paper's rounded 0.56 at 0.561; the latest candidate reaches 0.574.
+matched the paper's rounded 0.56 at 0.561; the exploratory stacked system
+reaches 0.578 after nonnegative output projection.
 Across all fifteen subject-finger pairs, eight reconstructed PCCs exceed the
 rounded paper CNN-LSTM values.
 
-The S1 number combines validation-only model stacking and amplitude calibration.
+The S1 headline is a heterogeneous system, not one end-to-end decoder. Thumb
+and little use validation-only ridge stacking followed by amplitude calibration;
+index and middle retain their selected base models; ring retains a separately
+calibrated base prediction. The non-stacked per-finger baseline is reported
+alongside the headline result because the second-stage stack needs independent
+replication.
 A constrained calibration repairs the previously near-flat ring trace:
 movement-state recall rises from 0.054 to 0.863 and peak ratio from 0.127 to
 0.576. The first thumb/little stack improved correlation and timing but visibly
@@ -185,9 +191,38 @@ finger-specific fixed-feature LSTMs with exact end-to-end wavelet refinement for
 selected fingers. S3 benefited from movement-versus-rest CSP and a shape-aware
 TCN, then a validation-selected blend with beta-gated/high-gamma components.
 
+For clarity, this report uses **learned filter** only when the ICA/spatial
+projection and wavelet taps were updated by end-to-end gradient training. A CSP
+filter is estimated from the training labels and a temporal head has learned
+parameters, but neither makes the spectral filter bank end-to-end trainable.
+
+| Subject | Thumb | Index | Middle | Ring | Little |
+|---|---|---|---|---|---|
+| S1 | no | yes | no | no | mixed |
+| S2 | no | yes | yes | no | no |
+| S3 | no | no | no | no | no |
+
+S1 little is the sole mixed case: its validation stack includes the
+end-to-end little-finger candidate with standardized coefficient 0.0465. S1
+thumb also considered an end-to-end candidate, but its selected coefficient
+was exactly zero. S1 index and S2 index/middle are the only final outputs driven
+directly by an end-to-end learned ICA/wavelet model. The machine-readable audit
+is `docs/results/learned-filter-map.json`.
+
+The table describes the frozen final routing rather than claiming that only
+those fingers benefited during development. A later S2-thumb end-to-end run
+reached validation PCC 0.630 versus 0.600 for the fixed-feature LSTM, but its
+held-out test PCC was 0.579 versus 0.599. Selecting the fixed result after seeing
+that test comparison would be test-aware, so the discrepancy is retained as a
+sensitivity result. The exact end-to-end runs used a front-end learning rate of
+1e-5 and a temporal-head learning rate of 1e-3. Since several fingers peaked in
+the first five validation checks, this single conservative rate does not rule
+out early overfitting; a smaller-rate and frozen-front-end warm-up audit remains
+appropriate future work.
+
 CSP is useful for S3 but did not replace the S1/S2 fixed-window models. The
 strongest tested CSP-family checkpoints reached Macro-5 0.471 for S1 and 0.286
-for S2, versus 0.574 and 0.429 for the selected models. S1's validation stack
+for S2, versus 0.578 and 0.429 for the selected systems. S1's validation stack
 gave the raw CSP candidate zero weight for both stacked fingers, although a
 calibrated CSP trace contributed as a complementary component.
 
@@ -213,10 +248,23 @@ test scoring. Ring uses a separate smooth floor/dead-zone/gain calibration whose
 PCC, derivative PCC, recall, peak ratio, and rest-RMS constraints are likewise
 evaluated only on validation data.
 Finally, positive affine scale and offset are fitted on the cleaned validation
-target for stacked thumb and little predictions. With a positive scale and no
-clipping, Pearson correlation is unchanged by construction; the operation only
-calibrates amplitude and baseline. This is appropriate for a correctly timed but
-mis-scaled trace and cannot rescue wrong timing or wrong-finger activity.
+target for stacked thumb and little predictions. Pearson correlation is
+unchanged by that affine operation; it only calibrates amplitude and baseline.
+The final exported flexion is then projected onto the nonnegative target domain
+with `maximum(prediction, 0)`. This deterministic operation fits no parameter,
+and the exact unconstrained predictions are retained as audit outputs. It cannot
+rescue wrong timing or wrong-finger activity.
+
+### Nonnegative output projection
+
+Baseline-corrected flexion is nonnegative by construction, but unconstrained
+regression created small extension-like troughs. The zero-floor projection was
+promoted because it improved chronological validation as well as visual
+morphology: validation Macro-5 changed from 0.5832 to 0.5893 for S1 and from
+0.6260 to 0.6307 for S3; S2 was already nonnegative. On released test data,
+Macro-5 changes from 0.5742 to 0.5782 for S1 and from 0.6390 to 0.6460 for S3.
+Raw-target RMSE can increase slightly because the uncorrected glove recording
+contains negative baseline drift; cleaned-target RMSE and derivative PCC improve.
 
 CUDA was used for feature generation and neural training. Supported training
 paths request `torch.compile(mode="reduce-overhead")`. Keeping the complete
@@ -260,21 +308,21 @@ They are a historical reference, not high-precision targets.
 
 | Subject | Finger | Paper CNN-LSTM | Reimplementation | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.750 | 0.728 | -0.022 |
+| S1 | Thumb | 0.750 | 0.730 | -0.020 |
 | S1 | Index | 0.790 | 0.809 | +0.019 |
-| S1 | Middle | 0.170 | 0.296 | +0.126 |
+| S1 | Middle | 0.170 | 0.308 | +0.138 |
 | S1 | Ring | 0.600 | 0.618 | +0.018 |
-| S1 | Little | 0.470 | 0.420 | -0.050 |
+| S1 | Little | 0.470 | 0.426 | -0.044 |
 | S2 | Thumb | 0.620 | 0.599 | -0.021 |
 | S2 | Index | 0.380 | 0.472 | +0.092 |
 | S2 | Middle | 0.270 | 0.208 | -0.062 |
 | S2 | Ring | 0.470 | 0.495 | +0.025 |
 | S2 | Little | 0.300 | 0.373 | +0.073 |
-| S3 | Thumb | 0.740 | 0.717 | -0.023 |
-| S3 | Index | 0.550 | 0.513 | -0.037 |
-| S3 | Middle | 0.460 | 0.628 | +0.168 |
-| S3 | Ring | 0.410 | 0.664 | +0.254 |
-| S3 | Little | 0.750 | 0.673 | -0.077 |
+| S3 | Thumb | 0.740 | 0.720 | -0.020 |
+| S3 | Index | 0.550 | 0.525 | -0.025 |
+| S3 | Middle | 0.460 | 0.632 | +0.172 |
+| S3 | Ring | 0.410 | 0.666 | +0.256 |
+| S3 | Little | 0.750 | 0.687 | -0.063 |
 
 The reimplementation is higher on 8/15 pairs. This count is descriptive; the
 rounded paper values do not support a fine-grained statistical superiority
@@ -284,9 +332,10 @@ claim.
 
 | Subject | Macro-5 | Hist-4 (supplementary) | Paper five-finger aggregate | Interpretation |
 |---|---:|---:|---:|---|
-| S1 | 0.574 | 0.563 | 0.560 | above by 0.014 |
+| S1 exploratory stacked system | 0.578 | 0.568 | 0.560 | above by 0.018 |
+| S1 non-stacked baseline, unconstrained | 0.561 | 0.549 | 0.560 | rounded match |
 | S2 | 0.429 | 0.413 | about 0.410 | above |
-| S3 | 0.639 | 0.633 | about 0.590 | above |
+| S3 | 0.646 | 0.641 | about 0.590 | above |
 
 The paper aggregate averages all five fingers. `Hist-4`, which excludes ring,
 is reported only as a separate competition-style diagnostic and is not compared
@@ -297,15 +346,17 @@ should not be presented as high-precision or statistical superiority claims.
 
 | Subject | Macro rest RMS | Macro state F1 | Macro derivative PCC | Main concern |
 |---|---:|---:|---:|---|
-| S1 | 0.094 | 0.568 | 0.336 | Middle has heavy false activity; several fingers remain under-amplitude |
+| S1 | 0.093 | 0.568 | 0.340 | Middle has heavy false activity; several fingers remain under-amplitude |
 | S2 | 0.059 | 0.447 | 0.239 | Middle amplitude and state precision remain weak |
-| S3 | 0.147 | 0.660 | 0.344 | Better peak scale, but some rest leakage remains |
+| S3 | 0.145 | 0.660 | 0.350 | Better peak scale, but some rest leakage remains |
 
 The corrected S3 result retains physical channel 49 and removes only physical
 channel 50. This policy was selected without test labels: on validation it
 reached raw/cleaned Macro-5 of 0.626/0.652, compared with 0.613/0.636 when both
 physical channels 49 and 50 were removed. Relative to that 62-channel
-sensitivity run, released-test Macro-5 changes from 0.645 to 0.639, while
+sensitivity run, the unconstrained released-test Macro-5 changes from 0.645 to
+0.639. The nonnegative projection raises the selected 63-channel result to
+0.646, while
 middle/ring/little peak ratios improve from
 0.616/0.800/0.548 to 0.736/0.968/0.646. Macro rest RMS rises from 0.128 to 0.147
 and state F1 falls from 0.677 to 0.660. The 63-channel result is primary because
@@ -497,6 +548,13 @@ python scripts/normalize_prediction_affine.py --subject 1 \
   --target local_w2_q10 --finger thumb --finger little \
   --output outputs/s1_validation_stack_affine_v1/sub1
 
+# Make the public-facing S1 flexion nonnegative while preserving exact model
+# outputs as *_unconstrained.npy files.
+python scripts/project_prediction_nonnegative.py --subject 1 \
+  --prepared-root outputs/preprocessed_v2 \
+  --prediction-root outputs/s1_validation_stack_affine_v1/sub1 \
+  --target local_w2_q10 --output outputs/final_nonnegative/sub1
+
 # Recreate the frozen S2 per-finger selection.
 python scripts/select_per_finger_ensemble.py --subject 2 \
   --prepared-root outputs/preprocessed_v2 --history 25 \
@@ -538,7 +596,8 @@ late reconstruction:
 - several experiment scripts reflect research exploration rather than one
   polished end-to-end command; and
 - the S1 PCC-leading stack uses a meta-model fit on validation predictions, so
-  its aggregate improvement needs independent repetition; and
+  its aggregate improvement needs independent repetition and is presented as
+  an exploratory system rather than a single learned decoder; and
 - S1 middle-finger false activity and conservative amplitudes remain unresolved
   even though the historical aggregate PCC has been reached.
 
