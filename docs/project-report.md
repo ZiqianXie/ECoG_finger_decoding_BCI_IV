@@ -29,14 +29,14 @@ matched the paper's rounded 0.56 at 0.561; the latest candidate reaches 0.574.
 Across all fifteen subject-finger pairs, eight reconstructed PCCs exceed the
 rounded paper CNN-LSTM values.
 
-The S1 number is a PCC-leading validation-stack result and needs an important
-qualification. A validation-constrained calibration repairs the previously
-near-flat ring trace: movement-state recall rises from 0.054 to 0.863 and peak
-ratio from 0.127 to 0.576. The thumb/little stack improves correlation and
-timing, but visibly overshoots amplitude and drifts during rest. It therefore
-closes the historical PCC gap without yet closing the trajectory-calibration
-gap. This distinction is preserved in the figures rather than hidden behind a
-single aggregate number.
+The S1 number combines validation-only model stacking and amplitude calibration.
+A constrained calibration repairs the previously near-flat ring trace:
+movement-state recall rises from 0.054 to 0.863 and peak ratio from 0.127 to
+0.576. The first thumb/little stack improved correlation and timing but visibly
+overshot amplitude. Positive affine normalization fitted on validation preserves
+PCC while reducing thumb/little rest RMS to 0.063/0.099 and movement peak ratios
+to 0.534/0.587. The remaining middle-finger false activity and under-amplitude
+are preserved in the figures rather than hidden behind one aggregate number.
 
 ## Scope and research goals
 
@@ -194,6 +194,11 @@ the selected model is then fit on all validation predictions and frozen before
 test scoring. Ring uses a separate smooth floor/dead-zone/gain calibration whose
 PCC, derivative PCC, recall, peak ratio, and rest-RMS constraints are likewise
 evaluated only on validation data.
+Finally, positive affine scale and offset are fitted on the cleaned validation
+target for stacked thumb and little predictions. With a positive scale and no
+clipping, Pearson correlation is unchanged by construction; the operation only
+calibrates amplitude and baseline. This is appropriate for a correctly timed but
+mis-scaled trace and cannot rescue wrong timing or wrong-finger activity.
 
 CUDA was used for feature generation and neural training. Supported training
 paths request `torch.compile(mode="reduce-overhead")`. Keeping the complete
@@ -274,7 +279,7 @@ should not be presented as high-precision or statistical superiority claims.
 
 | Subject | Macro rest RMS | Macro state F1 | Macro derivative PCC | Main concern |
 |---|---:|---:|---:|---|
-| S1 | 0.217 | 0.549 | 0.336 | Thumb/little stack overshoots; middle has heavy false activity |
+| S1 | 0.094 | 0.568 | 0.336 | Middle has heavy false activity; several fingers remain under-amplitude |
 | S2 | 0.059 | 0.447 | 0.239 | Middle amplitude and state precision remain weak |
 | S3 | 0.128 | 0.677 | 0.341 | Better cycles, but some rest leakage remains |
 
@@ -292,10 +297,12 @@ with the validation-constrained calibration:
 | Rest RMS | 0.052 | 0.097 |
 
 The repair makes the repeated ring cycles visible, at the cost of additional
-rest activity. Validation constraints bound that tradeoff. In contrast, the
-stacked thumb and little outputs have peak ratios 1.836 and 2.389 and rest RMS
-0.409 and 0.368, respectively. Those traces improve PCC but remain
-over-amplified; this is why the S1 row is labelled PCC-leading rather than final.
+rest activity. Validation constraints bound that tradeoff. The initial stacked
+thumb and little outputs had peak ratios 1.836 and 2.389 and rest RMS 0.409 and
+0.368. Validation-fitted affine normalization changes those to 0.534/0.587 and
+0.063/0.099 without changing PCC. Visual inspection confirms that the gross
+overshoot and negative rest drift are removed, although amplitude is now
+conservative and the middle trace remains noisy.
 
 ![Subject 1 movement windows](figures/s1-movement-windows.png)
 
@@ -355,10 +362,11 @@ the present optimizer and full-data protocol; this candidate was rejected.
 
 S1 ring demonstrated the failure mode: scale-invariant correlation remained
 high even when movement amplitude and state recall collapsed. Explicit
-validation morphology constraints repaired ring. The new thumb/little stack
-shows the complementary failure: better PCC and timing can coexist with
-excessive gain and rest drift. Morphology is therefore an acceptance constraint,
-not a secondary narrative.
+validation morphology constraints repaired ring. The first thumb/little stack
+showed the complementary failure: better PCC and timing coexisted with excessive
+gain and rest drift. Positive affine normalization corrected that scale mismatch
+without altering PCC. Morphology remains an acceptance constraint, not a
+secondary narrative.
 
 ## Reproduction recipes
 
@@ -390,6 +398,13 @@ python scripts/calibrate_prediction_constrained.py --subject 1 \
   --prediction-root outputs/paper_reproduction_s1_v1/sub1 \
   --target local_w2_q10 --finger ring \
   --output outputs/s1_ring_constrained_calibration_v1/sub1
+
+# After validation stacking, normalize thumb/little amplitude without changing PCC.
+python scripts/normalize_prediction_affine.py --subject 1 \
+  --prepared-root outputs/preprocessed_v2 \
+  --prediction-root outputs/s1_validation_stack_v1/sub1 \
+  --target local_w2_q10 --finger thumb --finger little \
+  --output outputs/s1_validation_stack_affine_v1/sub1
 
 # Recreate the frozen S2 per-finger selection.
 python scripts/select_per_finger_ensemble.py --subject 2 \
@@ -433,16 +448,16 @@ late reconstruction:
   polished end-to-end command; and
 - the S1 PCC-leading stack uses a meta-model fit on validation predictions, so
   its aggregate improvement needs independent repetition; and
-- S1 thumb/little amplitude calibration and middle-finger false activity remain
-  unresolved even though the historical aggregate PCC has been reached.
+- S1 middle-finger false activity and conservative amplitudes remain unresolved
+  even though the historical aggregate PCC has been reached.
 
 For these reasons, the project should be cited as a reimplementation and
 extension, not as the official source code accompanying the 2018 publication.
 
 ## Recommended next work
 
-1. Add validation-only amplitude/rest constraints to the S1 thumb/little stack,
-   preserving its timing gain without the current overshoot.
+1. Improve S1 middle-finger precision and test whether blocked affine fits can
+   raise conservative amplitudes without increasing rest activity.
 2. Build a fully scripted experiment manifest from raw files to every reported
    summary, including hashes and package versions.
 3. Repeat the selected S1 and S2 models over at least five seeds and report both

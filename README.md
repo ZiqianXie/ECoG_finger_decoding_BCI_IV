@@ -32,7 +32,7 @@ index, middle, and little finger, excluding ring. `Macro-5` includes all five.
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Hist-4 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| S1 PCC-leading validation stack | 0.728 | 0.809 | 0.296 | 0.618 | 0.420 | 0.574 | 0.563 |
+| S1 selected + affine normalized | 0.728 | 0.809 | 0.296 | 0.618 | 0.420 | 0.574 | 0.563 |
 | S2 reconstructed | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | 0.429 | 0.413 |
 | S3 reconstructed | 0.711 | 0.508 | 0.637 | 0.676 | 0.693 | 0.645 | 0.637 |
 
@@ -43,13 +43,14 @@ comparison is `Macro-5`, not `Hist-4`. The previous S1 reconstruction already
 matched it at 0.561; the current S1 `Macro-5` is 0.574. `Hist-4` is retained only
 as a separate competition-style summary and must not be compared with 0.56.
 
-The S1 row is explicitly a **PCC-leading** candidate, not an unqualified final
-trajectory model. Validation-only nonnegative stacking improves thumb/little
-timing, and constrained ring calibration raises ring movement-state recall from
-0.054 to 0.863. However, visual audit shows excessive thumb/little amplitude and
-rest drift in the stacked output. The machine-readable morphology report and
-figures preserve this caveat: correlation has reached the historical aggregate,
-but amplitude calibration remains unresolved.
+Validation-only nonnegative stacking improves S1 thumb/little timing, and
+constrained ring calibration raises ring movement-state recall from 0.054 to
+0.863. The initial stack had excessive thumb/little amplitude and rest drift.
+A positive affine scale and offset fitted only on validation preserves every PCC
+while reducing thumb/little rest RMS from 0.409/0.368 to 0.063/0.099 and movement
+peak ratios from 1.836/2.389 to 0.534/0.587. The updated figure shows the
+normalized traces; middle-finger false activity and residual under-amplitude
+remain visible rather than being hidden by the aggregate score.
 
 ![Subject 1 held-out movement windows](docs/figures/s1-movement-windows.png)
 
@@ -96,6 +97,9 @@ per subject and per finger using only a chronological validation partition.
 An experimental nonnegative ridge stack combines diverse S1 candidates for
 thumb and little finger; its regularization is selected with blocked splits
 inside validation, and its weights never read the released test labels.
+Prediction amplitude and offset can then be normalized on the cleaned validation
+target with a positive affine transform. Because the scale is positive and no
+clipping is used, this changes calibration without changing PCC.
 
 The 2018 implementation's four-second training blocks were a Theano static-graph
 constraint, not a physiological assumption; modern training can operate on the

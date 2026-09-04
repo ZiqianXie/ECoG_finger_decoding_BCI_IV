@@ -56,6 +56,16 @@ def main() -> None:
         nargs="+",
         default=(1.0e-4, 1.0e-3, 1.0e-2, 0.1, 1.0, 10.0, 100.0, 1000.0),
     )
+    parser.add_argument(
+        "--clip-min",
+        type=float,
+        help="optional fixed lower support bound applied after stacking",
+    )
+    parser.add_argument(
+        "--clip-max",
+        type=float,
+        help="optional fixed upper support bound applied after stacking",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -126,8 +136,15 @@ def main() -> None:
             StandardScaler(), Ridge(alpha=best_alpha, positive=True)
         )
         model.fit(validation_x, target)
-        validation_output[:, finger] = model.predict(validation_x)
-        test_output[:, finger] = model.predict(test_x)
+        validation_estimate = model.predict(validation_x)
+        test_estimate = model.predict(test_x)
+        if args.clip_min is not None or args.clip_max is not None:
+            lower = args.clip_min if args.clip_min is not None else -np.inf
+            upper = args.clip_max if args.clip_max is not None else np.inf
+            validation_estimate = np.clip(validation_estimate, lower, upper)
+            test_estimate = np.clip(test_estimate, lower, upper)
+        validation_output[:, finger] = validation_estimate
+        test_output[:, finger] = test_estimate
         standardizer = model.named_steps["standardscaler"]
         ridge = model.named_steps["ridge"]
         selection[name] = {
@@ -154,6 +171,7 @@ def main() -> None:
         ),
         "base_candidate": args.base,
         "candidate_paths": candidate_paths,
+        "output_support": {"minimum": args.clip_min, "maximum": args.clip_max},
         "selection": selection,
         "validation_raw_metrics": trajectory_metrics(
             validation_output, validation_target
