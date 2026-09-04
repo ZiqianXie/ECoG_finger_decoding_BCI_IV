@@ -33,6 +33,31 @@ def checked_stack(values: list[np.ndarray], label: str) -> np.ndarray:
     return np.stack(values)
 
 
+def candidate_status(
+    directory: Path, finger_name: str, validation_prediction: np.ndarray
+) -> dict[str, object]:
+    """Classify a seed using training metadata and validation predictions only."""
+    if not np.isfinite(validation_prediction).all():
+        return {"eligible": False, "reason": "nonfinite_validation_prediction"}
+    if float(np.std(validation_prediction)) <= 1.0e-8:
+        return {"eligible": False, "reason": "constant_validation_prediction"}
+    summary_path = directory / "summary.json"
+    if not summary_path.exists():
+        return {"eligible": False, "reason": "missing_training_summary"}
+    summary = json.loads(summary_path.read_text())
+    metadata = summary.get("per_finger", {}).get(finger_name)
+    if not isinstance(metadata, dict):
+        return {"eligible": False, "reason": "missing_finger_training_metadata"}
+    best_epoch = int(metadata.get("best_epoch", 0))
+    if best_epoch <= 0:
+        return {
+            "eligible": False,
+            "reason": "protected_epoch0_baseline",
+            "best_epoch": best_epoch,
+        }
+    return {"eligible": True, "reason": "trained_checkpoint", "best_epoch": best_epoch}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, required=True)
@@ -52,6 +77,14 @@ def main() -> None:
         help="subject output directory supplying unchanged finger columns",
     )
     parser.add_argument("--candidate", action="append", type=Path, required=True)
+    parser.add_argument(
+        "--exclude-collapsed",
+        action="store_true",
+        help=(
+            "exclude a seed independently for each finger when its best checkpoint "
+            "is the protected epoch-0 initializer or its validation prediction is invalid"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if len(args.candidate) < 2:
@@ -79,20 +112,52 @@ def main() -> None:
         raise ValueError("base test prediction shape does not match the target")
     per_finger: dict[str, object] = {}
     for name, finger in zip(selected_fingers, selected_indices, strict=True):
-        validation = validation_all[:, :, finger]
-        test = test_all[:, :, finger]
+        statuses = [
+            candidate_status(path, name, validation_all[index, :, finger])
+            for index, path in enumerate(args.candidate)
+        ]
+        eligible = [
+            index
+            for index, status in enumerate(statuses)
+            if not args.exclude_collapsed or bool(status["eligible"])
+        ]
+        candidate_audit = [
+            {"directory": str(path), **status}
+            for path, status in zip(args.candidate, statuses, strict=True)
+        ]
+        if not eligible:
+            per_finger[name] = {
+                "status": "fallback_to_base_no_noncollapsed_seed",
+                "included_candidates": [],
+                "candidate_audit": candidate_audit,
+                "validation_raw_r": pearson(
+                    validation_output[:, finger], validation_target_full[:, finger]
+                ),
+                "test_raw_r_descriptive_only": pearson(
+                    test_output[:, finger], test_target_full[:, finger]
+                ),
+                "validation_prediction_correlation": [],
+            }
+            continue
+        validation = validation_all[eligible, :, finger]
+        test = test_all[eligible, :, finger]
         validation_mean = validation.mean(axis=0)
         test_mean = test.mean(axis=0)
         validation_output[:, finger] = validation_mean
         test_output[:, finger] = test_mean
         per_finger[name] = {
+            "status": "filtered_seed_mean",
+            "included_candidates": [str(args.candidate[index]) for index in eligible],
+            "candidate_audit": candidate_audit,
             "validation_raw_r": pearson(
                 validation_mean, validation_target_full[:, finger]
             ),
             "test_raw_r_descriptive_only": pearson(
                 test_mean, test_target_full[:, finger]
             ),
-            "validation_prediction_correlation": np.corrcoef(validation).tolist(),
+            "validation_prediction_correlation": (
+                np.corrcoef(validation).tolist() if len(eligible) > 1 else [[1.0]]
+            ),
         }
     validation_per_finger = [
         pearson(validation_output[:, index], validation_target_full[:, index])
@@ -106,6 +171,7 @@ def main() -> None:
         "subject": args.subject,
         "fingers": selected_fingers,
         "method": "equal-weight seed ensemble",
+        "exclude_collapsed": args.exclude_collapsed,
         "base": str(args.base),
         "candidates": [str(path) for path in args.candidate],
         "per_finger": per_finger,
