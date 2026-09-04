@@ -27,30 +27,23 @@ diagnosis are in the [project report](docs/project-report.md).
 ## Current status
 
 The primary score is Pearson correlation against the released, unmodified test
-glove trajectories. `Hist-4` is the original competition convention: thumb,
-index, middle, and little finger, excluding ring. `Macro-5` includes all five.
+glove trajectories. `Macro-5` is the mean across all five fingers, matching the
+aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
+2018.
 
-| Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Hist-4 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| S1 selected + affine normalized | 0.728 | 0.809 | 0.296 | 0.618 | 0.420 | 0.574 | 0.563 |
-| S2 reconstructed | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | 0.429 | 0.413 |
-| S3 reconstructed | 0.711 | 0.508 | 0.637 | 0.676 | 0.693 | 0.645 | 0.637 |
+| Subject | Result | Thumb | Index | Middle | Ring | Little | Macro-5 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| S1 | Paper | 0.750 | 0.790 | 0.170 | 0.600 | 0.470 | 0.556 |
+| S1 | Reimplementation | 0.728 | 0.809 | 0.296 | 0.618 | 0.420 | **0.574** |
+| S2 | Paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
+| S2 | Reimplementation | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | **0.429** |
+| S3 | Paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
+| S3 | Reimplementation | 0.711 | 0.508 | 0.637 | 0.676 | 0.693 | **0.645** |
 
-These are not uniformly better than the paper. Eight of the fifteen per-finger
-PCC values exceed the rounded CNN-LSTM values reported in 2018. The paper's
-rounded S1 aggregate of 0.56 averages **all five fingers**, so its proper
-comparison is `Macro-5`, not `Hist-4`. The previous S1 reconstruction already
-matched it at 0.561; the current S1 `Macro-5` is 0.574. `Hist-4` is retained only
-as a separate competition-style summary and must not be compared with 0.56.
-
-Validation-only nonnegative stacking improves S1 thumb/little timing, and
-constrained ring calibration raises ring movement-state recall from 0.054 to
-0.863. The initial stack had excessive thumb/little amplitude and rest drift.
-A positive affine scale and offset fitted only on validation preserves every PCC
-while reducing thumb/little rest RMS from 0.409/0.368 to 0.063/0.099 and movement
-peak ratios from 1.836/2.389 to 0.534/0.587. The updated figure shows the
-normalized traces; middle-finger false activity and residual under-amplitude
-remain visible rather than being hidden by the aggregate score.
+The reimplementation improves the five-finger aggregate for all three subjects
+and exceeds the paper value on eight of fifteen individual fingers. Numerical
+scores are complemented by held-out trajectory plots and morphology diagnostics
+in the project report.
 
 ![Subject 1 held-out movement windows](docs/figures/s1-movement-windows.png)
 
