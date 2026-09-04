@@ -51,6 +51,12 @@ def main() -> None:
     )
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument(
+        "--gap",
+        type=int,
+        default=25,
+        help="purged bins between each chronological fit and audit fold",
+    )
+    parser.add_argument(
         "--alphas",
         type=float,
         nargs="+",
@@ -95,7 +101,9 @@ def main() -> None:
     validation_output = values[args.base][0].copy()
     test_output = values[args.base][1].copy()
     selection: dict[str, object] = {}
-    splitter = TimeSeriesSplit(n_splits=args.folds)
+    if args.gap < 0:
+        parser.error("--gap must be nonnegative")
+    splitter = TimeSeriesSplit(n_splits=args.folds, gap=args.gap)
 
     for finger, name in enumerate(FINGER_NAMES):
         if name not in requested:
@@ -170,6 +178,7 @@ def main() -> None:
             "alpha selected by blocked TimeSeriesSplit within validation"
         ),
         "base_candidate": args.base,
+        "blocked_cv_gap_bins": args.gap,
         "candidate_paths": candidate_paths,
         "output_support": {"minimum": args.clip_min, "maximum": args.clip_max},
         "selection": selection,

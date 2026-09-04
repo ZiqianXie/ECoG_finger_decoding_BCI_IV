@@ -39,12 +39,12 @@ aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 | S1 | Non-stacked per-finger baseline, unconstrained | 0.696 | 0.809 | 0.296 | 0.612 | 0.395 | 0.561 |
 | S1 | Exploratory stacked system + output projection | 0.730 | 0.809 | 0.308 | 0.618 | 0.426 | **0.578** |
 | S2 | Paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
-| S2 | Selected per-finger system + output projection | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | **0.429** |
+| S2 | Selected per-finger system + middle-finger seed ensemble | 0.599 | 0.472 | 0.391 | 0.495 | 0.373 | **0.466** |
 | S3 | Paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
 | S3 | Selected per-finger system + output projection | 0.720 | 0.525 | 0.632 | 0.666 | 0.687 | **0.646** |
 
 The selected systems improve the five-finger aggregate for all three subjects
-and exceed the paper value on eight of fifteen individual fingers. S1's highest
+and exceed the paper value on nine of fifteen individual fingers. S1's highest
 number is explicitly exploratory: thumb and little are learned second-stage
 stacks over candidate predictions, index and middle use their selected base
 models, and ring uses a separately calibrated base prediction. It is not a
@@ -62,7 +62,8 @@ trainable.
 
 | Final route | Subject/fingers | Spectral front end | Spatial front end |
 |---|---|---|---|
-| Trainable wavelet | S1 index; S2 index, middle | Gradient-trained bior6.8 wavelet taps | Gradient-trained, FastICA-initialized projection |
+| Trainable wavelet | S1 index; S2 index | Gradient-trained bior6.8 wavelet taps | Gradient-trained, FastICA-initialized projection |
+| Seed-averaged asymmetric wavelet | S2 middle | Six equal-weight trainable wavelet/LMP models | Six FastICA-initialized projections |
 | Fixed wavelet | S1 ring; S2 thumb, ring, little | Frozen bior6.8 wavelet taps | Frozen FastICA projection |
 | Fixed bandpass+CSP | S1 middle; all S3 fingers | Frozen conventional bandpass filters | CSP estimated on training data, then frozen |
 | Fixed-only ensemble | S1 thumb | Mixture of fixed-wavelet and fixed-band candidates | Mixture of fixed FastICA/CSP/SPoC candidates |
@@ -122,6 +123,10 @@ per subject and per finger using only a chronological validation partition.
 An experimental nonnegative ridge stack combines diverse S1 candidates for
 thumb and little finger; its regularization is selected with blocked splits
 inside validation, and its weights never read the released test labels.
+S2 middle uses an equal-weight ensemble of six independently optimized
+asymmetric-wavelet LSTMs spanning two validation-screened frontend learning
+rates and three seeds. Equal weighting fits no stacking parameter and reduces
+the large initialization- and minibatch-order variance seen in single runs.
 Prediction amplitude and offset can then be normalized on the cleaned validation
 target with a positive affine transform. This changes calibration without
 changing PCC. Final exported flexion is then projected onto its physical domain

@@ -19,7 +19,10 @@ import numpy as np
 import torch
 from torch import nn
 
-from benchmark_ridge_target_variants import ridge_fit
+try:
+    from scripts.benchmark_ridge_target_variants import ridge_fit
+except ModuleNotFoundError:  # Direct execution adds scripts/, not the repo root.
+    from benchmark_ridge_target_variants import ridge_fit
 from ecog_decoding.models import AsymmetricWaveletPacketEnergy, WaveletPacketEnergy
 from ecog_decoding.training import FINGER_NAMES
 
@@ -42,6 +45,7 @@ class ExactWindowFingerDecoder(nn.Module):
         hidden_size: int,
         wavelet_levels: int = 3,
         frontend: str = "wavelet",
+        head_initialization: str = "residual_ridge",
     ) -> None:
         super().__init__()
         self.spatial = nn.Conv1d(input_channels, component_count, 1, bias=False)
@@ -71,10 +75,74 @@ class ExactWindowFingerDecoder(nn.Module):
         self.register_buffer("feature_mean", torch.as_tensor(feature_mean, dtype=torch.float32))
         self.register_buffer("feature_scale", torch.as_tensor(feature_scale, dtype=torch.float32))
         self.direct = nn.Linear(selected_indices.size, 1)
+        self.head_initialization = head_initialization
+        if head_initialization not in ("lars_linear_regime", "residual_ridge"):
+            raise ValueError(f"unsupported head initialization {head_initialization!r}")
         self.lstm = nn.LSTM(selected_indices.size, hidden_size, batch_first=True)
         self.temporal = nn.Linear(hidden_size, 1)
         nn.init.zeros_(self.temporal.weight)
         nn.init.zeros_(self.temporal.bias)
+
+    @torch.no_grad()
+    def initialize_lars_linear_regime(
+        self,
+        coefficients: np.ndarray,
+        intercept: float,
+        unit: int = 0,
+        candidate_scale: float = 1.0,
+        near_zero_std: float = 1.0e-3,
+        open_gate_bias: float = 3.0,
+        forget_gate_bias: float = -3.0,
+    ) -> None:
+        """Seed one isolated nonlinear LSTM unit in its linear regime."""
+        if not 0 <= unit < self.lstm.hidden_size:
+            raise ValueError("unit is outside the hidden state")
+        if candidate_scale <= 0:
+            raise ValueError("candidate_scale must be positive")
+        if near_zero_std < 0:
+            raise ValueError("near_zero_std must be nonnegative")
+        coefficients_t = torch.as_tensor(
+            coefficients,
+            dtype=self.lstm.weight_ih_l0.dtype,
+            device=self.lstm.weight_ih_l0.device,
+        )
+        if coefficients_t.shape != (self.lstm.input_size,):
+            raise ValueError("LARS coefficient count must equal the LSTM input size")
+        self.direct.weight.zero_()
+        self.direct.bias.zero_()
+        self.direct.requires_grad_(False)
+        hidden = self.lstm.hidden_size
+        rows = [unit + gate * hidden for gate in range(4)]
+        for row in rows:
+            self.lstm.weight_ih_l0[row].normal_(0.0, near_zero_std)
+            self.lstm.weight_hh_l0[row].normal_(0.0, near_zero_std)
+            self.lstm.bias_ih_l0[row].zero_()
+            self.lstm.bias_hh_l0[row].zero_()
+        # Connections that would be exactly zero in the ideal isolated path
+        # receive tiny random weights, matching the historical implementation.
+        self.lstm.weight_hh_l0[:, unit].normal_(0.0, near_zero_std)
+        input_row, forget_row, candidate_row, output_row = rows
+        self.lstm.bias_ih_l0[input_row] = open_gate_bias
+        self.lstm.bias_ih_l0[forget_row] = forget_gate_bias
+        self.lstm.bias_ih_l0[output_row] = open_gate_bias
+        self.lstm.bias_ih_l0[candidate_row] = candidate_scale * float(intercept)
+        self.lstm.weight_ih_l0[candidate_row].copy_(
+            candidate_scale * coefficients_t
+        )
+        open_gate = torch.sigmoid(
+            torch.as_tensor(
+                open_gate_bias,
+                dtype=self.temporal.weight.dtype,
+                device=self.temporal.weight.device,
+            )
+        )
+        self.temporal.weight.zero_()
+        if near_zero_std:
+            self.temporal.weight.normal_(0.0, near_zero_std)
+        self.temporal.weight[0, unit] = 1.0 / (
+            candidate_scale * open_gate.square()
+        )
+        self.temporal.bias.zero_()
 
     def extract(self, windows: torch.Tensor) -> torch.Tensor:
         """Return selected features for (batch, steps, channels, 1000)."""
@@ -134,6 +202,16 @@ def main() -> None:
     parser.add_argument("--hidden-size", type=int, default=10)
     parser.add_argument("--wavelet-levels", type=int, choices=(3, 4), default=3)
     parser.add_argument("--frontend", choices=("wavelet", "asymmetric"), default="wavelet")
+    parser.add_argument(
+        "--head-initialization",
+        choices=("lars_linear_regime", "residual_ridge"),
+        default="residual_ridge",
+        help="lars_linear_regime seeds one standard nonlinear LSTM unit near zero; residual_ridge preserves the earlier direct-skip experiment",
+    )
+    parser.add_argument("--lars-candidate-scale", type=float, default=1.0)
+    parser.add_argument("--lars-near-zero-std", type=float, default=1.0e-3)
+    parser.add_argument("--lars-open-gate-bias", type=float, default=3.0)
+    parser.add_argument("--lars-forget-gate-bias", type=float, default=-3.0)
     parser.add_argument("--sequence-steps", type=int, default=100)
     parser.add_argument("--sequence-stride", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=1)
@@ -252,12 +330,41 @@ def main() -> None:
         indices = np.asarray(
             selection["per_finger"][finger_name]["selected_source_indices"], dtype=np.int64
         )
+        selected_fit = selection["per_finger"][finger_name]
         initial = np.asarray(fixed_train[:train_count, indices], dtype=np.float32)
-        mean = initial.mean(axis=0, dtype=np.float64).astype(np.float32)
-        scale = initial.std(axis=0, dtype=np.float64).astype(np.float32)
+        if args.head_initialization == "lars_linear_regime":
+            required = (
+                "selected_standardized_coefficients",
+                "selected_feature_mean",
+                "selected_feature_scale",
+                "intercept",
+            )
+            missing = [name for name in required if name not in selected_fit]
+            if missing:
+                raise ValueError(
+                    "selection summary predates paper LARS initialization fields: "
+                    + ", ".join(missing)
+                )
+            mean = np.asarray(selected_fit["selected_feature_mean"], dtype=np.float32)
+            scale = np.asarray(selected_fit["selected_feature_scale"], dtype=np.float32)
+            linear_weight = np.asarray(
+                selected_fit["selected_standardized_coefficients"], dtype=np.float32
+            )
+            linear_intercept = float(selected_fit["intercept"])
+        else:
+            mean = initial.mean(axis=0, dtype=np.float64).astype(np.float32)
+            scale = initial.std(axis=0, dtype=np.float64).astype(np.float32)
+            y_train = np.asarray(target[:train_count, finger], dtype=np.float32)
+            _, _, linear_intercept, linear_weight = ridge_fit(
+                initial, y_train, 1.0e-3, device
+            )
         scale[scale < 1.0e-6] = 1.0
         y_train = np.asarray(target[:train_count, finger], dtype=np.float32)
-        _, _, target_mean, ridge_weight = ridge_fit(initial, y_train, 1.0e-3, device)
+        initialization_sample = initial[: min(initial.shape[0], 4096)].copy()
+        expected_initial = np.maximum(
+            (initialization_sample - mean) / scale @ linear_weight + linear_intercept,
+            0.0,
+        )
         del initial
 
         model = ExactWindowFingerDecoder(
@@ -269,11 +376,47 @@ def main() -> None:
             args.hidden_size,
             wavelet_levels=args.wavelet_levels,
             frontend=args.frontend,
+            head_initialization=args.head_initialization,
         ).to(device)
         with torch.no_grad():
             model.spatial.weight[:, :, 0].copy_(torch.from_numpy(ica).to(device))
-            model.direct.weight.copy_(torch.from_numpy(ridge_weight[None]).to(device))
-            model.direct.bias.fill_(target_mean)
+            if args.head_initialization == "lars_linear_regime":
+                model.initialize_lars_linear_regime(
+                    linear_weight,
+                    linear_intercept,
+                    candidate_scale=args.lars_candidate_scale,
+                    near_zero_std=args.lars_near_zero_std,
+                    open_gate_bias=args.lars_open_gate_bias,
+                    forget_gate_bias=args.lars_forget_gate_bias,
+                )
+            else:
+                model.direct.weight.copy_(
+                    torch.from_numpy(linear_weight[None]).to(device)
+                )
+                model.direct.bias.fill_(linear_intercept)
+        with torch.inference_mode():
+            observed_initial = model.decode(
+                torch.from_numpy(initialization_sample[None]).to(device)
+            ).squeeze(0).cpu().numpy()
+        initialization_max_abs_error = float(
+            np.max(np.abs(observed_initial - expected_initial))
+        )
+        initialization_rmse = float(
+            np.sqrt(np.mean(np.square(observed_initial - expected_initial)))
+        )
+        initialization_pcc = pearson(observed_initial, expected_initial)
+        if not np.isfinite(initialization_max_abs_error):
+            raise RuntimeError("network linear initialization produced non-finite values")
+        if args.head_initialization == "residual_ridge" and initialization_max_abs_error > 1.0e-5:
+            raise RuntimeError(
+                "network does not reproduce its linear initializer: "
+                f"max_abs_error={initialization_max_abs_error:.3g}"
+            )
+        if args.head_initialization == "lars_linear_regime" and initialization_pcc < 0.98:
+            raise RuntimeError(
+                "LSTM linear-regime initialization is not sufficiently faithful: "
+                f"pcc={initialization_pcc:.6f}"
+            )
         train_model: nn.Module = model
         if args.compile:
             train_model = torch.compile(model, mode="reduce-overhead")
@@ -383,6 +526,20 @@ def main() -> None:
         )
         report[finger_name] = {
             "feature_count": int(indices.size),
+            "head_initialization": args.head_initialization,
+            "lars_initialization": (
+                {
+                    "candidate_scale": args.lars_candidate_scale,
+                    "near_zero_std": args.lars_near_zero_std,
+                    "open_gate_bias": args.lars_open_gate_bias,
+                    "forget_gate_bias": args.lars_forget_gate_bias,
+                }
+                if args.head_initialization == "lars_linear_regime"
+                else None
+            ),
+            "initialization_max_abs_error": initialization_max_abs_error,
+            "initialization_rmse": initialization_rmse,
+            "initialization_pcc": initialization_pcc,
             "initialized_validation_raw_r": history[0]["validation_raw_r"],
             "best_epoch": best_epoch,
             "validation_raw_r": best_score,
@@ -402,6 +559,7 @@ def main() -> None:
         "fingers": args.fingers,
         "wavelet_levels": args.wavelet_levels,
         "frontend": args.frontend,
+        "head_initialization": args.head_initialization,
         "selection_root": str(args.selection_root),
         "optimization": {
             "learning_rate": args.learning_rate,
