@@ -302,12 +302,16 @@ should not be presented as high-precision or statistical superiority claims.
 | S3 | 0.147 | 0.660 | 0.344 | Better peak scale, but some rest leakage remains |
 
 The corrected S3 result retains physical channel 49 and removes only physical
-channel 50. Relative to the earlier 62-channel sensitivity run, Macro-5 changes
-from 0.645 to 0.639, while middle/ring/little peak ratios improve from
+channel 50. This policy was selected without test labels: on validation it
+reached raw/cleaned Macro-5 of 0.626/0.652, compared with 0.613/0.636 when both
+physical channels 49 and 50 were removed. Relative to that 62-channel
+sensitivity run, released-test Macro-5 changes from 0.645 to 0.639, while
+middle/ring/little peak ratios improve from
 0.616/0.800/0.548 to 0.736/0.968/0.646. Macro rest RMS rises from 0.128 to 0.147
 and state F1 falls from 0.677 to 0.660. The 63-channel result is primary because
-it matches the paper's stated channel count and the raw artifact location; the
-62-channel score is retained only as a sensitivity result.
+it wins on validation, matches the paper's stated channel count, and agrees with
+the raw artifact location; the 62-channel score is retained only as a
+sensitivity result.
 
 The S1 ring repair is the clearest example of why the visual audit is part of
 the acceptance criterion. The table compares the original selected prediction
