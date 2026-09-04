@@ -51,6 +51,29 @@ def correlation_order(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return np.argsort(np.abs(correlation))[::-1]
 
 
+def named_subset_metrics(
+    prediction: np.ndarray, target: np.ndarray, names: list[str]
+) -> dict[str, object]:
+    """Report metrics without relabeling a one-finger diagnostic as thumb."""
+    if prediction.shape != target.shape or prediction.shape[1] != len(names):
+        raise ValueError("prediction, target, and finger names must agree")
+    if names == list(FINGER_NAMES):
+        return trajectory_metrics(prediction, target)
+    correlations: dict[str, float] = {}
+    for column, name in enumerate(names):
+        left = prediction[:, column] - prediction[:, column].mean()
+        right = target[:, column] - target[:, column].mean()
+        denominator = np.linalg.norm(left) * np.linalg.norm(right)
+        correlations[name] = (
+            float(left @ right / denominator) if denominator > 0 else 0.0
+        )
+    return {
+        "pearson_by_finger": correlations,
+        "pearson_macro_selected": float(np.mean(list(correlations.values()))),
+        "rmse_selected": float(np.sqrt(np.mean((prediction - target) ** 2))),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, required=True)
@@ -130,13 +153,15 @@ def main() -> None:
         )
 
     chosen = [list(FINGER_NAMES).index(name) for name in names]
-    validation_target_metrics = trajectory_metrics(
-        validation_prediction[:, chosen], validation_target[:, chosen]
+    validation_target_metrics = named_subset_metrics(
+        validation_prediction[:, chosen], validation_target[:, chosen], names
     )
-    validation_raw_metrics = trajectory_metrics(
-        validation_prediction[:, chosen], validation_raw[:, chosen]
+    validation_raw_metrics = named_subset_metrics(
+        validation_prediction[:, chosen], validation_raw[:, chosen], names
     )
-    test_raw_metrics = trajectory_metrics(test_prediction[:, chosen], test_raw[:, chosen])
+    test_raw_metrics = named_subset_metrics(
+        test_prediction[:, chosen], test_raw[:, chosen], names
+    )
     np.save(output / "validation_prediction.npy", validation_prediction, allow_pickle=False)
     np.save(output / "test_prediction.npy", test_prediction, allow_pickle=False)
     result = {

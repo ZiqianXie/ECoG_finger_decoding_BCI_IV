@@ -13,5 +13,6 @@ normalization_fit_fraction: 0.6666666667
 bad_channels_one_based:
   1: [55]
   2: [21, 38]
-  # Channel 49 is paper-listed; channel 50 has a test-only extreme burst.
-  3: [49, 50]
+  # The manuscript's "49" was a zero-based index: physical channel 50 is the
+  # sole noisy S3 channel and has a test-only >250x variance burst.
+  3: [50]

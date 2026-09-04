@@ -1,82 +1,84 @@
 {
+  "channel_policy": "retain physical channel 49; remove physical channel 50 (array index 49), yielding the paper-stated 63 channels",
+  "legacy_62_channel_sensitivity_macro_five": 0.6450894301872493,
   "selection": {
     "thumb": {
       "left": "TCN",
       "right": "soft-calibrated",
       "left_weight": 0.0,
-      "validation_morphology": 0.6048220539551983
+      "validation_morphology": 0.6026108375332604
     },
     "index": {
-      "left": "TCN",
+      "left": "soft-calibrated",
       "right": "beta-gated",
-      "left_weight": 0.75,
-      "validation_morphology": 0.4508235907682785
+      "left_weight": 0.5,
+      "validation_morphology": 0.4875376615565173
     },
     "middle": {
       "left": "soft-calibrated",
       "right": "beta-gated",
       "left_weight": 0.5,
-      "validation_morphology": 0.5684661664416362
+      "validation_morphology": 0.5898263251402921
     },
     "ring": {
       "left": "soft-calibrated",
       "right": "beta-gated",
       "left_weight": 0.5,
-      "validation_morphology": 0.5445131197009139
+      "validation_morphology": 0.560808118537327
     },
     "little": {
       "left": "soft-calibrated",
       "right": "beta-gated",
-      "left_weight": 0.5,
-      "validation_morphology": 0.4545069335997098
+      "left_weight": 0.25,
+      "validation_morphology": 0.46709253687862795
     }
   },
   "validation_cleaned_metrics": {
     "pearson_by_finger": {
-      "thumb": 0.752316418707767,
-      "index": 0.5206345621304165,
-      "middle": 0.6925363804041056,
-      "ring": 0.6518099776136729,
-      "little": 0.5624607901801552
+      "thumb": 0.7679934135271886,
+      "index": 0.5480183948337395,
+      "middle": 0.705993364343952,
+      "ring": 0.6600055843360434,
+      "little": 0.5767257465699076
     },
-    "pearson_macro_five": 0.6359516258072234,
-    "pearson_historical_four": 0.6319870378556111,
-    "rmse": 0.1877938256511184
+    "pearson_macro_five": 0.6517473007221662,
+    "pearson_historical_four": 0.6496827298186969,
+    "rmse": 0.18532065734556077
   },
   "validation_raw_metrics": {
     "pearson_by_finger": {
-      "thumb": 0.730142241195528,
-      "index": 0.5037936252730049,
-      "middle": 0.6371695698611177,
-      "ring": 0.6267513338273536,
-      "little": 0.5653645526717103
+      "thumb": 0.7406406219275753,
+      "index": 0.5245944180257793,
+      "middle": 0.6487038761725915,
+      "ring": 0.6380550687722439,
+      "little": 0.5781268457392986
     },
-    "pearson_macro_five": 0.6126442645657428,
-    "pearson_historical_four": 0.6091174972503401,
-    "rmse": 0.9091079997980325
+    "pearson_macro_five": 0.6260241661274978,
+    "pearson_historical_four": 0.6230164404663112,
+    "rmse": 0.8943487823691765
   },
   "test_cleaned_metrics": {
     "pearson_by_finger": {
-      "thumb": 0.7413832511205406,
-      "index": 0.5694325545955262,
-      "middle": 0.744149971222726,
-      "ring": 0.7086420886219087,
-      "little": 0.7127708162378723
+      "thumb": 0.7472690013468754,
+      "index": 0.5828801659489208,
+      "middle": 0.7417727187284042,
+      "ring": 0.6994808454447841,
+      "little": 0.6954507316610453
     },
-    "pearson_macro_five": 0.6952757363597147,
-    "pearson_historical_four": 0.6919341482941662,
-    "rmse": 0.15601361876447847
+    "pearson_macro_five": 0.6933706926260059,
+    "pearson_historical_four": 0.6918431544213114,
+    "rmse": 0.1663321877075102
   },
   "test_raw_metrics": {
     "pearson_by_finger": {
-      "thumb": 0.7114990008481842,
-      "index": 0.5079408402563063,
-      "middle": 0.6367745057934203,
-      "ring": 0.6764234474175008,
-      "little": 0.6928093566208344
+      "thumb": 0.7172020442402927,
+      "index": 0.5131125254528893,
+      "middle": 0.628308932679111,
+      "ring": 0.6635595396760441,
+      "little": 0.6728957942117527
     },
-    "pearson_macro_five": 0.6450894301872493,
-    "pearson_historical_four": 0.6372559258796864,
-    "rmse": 0.8038456170666229
+    "pearson_macro_five": 0.6390157672520179,
+    "pearson_historical_four": 0.6328798241460114,
+    "rmse": 0.798647018777075
   }
 }

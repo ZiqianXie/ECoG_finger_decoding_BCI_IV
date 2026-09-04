@@ -1,0 +1,44 @@
+{
+  "purpose": "held-out negative-control audit for CSP and beta-gated/high-gamma frontends on S1 and S2",
+  "selected_reference": {
+    "s1": {
+      "pearson_by_finger": [0.728, 0.809, 0.296, 0.618, 0.420],
+      "pearson_macro_five": 0.574
+    },
+    "s2": {
+      "pearson_by_finger": [0.599, 0.472, 0.208, 0.495, 0.373],
+      "pearson_macro_five": 0.429
+    }
+  },
+  "csp_fixed_lars": {
+    "s1": {
+      "pearson_by_finger": [0.5995, 0.6823, 0.29575, 0.4779, 0.2998],
+      "pearson_macro_five": 0.47103
+    },
+    "s2": {
+      "pearson_by_finger": [0.4109, 0.2839, 0.1389, 0.4230, 0.1742],
+      "pearson_macro_five": 0.28619
+    }
+  },
+  "gamma_only": {
+    "s1": {
+      "pearson_by_finger": [0.64184, 0.67788, 0.10615, 0.59827, 0.32767],
+      "pearson_macro_five": 0.47036
+    },
+    "s2": {
+      "pearson_by_finger": [0.40181, 0.37535, 0.17389, 0.43041, 0.34696],
+      "pearson_macro_five": 0.34568
+    }
+  },
+  "beta_gated": {
+    "s1": {
+      "pearson_by_finger": [0.51893, 0.64892, 0.25441, 0.43137, 0.19540],
+      "pearson_macro_five": 0.40981
+    },
+    "s2": {
+      "pearson_by_finger": [0.29537, 0.33154, 0.18290, 0.42762, 0.34129],
+      "pearson_macro_five": 0.31575
+    }
+  },
+  "conclusion": "Neither frontend improves an individual finger over the selected S1/S2 models. CSP and beta-gated/high-gamma remain documented negative controls."
+}

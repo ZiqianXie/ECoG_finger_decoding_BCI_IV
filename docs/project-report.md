@@ -25,7 +25,7 @@ Pearson correlation.
 The rebuilt preprocessing also explicitly applies zero-phase notch filters at
 60 Hz and its 120/180 Hz harmonics to suppress power-line contamination.
 
-The current raw-test `Macro-5` PCC is 0.574 for S1, 0.429 for S2, and 0.645 for
+The current raw-test `Macro-5` PCC is 0.574 for S1, 0.429 for S2, and 0.639 for
 S3. The paper's aggregate is a five-finger average, so these values—not
 `Hist-4`—are the correct comparison. S1's preceding reconstruction already
 matched the paper's rounded 0.56 at 0.561; the latest candidate reaches 0.574.
@@ -72,12 +72,13 @@ released on the same 1 kHz grid before downsampling.
 |---|---:|---|---:|
 | S1 | 62 | 55 | 61 |
 | S2 | 48 | 21, 38 | 46 |
-| S3 | 64 | 49, 50 | 62 |
+| S3 | 64 | 50 | 63 |
 
-Channel 49 for S3 follows the paper. Channel 50 was added after a raw-data audit
-found a test-only burst with more than 250-fold variance inflation; it looks
-normal in training and cannot be detected by a training-only variance screen.
-This is an explicit departure from the paper and is recorded in the loader.
+The manuscript names S3 channel 49, but it also states that S3 retained 63 of 64
+channels. The raw-data audit and the author's recollection resolve this as a
+zero-based index: physical channel 49 is normal, while physical channel 50
+(array index 49) has a test-only burst with more than 250-fold variance
+inflation. The corrected loader therefore removes physical channel 50 only.
 
 The training recording is divided chronologically. The first two-thirds of the
 training file are available for fitting and the last third is validation. On
@@ -184,6 +185,20 @@ finger-specific fixed-feature LSTMs with exact end-to-end wavelet refinement for
 selected fingers. S3 benefited from movement-versus-rest CSP and a shape-aware
 TCN, then a validation-selected blend with beta-gated/high-gamma components.
 
+CSP is useful for S3 but did not replace the S1/S2 fixed-window models. The
+strongest tested CSP-family checkpoints reached Macro-5 0.471 for S1 and 0.286
+for S2, versus 0.574 and 0.429 for the selected models. S1's validation stack
+gave the raw CSP candidate zero weight for both stacked fingers, although a
+calibrated CSP trace contributed as a complementary component.
+
+The beta-gated/high-gamma head was initially evaluated only for S3. A completed
+transfer ablation confirms that this was not an overlooked S1/S2 improvement.
+For S1, gamma-only and beta-gated variants reached Macro-5 0.470 and 0.410; for
+S2 they reached 0.346 and 0.316. No individual finger exceeded its selected
+S1/S2 result. In particular, S2 middle reached at most 0.183 versus 0.208, and
+S1 little reached at most 0.328 versus 0.420. These candidates are retained as
+negative controls rather than added to the final ensembles.
+
 Separate per-subject models are mandatory because channel geometry differs.
 Separate per-finger models were also allowed: sharing one spatial and spectral
 representation across all five outputs can cause competition, especially when
@@ -255,11 +270,11 @@ They are a historical reference, not high-precision targets.
 | S2 | Middle | 0.270 | 0.208 | -0.062 |
 | S2 | Ring | 0.470 | 0.495 | +0.025 |
 | S2 | Little | 0.300 | 0.373 | +0.073 |
-| S3 | Thumb | 0.740 | 0.711 | -0.029 |
-| S3 | Index | 0.550 | 0.508 | -0.042 |
-| S3 | Middle | 0.460 | 0.637 | +0.177 |
-| S3 | Ring | 0.410 | 0.676 | +0.266 |
-| S3 | Little | 0.750 | 0.693 | -0.057 |
+| S3 | Thumb | 0.740 | 0.717 | -0.023 |
+| S3 | Index | 0.550 | 0.513 | -0.037 |
+| S3 | Middle | 0.460 | 0.628 | +0.168 |
+| S3 | Ring | 0.410 | 0.664 | +0.254 |
+| S3 | Little | 0.750 | 0.673 | -0.077 |
 
 The reimplementation is higher on 8/15 pairs. This count is descriptive; the
 rounded paper values do not support a fine-grained statistical superiority
@@ -271,7 +286,7 @@ claim.
 |---|---:|---:|---:|---|
 | S1 | 0.574 | 0.563 | 0.560 | above by 0.014 |
 | S2 | 0.429 | 0.413 | about 0.410 | above |
-| S3 | 0.645 | 0.637 | about 0.590 | above |
+| S3 | 0.639 | 0.633 | about 0.590 | above |
 
 The paper aggregate averages all five fingers. `Hist-4`, which excludes ring,
 is reported only as a separate competition-style diagnostic and is not compared
@@ -284,7 +299,15 @@ should not be presented as high-precision or statistical superiority claims.
 |---|---:|---:|---:|---|
 | S1 | 0.094 | 0.568 | 0.336 | Middle has heavy false activity; several fingers remain under-amplitude |
 | S2 | 0.059 | 0.447 | 0.239 | Middle amplitude and state precision remain weak |
-| S3 | 0.128 | 0.677 | 0.341 | Better cycles, but some rest leakage remains |
+| S3 | 0.147 | 0.660 | 0.344 | Better peak scale, but some rest leakage remains |
+
+The corrected S3 result retains physical channel 49 and removes only physical
+channel 50. Relative to the earlier 62-channel sensitivity run, Macro-5 changes
+from 0.645 to 0.639, while middle/ring/little peak ratios improve from
+0.616/0.800/0.548 to 0.736/0.968/0.646. Macro rest RMS rises from 0.128 to 0.147
+and state F1 falls from 0.677 to 0.660. The 63-channel result is primary because
+it matches the paper's stated channel count and the raw artifact location; the
+62-channel score is retained only as a sensitivity result.
 
 The S1 ring repair is the clearest example of why the visual audit is part of
 the acceptance criterion. The table compares the original selected prediction
@@ -322,6 +345,40 @@ Repeated fixed-feature LSTM runs showed small aggregate seed variation: S1
 0.0067 and `Hist-4` SD 0.0055 across two seeds. These small aggregate SDs do not
 imply that every finger is stable or morphologically correct. They also are not
 sampling standard errors and should not be interpreted as confidence intervals.
+
+### Context-length and partition-robustness audit
+
+The current weak-finger results are locally saturated with respect to recurrent
+context length. Keeping the frontend and feature selection fixed, S1 little
+scored 0.353, 0.366, 0.413, and 0.405 with 10 s, 20 s, a smaller 10 s model, and
+an almost-contiguous recurrent sequence, respectively; none exceeded the frozen
+0.420 result. The corresponding S2 middle scores were 0.142, 0.124, 0.207, and
+0.111 versus the frozen 0.208. A five-fold purged chronological ridge refit on
+all 400 s also fell to 0.341 for S1 little and 0.114 for S2 middle. These are
+rejected diagnostic candidates, not additions to the reported ensemble.
+
+Fitting the label-free ICA spatial transform across the complete 400 s training
+recording, rather than only the supervised fit partition, did not close the
+fixed-feature gap either. The LARS checkpoint was effectively unchanged for S1
+little (0.349 to 0.350) and declined for S2 middle (0.120 to 0.092). Thus the
+remaining gap is not explained by the amount of data used to estimate ICA.
+
+A post-hoc partition audit helps explain the instability. Selected-feature
+target-correlation vectors remain directionally similar across partitions
+(fit/test cosine 0.991 for S1 little and 0.878 for S2 middle), and feature mean
+and scale shifts are modest. The target regimes are not comparable, however.
+For S1 little, cleaned movement occupies 10.2% of fit, 18.1% of validation, and
+10.5% of test. For S2 middle it occupies 8.7%, 9.0%, and only 3.2%, while target
+standard deviation falls from 0.173 in fit to 0.079 in test. This makes repeated
+tuning against the single movement-rich validation block especially prone to
+select models that overproduce movement on the sparse test segment.
+
+This audit uses released test labels only for diagnosis after every candidate is
+frozen. It must not be used to choose a public model. The evidence supports a
+plateau of the present feature-selection/model-selection family, not a claim
+that the ECoG signal or the decoding task has reached an intrinsic ceiling. It
+also mirrors the paper's observation that improved validation MSE did not always
+translate into improved held-out correlation.
 
 ## What did not work
 
@@ -361,6 +418,16 @@ The fixed 100-epoch refit produced raw-test PCC
 early-stopped model's 0.549. The old epoch count is therefore not portable to
 the present optimizer and full-data protocol; this candidate was rejected.
 
+### Longer recurrent context and full-training ridge refits
+
+Removing the old 4 s Theano sequence constraint did not improve the weak S1/S2
+fingers. Ten-second, 20-second, and nearly contiguous sequences all remained at
+or below the current frozen scores. Likewise, selecting ridge regularization
+over purged chronological folds and refitting on the complete training recording
+produced high internal cross-validation scores but poor released-test transfer.
+This rules out the simple explanations that the 4 s context or the position of
+one validation boundary is the main remaining bottleneck.
+
 ### PCC-only selection
 
 S1 ring demonstrated the failure mode: scale-invariant correlation remained
@@ -387,6 +454,23 @@ python scripts/compare_target_baselines.py --subjects 1 2 3
 
 # Confirm the initialized wavelet tree before training.
 python scripts/audit_wavelet_frequency_response.py
+
+# Audit whether weak-finger behavior is associated with partition shift.
+python scripts/audit_partition_shift.py --subject 1 --finger little \
+  --prepared-root outputs/preprocessed_v2 \
+  --feature-root outputs/windowed_ica_wavelet_v1 \
+  --selection-root outputs/fixed_lars_windowed_ica_screen512_v1 \
+  --target local_w2_q10 --output outputs/partition_shift_v1/sub1_little
+
+# Test a label-free ICA fit over the complete released training recording.
+python scripts/fit_full_training_fastica.py --subject 1 --backend torch \
+  --output-root outputs/full_training_fastica_torch_v1
+
+# Test regularization selected over purged blocks spanning all training data.
+python scripts/crossvalidate_selected_ridge.py --subject 1 \
+  --feature-root outputs/windowed_ica_wavelet_v1 \
+  --selection-root outputs/fixed_lars_windowed_ica_screen512_v1 \
+  --target local_w2_q10 --fingers little
 
 # Recreate the frozen S1 per-finger selection.
 python scripts/select_per_finger_ensemble.py --subject 1 \
@@ -467,8 +551,9 @@ extension, not as the official source code accompanying the 2018 publication.
    aggregate and per-finger variability.
 4. Repeat the ring calibration on blocked validation folds to quantify how
    stable the improved movement recall is.
-5. Add test-label-blind cross-validation within the training recording before
-   any further comparison to released test labels.
+5. Replace the single chronological validation selector with nested blocked
+   cross-validation for the complete nonlinear training pipeline; the fixed
+   ridge version has now been tested and did not transfer.
 
 ## Public-release policy
 

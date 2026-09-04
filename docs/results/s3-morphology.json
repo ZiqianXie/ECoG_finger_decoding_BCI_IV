@@ -1,4 +1,5 @@
 {
+  "status": "legacy 62-channel sensitivity audit; the primary 63-channel comparison is in s3-channel-restoration.json",
   "subject": 3,
   "visual_target": "local_w4_q20",
   "movement_threshold": 0.1,

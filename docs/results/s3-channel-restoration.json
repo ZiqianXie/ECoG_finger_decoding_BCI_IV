@@ -1,0 +1,34 @@
+{
+  "comparison": "post-hoc held-out sensitivity audit of the S3 channel-number interpretation",
+  "test_labels_used_for_posthoc_audit": true,
+  "primary_channel_policy": "retain physical channel 49 and remove physical channel 50 (zero-based array index 49), leaving 63 channels",
+  "legacy_62_channel": {
+    "removed_physical_channels": [49, 50],
+    "pearson_macro_five": 0.6450894301872493,
+    "pearson_historical_four": 0.6372559258796864,
+    "rest_rms_macro": 0.128182,
+    "state_f1_macro": 0.677081,
+    "derivative_pearson_macro": 0.341470,
+    "peak_ratio": {
+      "thumb": 0.981,
+      "middle": 0.616,
+      "ring": 0.800,
+      "little": 0.548
+    }
+  },
+  "corrected_63_channel": {
+    "removed_physical_channels": [50],
+    "pearson_macro_five": 0.6390157672520179,
+    "pearson_historical_four": 0.6328798241460114,
+    "rest_rms_macro": 0.146830,
+    "state_f1_macro": 0.660103,
+    "derivative_pearson_macro": 0.343591,
+    "peak_ratio": {
+      "thumb": 1.032,
+      "middle": 0.736,
+      "ring": 0.968,
+      "little": 0.646
+    }
+  },
+  "interpretation": "The 63-channel result is primary because it matches the paper's input count and the raw artifact location. It improves peak scaling but has slightly more rest leakage; the higher-PCC 62-channel result is retained only as a sensitivity result."
+}

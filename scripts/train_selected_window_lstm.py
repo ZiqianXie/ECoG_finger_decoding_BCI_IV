@@ -320,7 +320,15 @@ def main() -> None:
         ),
         "target": args.target,
         "finger_targets": dict(zip(FINGER_NAMES, target_names)),
+        "feature_root": str(args.feature_root),
         "selection_root": str(args.selection_root),
+        "architecture": {
+            "hidden_size": args.hidden_size,
+            "history_bins": args.history,
+            "sequence_steps": args.sequence_steps,
+            "sequence_stride": args.sequence_stride,
+            "batch_size": args.batch_size,
+        },
         "training_objective": {
             "movement_threshold": args.movement_threshold,
             "movement_loss_weight": args.movement_loss_weight,

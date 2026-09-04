@@ -39,12 +39,17 @@ aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 | S2 | Paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
 | S2 | Reimplementation | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | **0.429** |
 | S3 | Paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
-| S3 | Reimplementation | 0.711 | 0.508 | 0.637 | 0.676 | 0.693 | **0.645** |
+| S3 | Reimplementation | 0.717 | 0.513 | 0.628 | 0.664 | 0.673 | **0.639** |
 
 The reimplementation improves the five-finger aggregate for all three subjects
 and exceeds the paper value on eight of fifteen individual fingers. Numerical
 scores are complemented by held-out trajectory plots and morphology diagnostics
 in the project report.
+
+S3 uses 63 channels: the manuscript's bad-channel number 49 is interpreted as
+zero-based array index 49, or physical channel 50. Physical channel 49 is
+retained. A legacy sensitivity run that removed both physical channels 49 and
+50 scored 0.645, but it does not match the paper's stated 63-channel input.
 
 ![Subject 1 held-out movement windows](docs/figures/s1-movement-windows.png)
 
@@ -140,6 +145,21 @@ listed in the [project report](docs/project-report.md#reproduction-recipes).
 - Report every finger, `Macro-5`, and competition-style `Hist-4`.
 - Inspect movement windows, rest false positives, derivative PCC, state F1,
   movement peak ratio, and peak-triggered shape; PCC alone can be misleading.
+
+The latest robustness audit found that longer recurrent context (10 s, 20 s,
+and nearly contiguous sequences) did not improve the weak S1 little or S2 middle
+models. Selected ECoG features were fairly stable across partitions, but the S2
+middle test segment contained only 3.2% cleaned movement versus about 9% in fit
+and validation. The current family is therefore locally plateaued by
+cross-recording generalization and validation selection, not by the former 4 s
+Theano limit. See the project report for the rejected-candidate table and audit
+policy.
+
+Two plausible missing frontends were also tested directly on S1/S2. The best
+CSP-family Macro-5 scores were 0.471/0.286, and gamma-only scores were
+0.470/0.346; beta-gated variants were lower still. None improved an individual
+finger over the selected S1/S2 ensemble, so these remain documented negative
+controls rather than public-result components.
 
 ## Repository layout
 

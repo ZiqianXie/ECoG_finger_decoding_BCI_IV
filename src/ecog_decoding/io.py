@@ -12,11 +12,11 @@ from scipy.io import loadmat
 BAD_CHANNELS_ONE_BASED: dict[int, tuple[int, ...]] = {
     1: (55,),
     2: (21, 38),
-    # The paper reports channel 49 for subject 3.  A raw-data audit also found
-    # a test-only, >250x variance burst on physical channel 50.  Keep both out:
-    # retaining channel 50 destroys held-out features even though it looks
-    # normal in the training recording.
-    3: (49, 50),
+    # The manuscript's S3 "channel 49" was a zero-based index. Physical channel
+    # 49 is normal, while physical channel 50 (array index 49) has a test-only,
+    # >250x variance burst. Removing only channel 50 also reproduces the paper's
+    # stated 63 retained channels.
+    3: (50,),
 }
 
 
