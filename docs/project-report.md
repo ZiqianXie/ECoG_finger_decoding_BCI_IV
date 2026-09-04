@@ -22,11 +22,12 @@ validation partition. Second, each subject and finger may use a different
 validated decoder, avoiding competition between five output heads. Third, model
 quality is judged from held-out trajectory shape as well as Pearson correlation.
 
-The current raw-test `Hist-4` PCC is 0.563 for S1, 0.413 for S2, and 0.637 for
-S3. All three reach or exceed their aggregate historical references. S1 is
-about 0.003 above the paper figure's rounded 0.56; the preceding reconstruction
-was 0.549, a gap of 0.011 rather than 0.11. Across all fifteen subject-finger
-pairs, eight reconstructed PCCs exceed the rounded paper CNN-LSTM values.
+The current raw-test `Macro-5` PCC is 0.574 for S1, 0.429 for S2, and 0.645 for
+S3. The paper's aggregate is a five-finger average, so these values—not
+`Hist-4`—are the correct comparison. S1's preceding reconstruction already
+matched the paper's rounded 0.56 at 0.561; the latest candidate reaches 0.574.
+Across all fifteen subject-finger pairs, eight reconstructed PCCs exceed the
+rounded paper CNN-LSTM values.
 
 The S1 number is a PCC-leading validation-stack result and needs an important
 qualification. A validation-constrained calibration repairs the previously
@@ -258,16 +259,16 @@ claim.
 
 ### Aggregate raw-test PCC
 
-| Subject | Macro-5 | Hist-4 | Historical reference | Interpretation |
+| Subject | Macro-5 | Hist-4 (supplementary) | Paper five-finger aggregate | Interpretation |
 |---|---:|---:|---:|---|
-| S1 | 0.574 | 0.563 | figure aggregate 0.560 | about 0.003 above |
-| S2 | 0.429 | 0.413 | rounded per-finger Hist-4 0.393 | above |
-| S3 | 0.645 | 0.637 | rounded per-finger Hist-4 0.625 | above |
+| S1 | 0.574 | 0.563 | 0.560 | above by 0.014 |
+| S2 | 0.429 | 0.413 | about 0.410 | above |
+| S3 | 0.645 | 0.637 | about 0.590 | above |
 
-For S1, the mean of the four rounded paper entries is 0.545, but the paper's
-aggregate chart shows 0.56. The chart value is the more conservative reference.
-The current result modestly exceeds that rounded chart value. The margin is only
-0.003 and should not be presented as statistical superiority.
+The paper aggregate averages all five fingers. `Hist-4`, which excludes ring,
+is reported only as a separate competition-style diagnostic and is not compared
+with the paper aggregate. The paper values are rounded, so the differences above
+should not be presented as high-precision or statistical superiority claims.
 
 ### Morphology audit
 
@@ -431,7 +432,7 @@ late reconstruction:
 - several experiment scripts reflect research exploration rather than one
   polished end-to-end command; and
 - the S1 PCC-leading stack uses a meta-model fit on validation predictions, so
-  its small 0.003 aggregate margin needs independent repetition; and
+  its aggregate improvement needs independent repetition; and
 - S1 thumb/little amplitude calibration and middle-finger false activity remain
   unresolved even though the historical aggregate PCC has been reached.
 

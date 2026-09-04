@@ -37,9 +37,11 @@ index, middle, and little finger, excluding ring. `Macro-5` includes all five.
 | S3 reconstructed | 0.711 | 0.508 | 0.637 | 0.676 | 0.693 | 0.645 | 0.637 |
 
 These are not uniformly better than the paper. Eight of the fifteen per-finger
-PCC values exceed the rounded CNN-LSTM values reported in 2018. The current S1
-`Hist-4` score is 0.563, about 0.003 above the paper figure's rounded 0.56 (the
-previous S1 reconstruction was 0.549, only 0.011 below, not 0.11 below).
+PCC values exceed the rounded CNN-LSTM values reported in 2018. The paper's
+rounded S1 aggregate of 0.56 averages **all five fingers**, so its proper
+comparison is `Macro-5`, not `Hist-4`. The previous S1 reconstruction already
+matched it at 0.561; the current S1 `Macro-5` is 0.574. `Hist-4` is retained only
+as a separate competition-style summary and must not be compared with 0.56.
 
 The S1 row is explicitly a **PCC-leading** candidate, not an unqualified final
 trajectory model. Validation-only nonnegative stacking improves thumb/little
