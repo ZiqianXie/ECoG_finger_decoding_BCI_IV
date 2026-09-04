@@ -1,0 +1,42 @@
+{
+  "sampling_rate_hz": 1000,
+  "depth3_effective_support_samples": 113,
+  "depth4_effective_support_samples": 241,
+  "validation_pcc": {
+    "single_band": {"depth3": 0.9801629781723022, "depth4": 0.9844771027565002},
+    "nearby_bands": {"depth3": 0.9527184367179871, "depth4": 0.9687036871910095},
+    "broadband": {"depth3": 0.8179495930671692, "depth4": 0.8699107766151428},
+    "spatial_mix": {"depth3": 0.9457117915153503, "depth4": 0.9750511646270752},
+    "correlated_fingers": {"depth3": 0.9723348021507263, "depth4": 0.9835382103919983},
+    "line_noise_drift": {"depth3": 0.920806884765625, "depth4": 0.9773495197296143}
+  },
+  "real_data_fixed_lars_screen512": {
+    "subject1": {
+      "depth3_validation_macro_five": 0.4815950277566111,
+      "depth4_validation_macro_five": 0.46944947658371905,
+      "depth3_test_macro_five": 0.4736351878792191,
+      "depth4_test_macro_five": 0.46755174965232166
+    },
+    "subject2": {
+      "depth3_validation_macro_five": 0.3254956295313228,
+      "depth4_validation_macro_five": 0.31045947678173963,
+      "depth3_test_macro_five": 0.31131126756676336,
+      "depth4_test_macro_five": 0.3090493147318679
+    },
+    "decision": "reject full depth4 before nonlinear fine-tuning"
+  },
+  "asymmetric_depth4_signed_lmp_screen512": {
+    "split_depth3_paths": ["LLH", "LHH"],
+    "signed_lmp_hz": [0, 5],
+    "subject1": {
+      "validation_macro_five": 0.48105761186284146,
+      "test_macro_five": 0.4725423006445699
+    },
+    "subject2": {
+      "validation_macro_five": 0.3549176307094312,
+      "test_macro_five": 0.33820843164417436
+    },
+    "decision": "fine-tune S2 middle only before considering expansion"
+  },
+  "selection_note": "synthetic recovery is a prerequisite audit, not a real-data model selection result"
+}

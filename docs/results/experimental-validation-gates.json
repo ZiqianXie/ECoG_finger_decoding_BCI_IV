@@ -1,0 +1,73 @@
+{
+  "branch": "experiments/learnable-filter-hurdle",
+  "filter_and_hurdle_main_unchanged": true,
+  "nonnegative_projection_promoted_to_main_commit": "bf9e876",
+  "selection_policy": {
+    "criterion": "chronological validation or purged blocked cross-validation",
+    "released_test_used_for_selection": false,
+    "s2_thumb_status": "unresolved pending blocked multi-seed learned-vs-fixed audit",
+    "s2_thumb_single_split_validation_fixed": 0.600,
+    "s2_thumb_single_split_validation_end_to_end": 0.630
+  },
+  "latency": {
+    "maximum_selected_absolute_lag_bins": 1,
+    "bin_duration_ms": 40,
+    "s1_raw_test_macro_five_before": 0.5742263361759897,
+    "s1_raw_test_macro_five_after": 0.574797,
+    "s2_raw_test_macro_five_before": 0.42932061832226226,
+    "s2_raw_test_macro_five_after": 0.426698,
+    "decision": "reject"
+  },
+  "spatial_reference": {
+    "s1_raw_test_macro_five": {
+      "car": 0.4474056743631589,
+      "bipolar": 0.47356013544218917,
+      "laplacian": 0.4298027410885723
+    },
+    "s2_raw_test_macro_five": {
+      "car": 0.3152111633040527,
+      "bipolar": 0.3005739796777995,
+      "laplacian": 0.311756572858226
+    },
+    "decision": "retain original channel representation"
+  },
+  "blocked_hurdle_gru": {
+    "s1_little": {
+      "candidate_validation_pcc": 0.385163,
+      "candidate_test_pcc": 0.388975,
+      "baseline_validation_pcc": 0.458575,
+      "baseline_test_pcc": 0.420052
+    },
+    "s2_middle": {
+      "candidate_validation_pcc": 0.35745,
+      "candidate_test_pcc": 0.074758,
+      "baseline_validation_pcc": 0.454715,
+      "baseline_test_pcc": 0.207622
+    },
+    "decision": "reject before expansion to all fingers"
+  },
+  "s2_middle_asymmetric_finetuning": {
+    "baseline_validation_pcc": 0.45471492623231746,
+    "baseline_test_pcc_descriptive_only": 0.20762165669769853,
+    "single_seed_validation_range_lr_1e_4": [0.3944818271861004, 0.48127424657921547],
+    "single_seed_validation_range_lr_3e_4": [0.4049458924063714, 0.5088122714266707],
+    "equal_weight_ensemble_lr_1e_4": {
+      "validation_pcc": 0.4954162445587162,
+      "test_pcc_descriptive_only": 0.31619080157425894
+    },
+    "equal_weight_ensemble_lr_3e_4": {
+      "validation_pcc": 0.4942857606476764,
+      "test_pcc_descriptive_only": 0.39545920075163327
+    },
+    "equal_weight_six_model_ensemble": {
+      "validation_pcc": 0.5216426505382948,
+      "test_pcc_descriptive_only": 0.3906808878557364,
+      "subject_validation_macro_five": 0.4820300501766984,
+      "subject_test_macro_five_descriptive_only": 0.4659324645538696,
+      "validation_morphology_before": 0.2753448819005875,
+      "validation_morphology_after": 0.35912724965075526,
+      "released_test_used_for_selection": false
+    },
+    "decision": "retain as experimental S2-middle candidate; expand only after blocked multi-seed validation"
+  }
+}

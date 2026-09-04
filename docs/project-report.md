@@ -405,6 +405,18 @@ Repeated fixed-feature LSTM runs showed small aggregate seed variation: S1
 imply that every finger is stable or morphologically correct. They also are not
 sampling standard errors and should not be interpreted as confidence intervals.
 
+The learnable asymmetric frontend behaves differently. In an experimental
+S2-middle audit, three seeds at frontend LR `1e-4` had validation PCC
+0.394--0.481 (sample SD 0.044), and three seeds at `3e-4` had PCC 0.405--0.509
+(sample SD 0.057). An equal-weight average of all six reached validation PCC
+0.522 and descriptive test PCC 0.391, versus 0.455/0.208 for the selected
+fixed-feature middle model. Replacing only that finger raises S2 validation
+Macro-5 from 0.469 to 0.482 and descriptive test Macro-5 from 0.429 to 0.466.
+The morphology score also improves from 0.275 to 0.359, although visual review
+still finds a false-positive rest excursion. The ensemble therefore remains an
+experimental single-finger result pending purged blocked confirmation and is
+not included in the primary table above.
+
 ### Context-length and partition-robustness audit
 
 The current weak-finger results are locally saturated with respect to recurrent

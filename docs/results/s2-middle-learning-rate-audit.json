@@ -1,0 +1,66 @@
+{
+  "subject": 2,
+  "finger": "middle",
+  "selection_rule": "chronological validation PCC plus morphology; released test is descriptive only",
+  "baseline": {
+    "validation_pcc": 0.45471492623231746,
+    "test_pcc_descriptive_only": 0.20762165669769853
+  },
+  "initialized_asymmetric_validation_pcc": 0.386381,
+  "seed_zero_frontend_learning_rate_screen": {
+    "frozen": 0.488431,
+    "1e-6": 0.466457,
+    "3e-6": 0.473020,
+    "1e-5": 0.452473,
+    "3e-5": 0.419857,
+    "1e-4": 0.481274,
+    "3e-4": 0.508812
+  },
+  "staged_training": {
+    "warmup_epochs": 25,
+    "frontend_lr_3e-6_validation_pcc": 0.480043,
+    "frontend_lr_1e-5_validation_pcc": 0.481477,
+    "frontend_lr_1e-4_validation_pcc": 0.498537
+  },
+  "parameter_group_ablation": {
+    "spatial_lr_1e-4_wavelet_frozen_validation_pcc": 0.478406,
+    "spatial_frozen_wavelet_lr_1e-4_validation_pcc": 0.450772,
+    "all_groups_lr_1e-5_decay_0.005_validation_pcc": 0.410131
+  },
+  "seed_runs": {
+    "frontend_lr_1e-4_validation_pcc": [0.481274, 0.394482, 0.432614],
+    "frontend_lr_3e-4_validation_pcc": [0.508812, 0.415598, 0.404946],
+    "model_seed_0_shuffle_seeds_0_1_2_validation_pcc": [0.508812, 0.446378, 0.425305],
+    "model_seeds_0_1_2_shuffle_seed_0_validation_pcc": [0.508812, 0.388005, 0.425928]
+  },
+  "equal_weight_ensembles": {
+    "three_models_lr_1e-4": {
+      "validation_pcc": 0.4954162445587162,
+      "test_pcc_descriptive_only": 0.31619080157425894
+    },
+    "three_models_lr_3e-4": {
+      "validation_pcc": 0.4942857606476764,
+      "test_pcc_descriptive_only": 0.39545920075163327
+    },
+    "six_models": {
+      "validation_pcc": 0.5216426505382948,
+      "test_pcc_descriptive_only": 0.3906808878557364,
+      "subject_validation_macro_five": 0.4820300501766984,
+      "subject_test_macro_five_descriptive_only": 0.4659324645538696,
+      "validation_morphology": {
+        "baseline_score": 0.2753448819005875,
+        "ensemble_score": 0.35912724965075526,
+        "baseline_derivative_pcc": 0.1480768151804377,
+        "ensemble_derivative_pcc": 0.2496745494487261,
+        "baseline_state_f1": 0.43389830508474575,
+        "ensemble_state_f1": 0.4972972972972973,
+        "baseline_rest_rms": 0.04302447661757469,
+        "ensemble_rest_rms": 0.04768245294690132,
+        "baseline_movement_peak_ratio": 0.2800995409488678,
+        "ensemble_movement_peak_ratio": 0.507940948009491
+      }
+    }
+  },
+  "released_test_used_for_selection": false,
+  "decision": "six-model equal-weight ensemble passes the single-split S2-middle gate but remains experimental pending blocked multi-seed confirmation"
+}

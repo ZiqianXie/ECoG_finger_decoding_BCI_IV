@@ -339,6 +339,11 @@ class WaveletPacketEnergy(nn.Module):
             for band in range(2**self.levels)
         )
 
+    @property
+    def effective_kernel_size(self) -> int:
+        """Receptive-field width in input samples for a complete tree path."""
+        return 1 + (self.kernel_size - 1) * sum(self.dilations)
+
     def _same_filter(
         self, x: torch.Tensor, layer: nn.Conv1d
     ) -> torch.Tensor:
@@ -374,6 +379,149 @@ class WaveletPacketEnergy(nn.Module):
             bands = 1.7156 * torch.tanh((2.0 / 3.0) * bands)
         energy = self._energy(bands)
         return energy.reshape(batch, electrodes, 2**self.levels, energy.shape[-1])
+
+
+class AsymmetricWaveletPacketEnergy(nn.Module):
+    """Trainable depth-3 tree with selected depth-4 splits and signed LMP.
+
+    The two depth-3 parents initialized over 60--200 Hz (LLH and LHH for the
+    bior6.8 packet ordering) are replaced by their depth-4 children. Other
+    paths stop at depth 3. A shared trainable 0--5 Hz FIR branch is pooled
+    without squaring so low-frequency polarity is preserved.
+    """
+
+    def __init__(
+        self,
+        wavelet: str = "bior6.8",
+        split_parents: Sequence[int] = (1, 3),
+        kernel_size: int = 17,
+        trainable: bool = True,
+        padding_mode: str = "constant",
+        energy_window_samples: int = 40,
+        energy_stride_samples: int = 40,
+        sampling_rate_hz: float = 1000.0,
+        lmp_cutoff_hz: float = 5.0,
+        lmp_kernel_size: int = 201,
+    ) -> None:
+        super().__init__()
+        parsed = tuple(sorted(set(int(index) for index in split_parents)))
+        if not parsed or parsed[0] < 0 or parsed[-1] >= 8:
+            raise ValueError("split_parents must select one or more depth-3 paths")
+        if lmp_kernel_size < 3 or lmp_kernel_size % 2 == 0:
+            raise ValueError("lmp_kernel_size must be an odd integer of at least 3")
+        self.base = WaveletPacketEnergy(
+            wavelet=wavelet,
+            levels=3,
+            kernel_size=kernel_size,
+            trainable=trainable,
+            padding_mode=padding_mode,
+            energy_window_samples=energy_window_samples,
+            energy_stride_samples=energy_stride_samples,
+        )
+        lowpass = fixed_length_wavelet_taps(
+            wavelet, "decomposition_lowpass", kernel_size
+        )
+        highpass = fixed_length_wavelet_taps(
+            wavelet, "decomposition_highpass", kernel_size
+        )
+        self.split_layer = nn.Conv1d(
+            8,
+            2 * len(parsed),
+            kernel_size=kernel_size,
+            dilation=8,
+            padding=0,
+            bias=True,
+        )
+        with torch.no_grad():
+            self.split_layer.weight.zero_()
+            self.split_layer.bias.zero_()
+            for child, parent in enumerate(parsed):
+                self.split_layer.weight[2 * child, parent] = torch.as_tensor(lowpass)
+                self.split_layer.weight[2 * child + 1, parent] = torch.as_tensor(highpass)
+        self.split_layer.weight.requires_grad_(trainable)
+        self.split_layer.bias.requires_grad_(trainable)
+
+        normalized = float(lmp_cutoff_hz) / float(sampling_rate_hz)
+        offsets = np.arange(lmp_kernel_size, dtype=np.float64) - (lmp_kernel_size - 1) / 2
+        lmp = 2.0 * normalized * np.sinc(2.0 * normalized * offsets)
+        lmp *= np.hamming(lmp_kernel_size)
+        lmp /= lmp.sum()
+        self.lmp = nn.Conv1d(1, 1, lmp_kernel_size, bias=False)
+        with torch.no_grad():
+            self.lmp.weight.copy_(torch.as_tensor(lmp, dtype=torch.float32)[None, None])
+        self.lmp.weight.requires_grad_(trainable)
+
+        self.split_parents = parsed
+        self.retained_parents = tuple(index for index in range(8) if index not in parsed)
+        self.padding_mode = padding_mode
+        self.energy_window_samples = int(energy_window_samples)
+        self.energy_stride_samples = int(energy_stride_samples)
+        self.kernel_size = int(kernel_size)
+        self.lmp_kernel_size = int(lmp_kernel_size)
+
+    @property
+    def band_names(self) -> tuple[str, ...]:
+        depth3 = self.base.band_names
+        depth4 = tuple(
+            "".join(
+                "L" if (band >> bit) & 1 == 0 else "H"
+                for bit in reversed(range(4))
+            )
+            for band in range(16)
+        )
+        return (
+            tuple(f"D3_{depth3[index]}" for index in self.retained_parents)
+            + tuple(
+                f"D4_{depth4[child]}"
+                for parent in self.split_parents
+                for child in (2 * parent, 2 * parent + 1)
+            )
+            + ("LMP_0_5_HZ_SIGNED",)
+        )
+
+    @property
+    def effective_kernel_size(self) -> int:
+        return 1 + (self.kernel_size - 1) * (1 + 2 + 4 + 8)
+
+    def _signed_pool(self, x: torch.Tensor) -> torch.Tensor:
+        return F.avg_pool1d(
+            x,
+            kernel_size=self.energy_window_samples,
+            stride=self.energy_stride_samples,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 3:
+            raise ValueError(
+                f"x must have shape (batch, electrode, time); got {tuple(x.shape)}"
+            )
+        batch, electrodes, time = x.shape
+        if time < self.energy_window_samples:
+            raise ValueError("time dimension is shorter than the energy window")
+        bands = x.reshape(batch * electrodes, 1, time)
+        for layer in self.base.layers:
+            bands = self.base._same_filter(bands, layer)
+            bands = 1.7156 * torch.tanh((2.0 / 3.0) * bands)
+        retained_index = torch.as_tensor(
+            self.retained_parents, dtype=torch.long, device=x.device
+        )
+        retained = self.base._energy(bands.index_select(1, retained_index))
+        split = self.base._same_filter(bands, self.split_layer)
+        split = 1.7156 * torch.tanh((2.0 / 3.0) * split)
+        split = self.base._energy(split)
+
+        flat = x.reshape(batch * electrodes, 1, time)
+        half = self.lmp_kernel_size // 2
+        # Match the cached asymmetric feature generator. Reflection avoids an
+        # artificial low-frequency edge transient inside each 1 s window even
+        # when the wavelet branches themselves use paper-style zero padding.
+        mode = "reflect" if half < time else "replicate"
+        signed_lmp = self.lmp(F.pad(flat, (half, half), mode=mode))
+        signed_lmp = self._signed_pool(signed_lmp)
+        combined = torch.cat((retained, split, signed_lmp), dim=1)
+        return combined.reshape(
+            batch, electrodes, len(self.band_names), combined.shape[-1]
+        )
 
 
 class DiagonalSSMBlock(nn.Module):
