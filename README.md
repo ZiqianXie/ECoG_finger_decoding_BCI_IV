@@ -38,6 +38,7 @@ aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 | S1 | Paper | 0.750 | 0.790 | 0.170 | 0.600 | 0.470 | 0.556 |
 | S1 | Non-stacked per-finger baseline, unconstrained | 0.696 | 0.809 | 0.296 | 0.612 | 0.395 | 0.561 |
 | S1 | Exploratory stacked system + output projection | 0.730 | 0.809 | 0.308 | 0.618 | 0.426 | **0.578** |
+| S1 | Above + validation-selected separate-stem index ensemble | 0.730 | 0.810 | 0.308 | 0.618 | 0.426 | **0.579** |
 | S2 | Paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
 | S2 | Selected per-finger system + middle-finger seed ensemble | 0.599 | 0.472 | 0.391 | 0.495 | 0.373 | **0.466** |
 | S3 | Paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
@@ -46,11 +47,14 @@ aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 The selected systems improve the five-finger aggregate for all three subjects
 and exceed the paper value on nine of fifteen individual fingers. S1's highest
 number is explicitly exploratory: thumb and little are learned second-stage
-stacks over candidate predictions, index and middle use their selected base
-models, and ring uses a separately calibrated base prediction. It is not a
-single end-to-end model and is therefore shown beside the non-stacked baseline.
-Numerical scores are complemented by held-out trajectory plots and morphology
-diagnostics in the project report.
+stacks over candidate predictions, middle uses its selected base model, ring
+uses a separately calibrated base prediction, and index averages six
+independently fine-tuned trainable-wavelet models selected on validation. Each
+index member has its own FastICA-initialized spatial projection, wavelet stem,
+and LSTM head; three validation-best checkpoints occur before stem unfreezing
+and three after it. This is not a single end-to-end model and is therefore shown
+beside the non-stacked baseline. Numerical scores are complemented by held-out
+trajectory plots and morphology diagnostics in the project report.
 
 The filter terminology separates the **spectral** and **spatial** stages. A
 trainable-wavelet route updates both the bior6.8 wavelet taps and the
@@ -62,7 +66,8 @@ trainable.
 
 | Final route | Subject/fingers | Spectral front end | Spatial front end |
 |---|---|---|---|
-| Trainable wavelet | S1 index; S2 index | Gradient-trained bior6.8 wavelet taps | Gradient-trained, FastICA-initialized projection |
+| Separate-stem wavelet ensemble | S1 index | Six independently gradient-trained bior6.8 wavelet stems | Six independently trained, FastICA-initialized projections |
+| Trainable wavelet | S2 index | Gradient-trained bior6.8 wavelet taps | Gradient-trained, FastICA-initialized projection |
 | Seed-averaged asymmetric wavelet | S2 middle | Six equal-weight trainable wavelet/LMP models | Six FastICA-initialized projections |
 | Fixed wavelet | S1 ring; S2 thumb, ring, little | Frozen bior6.8 wavelet taps | Frozen FastICA projection |
 | Fixed bandpass+CSP | S1 middle; all S3 fingers | Frozen conventional bandpass filters | CSP estimated on training data, then frozen |
@@ -123,6 +128,10 @@ per subject and per finger using only a chronological validation partition.
 An experimental nonnegative ridge stack combines diverse S1 candidates for
 thumb and little finger; its regularization is selected with blocked splits
 inside validation, and its weights never read the released test labels.
+S1 index averages six independently optimized trainable-wavelet LSTMs, each
+warm-started from the selected single-model checkpoint and selected using only
+validation performance. The ensemble keeps independently trained spectral and
+spatial stems rather than sharing a reconstructed feature cache.
 S2 middle uses an equal-weight ensemble of six independently optimized
 asymmetric-wavelet LSTMs spanning two validation-screened frontend learning
 rates and three seeds. Equal weighting fits no stacking parameter and reduces
