@@ -32,17 +32,22 @@ index, middle, and little finger, excluding ring. `Macro-5` includes all five.
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Hist-4 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| S1 reconstructed | 0.696 | 0.809 | 0.296 | 0.612 | 0.395 | 0.561 | 0.549 |
+| S1 PCC-leading validation stack | 0.728 | 0.809 | 0.296 | 0.618 | 0.420 | 0.574 | 0.563 |
 | S2 reconstructed | 0.599 | 0.472 | 0.208 | 0.495 | 0.373 | 0.429 | 0.413 |
 | S3 reconstructed | 0.711 | 0.508 | 0.637 | 0.676 | 0.693 | 0.645 | 0.637 |
 
 These are not uniformly better than the paper. Eight of the fifteen per-finger
-PCC values exceed the rounded CNN-LSTM values reported in 2018. S2 and S3 exceed
-their reconstructed rounded aggregate references, but S1's `Hist-4` score is
-0.011 below the paper figure's 0.56. More importantly, S1 ring has PCC 0.612 but
-only 0.127 movement-peak amplitude ratio and 0.054 movement-state recall. Its
-trajectory is nearly flat, so it is a failure by visual and morphology criteria
-despite the apparently respectable correlation.
+PCC values exceed the rounded CNN-LSTM values reported in 2018. The current S1
+`Hist-4` score is 0.563, about 0.003 above the paper figure's rounded 0.56 (the
+previous S1 reconstruction was 0.549, only 0.011 below, not 0.11 below).
+
+The S1 row is explicitly a **PCC-leading** candidate, not an unqualified final
+trajectory model. Validation-only nonnegative stacking improves thumb/little
+timing, and constrained ring calibration raises ring movement-state recall from
+0.054 to 0.863. However, visual audit shows excessive thumb/little amplitude and
+rest drift in the stacked output. The machine-readable morphology report and
+figures preserve this caveat: correlation has reached the historical aggregate,
+but amplitude calibration remains unresolved.
 
 ![Subject 1 held-out movement windows](docs/figures/s1-movement-windows.png)
 
@@ -86,6 +91,9 @@ and 4, yielding 2, 4, and 8 bands. Band energy is computed in non-overlapping
 1x1 convolution. Fixed-feature LSTM, GRU, diagonal SSM, linear-attention, Mamba,
 TCN, CSP, ridge, and LARS-style baselines are all available. Final selection is
 per subject and per finger using only a chronological validation partition.
+An experimental nonnegative ridge stack combines diverse S1 candidates for
+thumb and little finger; its regularization is selected with blocked splits
+inside validation, and its weights never read the released test labels.
 
 The 2018 implementation's four-second training blocks were a Theano static-graph
 constraint, not a physiological assumption; modern training can operate on the

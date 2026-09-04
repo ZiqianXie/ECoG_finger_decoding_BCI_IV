@@ -22,16 +22,20 @@ validation partition. Second, each subject and finger may use a different
 validated decoder, avoiding competition between five output heads. Third, model
 quality is judged from held-out trajectory shape as well as Pearson correlation.
 
-The reconstructed raw-test `Hist-4` PCC is 0.549 for S1, 0.413 for S2, and
-0.637 for S3. S2 and S3 reach or exceed the aggregate references reconstructed
-from the paper's rounded per-finger table. S1 does not reach the paper figure's
-0.56 aggregate: the remaining gap is 0.011. Across all fifteen subject-finger
+The current raw-test `Hist-4` PCC is 0.563 for S1, 0.413 for S2, and 0.637 for
+S3. All three reach or exceed their aggregate historical references. S1 is
+about 0.003 above the paper figure's rounded 0.56; the preceding reconstruction
+was 0.549, a gap of 0.011 rather than 0.11. Across all fifteen subject-finger
 pairs, eight reconstructed PCCs exceed the rounded paper CNN-LSTM values.
 
-PCC alone overstates one result. The S1 ring output has PCC 0.612, but its
-movement-state recall is only 0.054 and its movement-peak amplitude ratio is
-0.127. Visual inspection confirms a nearly flat prediction. It must therefore
-be treated as unresolved, not as a successful reconstruction.
+The S1 number is a PCC-leading validation-stack result and needs an important
+qualification. A validation-constrained calibration repairs the previously
+near-flat ring trace: movement-state recall rises from 0.054 to 0.863 and peak
+ratio from 0.127 to 0.576. The thumb/little stack improves correlation and
+timing, but visibly overshoots amplitude and drifts during rest. It therefore
+closes the historical PCC gap without yet closing the trajectory-calibration
+gap. This distinction is preserved in the figures rather than hidden behind a
+single aggregate number.
 
 ## Scope and research goals
 
@@ -181,6 +185,15 @@ Separate per-finger models were also allowed: sharing one spatial and spectral
 representation across all five outputs can cause competition, especially when
 their signal-to-noise ratios and useful bands differ.
 
+For the latest S1 PCC-leading candidate, thumb and little-finger predictions
+from the fixed-feature, end-to-end, CSP, SPoC, and ridge families are combined
+with a nonnegative ridge stack. Its ridge penalty is selected by blocked
+`TimeSeriesSplit` folds entirely inside the chronological validation partition;
+the selected model is then fit on all validation predictions and frozen before
+test scoring. Ring uses a separate smooth floor/dead-zone/gain calibration whose
+PCC, derivative PCC, recall, peak ratio, and rest-RMS constraints are likewise
+evaluated only on validation data.
+
 CUDA was used for feature generation and neural training. Supported training
 paths request `torch.compile(mode="reduce-overhead")`. Keeping the complete
 small dataset in device memory reduces transfer overhead, but wall time is still
@@ -223,11 +236,11 @@ They are a historical reference, not high-precision targets.
 
 | Subject | Finger | Paper CNN-LSTM | Reimplementation | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.750 | 0.696 | -0.054 |
+| S1 | Thumb | 0.750 | 0.728 | -0.022 |
 | S1 | Index | 0.790 | 0.809 | +0.019 |
 | S1 | Middle | 0.170 | 0.296 | +0.126 |
-| S1 | Ring | 0.600 | 0.612 | +0.012 |
-| S1 | Little | 0.470 | 0.395 | -0.075 |
+| S1 | Ring | 0.600 | 0.618 | +0.018 |
+| S1 | Little | 0.470 | 0.420 | -0.050 |
 | S2 | Thumb | 0.620 | 0.599 | -0.021 |
 | S2 | Index | 0.380 | 0.472 | +0.092 |
 | S2 | Middle | 0.270 | 0.208 | -0.062 |
@@ -247,36 +260,41 @@ claim.
 
 | Subject | Macro-5 | Hist-4 | Historical reference | Interpretation |
 |---|---:|---:|---:|---|
-| S1 | 0.561 | 0.549 | figure aggregate 0.560 | 0.011 below |
+| S1 | 0.574 | 0.563 | figure aggregate 0.560 | about 0.003 above |
 | S2 | 0.429 | 0.413 | rounded per-finger Hist-4 0.393 | above |
 | S3 | 0.645 | 0.637 | rounded per-finger Hist-4 0.625 | above |
 
 For S1, the mean of the four rounded paper entries is 0.545, but the paper's
 aggregate chart shows 0.56. The chart value is the more conservative reference.
-The present result has therefore **not** surpassed the reported S1 aggregate.
+The current result modestly exceeds that rounded chart value. The margin is only
+0.003 and should not be presented as statistical superiority.
 
 ### Morphology audit
 
 | Subject | Macro rest RMS | Macro state F1 | Macro derivative PCC | Main concern |
 |---|---:|---:|---:|---|
-| S1 | 0.082 | 0.439 | 0.285 | Ring is nearly flat; middle has heavy false activity |
+| S1 | 0.217 | 0.549 | 0.336 | Thumb/little stack overshoots; middle has heavy false activity |
 | S2 | 0.059 | 0.447 | 0.239 | Middle amplitude and state precision remain weak |
 | S3 | 0.128 | 0.677 | 0.341 | Better cycles, but some rest leakage remains |
 
-The S1 ring discrepancy is the clearest example of why the visual audit is part
-of the acceptance criterion:
+The S1 ring repair is the clearest example of why the visual audit is part of
+the acceptance criterion. The table compares the original selected prediction
+with the validation-constrained calibration:
 
-| S1 ring diagnostic | Value |
-|---|---:|
-| Raw-test PCC | 0.612 |
-| Cleaned-target PCC | 0.588 |
-| Movement-state recall | 0.054 |
-| Movement-state F1 | 0.101 |
-| Movement peak ratio | 0.127 |
-| Rest RMS | 0.052 |
+| S1 ring diagnostic | Before | After |
+|---|---:|---:|
+| Raw-test PCC | 0.612 | 0.618 |
+| Cleaned-target PCC | 0.588 | 0.602 |
+| Movement-state recall | 0.054 | 0.863 |
+| Movement-state F1 | 0.101 | 0.660 |
+| Movement peak ratio | 0.127 | 0.576 |
+| Rest RMS | 0.052 | 0.097 |
 
-The low rest error is achieved largely by predicting very little. That is not a
-useful ring-finger decoder.
+The repair makes the repeated ring cycles visible, at the cost of additional
+rest activity. Validation constraints bound that tradeoff. In contrast, the
+stacked thumb and little outputs have peak ratios 1.836 and 2.389 and rest RMS
+0.409 and 0.368, respectively. Those traces improve PCC but remain
+over-amplified; this is why the S1 row is labelled PCC-leading rather than final.
 
 ![Subject 1 movement windows](figures/s1-movement-windows.png)
 
@@ -334,9 +352,12 @@ the present optimizer and full-data protocol; this candidate was rejected.
 
 ### PCC-only selection
 
-S1 ring demonstrates the failure mode: scale-invariant correlation can remain
-high even when movement amplitude and state recall collapse. Future selection
-must make morphology an explicit constraint rather than a secondary narrative.
+S1 ring demonstrated the failure mode: scale-invariant correlation remained
+high even when movement amplitude and state recall collapsed. Explicit
+validation morphology constraints repaired ring. The new thumb/little stack
+shows the complementary failure: better PCC and timing can coexist with
+excessive gain and rest drift. Morphology is therefore an acceptance constraint,
+not a secondary narrative.
 
 ## Reproduction recipes
 
@@ -361,6 +382,13 @@ python scripts/select_per_finger_ensemble.py --subject 1 \
   --method stable=outputs/paper_gap_ensemble_v1/sub1 \
   --method e2e_index=outputs/exact_e2e_s1_index_h40_v1/sub1 \
   --output outputs/paper_reproduction_s1_v1/sub1
+
+# Repair the S1 ring trace using validation-only morphology constraints.
+python scripts/calibrate_prediction_constrained.py --subject 1 \
+  --prepared-root outputs/preprocessed_v2 \
+  --prediction-root outputs/paper_reproduction_s1_v1/sub1 \
+  --target local_w2_q10 --finger ring \
+  --output outputs/s1_ring_constrained_calibration_v1/sub1
 
 # Recreate the frozen S2 per-finger selection.
 python scripts/select_per_finger_ensemble.py --subject 2 \
@@ -402,21 +430,24 @@ late reconstruction:
 - the current public package excludes raw data and large trained artifacts;
 - several experiment scripts reflect research exploration rather than one
   polished end-to-end command; and
-- S1 aggregate performance and S1 ring morphology remain unresolved.
+- the S1 PCC-leading stack uses a meta-model fit on validation predictions, so
+  its small 0.003 aggregate margin needs independent repetition; and
+- S1 thumb/little amplitude calibration and middle-finger false activity remain
+  unresolved even though the historical aggregate PCC has been reached.
 
 For these reasons, the project should be cited as a reimplementation and
 extension, not as the official source code accompanying the 2018 publication.
 
 ## Recommended next work
 
-1. Replace PCC-only selection with a validation constraint on movement-state
-   recall and peak-amplitude ratio, then reselect S1 ring without test access.
+1. Add validation-only amplitude/rest constraints to the S1 thumb/little stack,
+   preserving its timing gain without the current overshoot.
 2. Build a fully scripted experiment manifest from raw files to every reported
    summary, including hashes and package versions.
 3. Repeat the selected S1 and S2 models over at least five seeds and report both
    aggregate and per-finger variability.
-4. Evaluate whether a ring-specific spatial/spectral front end can preserve real
-   ring/little coupling while recovering ring amplitude.
+4. Repeat the ring calibration on blocked validation folds to quantify how
+   stable the improved movement recall is.
 5. Add test-label-blind cross-validation within the training recording before
    any further comparison to released test labels.
 

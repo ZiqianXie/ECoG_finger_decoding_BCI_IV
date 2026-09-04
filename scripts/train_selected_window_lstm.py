@@ -49,6 +49,40 @@ def predict(model: nn.Module, values: np.ndarray, device: torch.device) -> np.nd
     return model(tensor).squeeze(0).float().cpu().numpy()
 
 
+def correlation_loss(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Mean one-minus-correlation across sequences in a minibatch."""
+    prediction = prediction - prediction.mean(dim=-1, keepdim=True)
+    target = target - target.mean(dim=-1, keepdim=True)
+    numerator = torch.sum(prediction * target, dim=-1)
+    denominator = torch.linalg.vector_norm(prediction, dim=-1) * torch.linalg.vector_norm(
+        target, dim=-1
+    )
+    return 1.0 - torch.mean(numerator / denominator.clamp_min(1.0e-8))
+
+
+def training_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    movement_threshold: float,
+    movement_loss_weight: float,
+    correlation_loss_weight: float,
+    derivative_correlation_weight: float,
+) -> torch.Tensor:
+    weights = torch.where(
+        target >= movement_threshold,
+        torch.as_tensor(movement_loss_weight, device=target.device),
+        torch.ones((), device=target.device),
+    )
+    loss = torch.sum(weights * (prediction - target).square()) / weights.sum()
+    if correlation_loss_weight:
+        loss = loss + correlation_loss_weight * correlation_loss(prediction, target)
+    if derivative_correlation_weight:
+        loss = loss + derivative_correlation_weight * correlation_loss(
+            torch.diff(prediction, dim=-1), torch.diff(target, dim=-1)
+        )
+    return loss
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, required=True)
@@ -68,6 +102,16 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=1.0e-3)
     parser.add_argument("--direct-learning-rate", type=float, default=1.0e-5)
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
+    parser.add_argument("--movement-threshold", type=float, default=0.1)
+    parser.add_argument("--movement-loss-weight", type=float, default=1.0)
+    parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
+    parser.add_argument("--derivative-correlation-weight", type=float, default=0.0)
+    parser.add_argument(
+        "--only-fingers",
+        nargs="+",
+        choices=FINGER_NAMES,
+        help="train only these fingers; omitted output columns are NaN",
+    )
     parser.add_argument("--validation-interval", type=int, default=5)
     parser.add_argument("--patience", type=int, default=12)
     parser.add_argument("--seed", type=int, default=0)
@@ -104,11 +148,15 @@ def main() -> None:
     train_count = split - offset
     selection_summary = json.loads((selection / "summary.json").read_text())
     device = torch.device(args.device)
-    validation_prediction = np.zeros_like(raw_train[train_count:], dtype=np.float32)
-    test_prediction = np.zeros_like(raw_test, dtype=np.float32)
+    validation_prediction = np.full_like(raw_train[train_count:], np.nan, dtype=np.float32)
+    test_prediction = np.full_like(raw_test, np.nan, dtype=np.float32)
     report: dict[str, object] = {}
+    selected_fingers = set(args.only_fingers or FINGER_NAMES)
 
     for finger, name in enumerate(FINGER_NAMES):
+        if name not in selected_fingers:
+            report[name] = {"status": "skipped"}
+            continue
         target = target_cache[target_names[finger]]
         indices = np.asarray(
             selection_summary["per_finger"][name]["selected_source_indices"], dtype=np.int64
@@ -142,11 +190,19 @@ def main() -> None:
             weight_decay=args.weight_decay,
         )
         starts = np.arange(0, train_count - args.sequence_steps + 1, args.sequence_stride)
-        best_score = -float("inf")
+        initial_estimate = predict(model, x_validation, device)
+        best_score = pearson(initial_estimate, y_validation_raw)
         best_state = copy.deepcopy(model.state_dict())
         best_epoch = 0
         stale = 0
-        history = []
+        history = [
+            {
+                "epoch": 0,
+                "loss": None,
+                "validation_raw_r": best_score,
+            }
+        ]
+        print(f"finger={name} epoch=0 val_r={best_score:.4f}", flush=True)
         for epoch in range(1, args.epochs + 1):
             np.random.shuffle(starts)
             model.train()
@@ -157,7 +213,14 @@ def main() -> None:
                 yb = np.stack([y_train[s : s + args.sequence_steps] for s in batch_starts])
                 prediction = train_model(torch.from_numpy(xb).to(device))
                 observed = torch.from_numpy(yb).to(device)
-                loss = torch.mean((prediction - observed).square())
+                loss = training_loss(
+                    prediction,
+                    observed,
+                    args.movement_threshold,
+                    args.movement_loss_weight,
+                    args.correlation_loss_weight,
+                    args.derivative_correlation_weight,
+                )
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -182,8 +245,8 @@ def main() -> None:
         final_state = best_state
         if args.refit_full:
             refit_epochs = args.refit_epochs if args.refit_epochs is not None else best_epoch
-            if refit_epochs < 1:
-                raise ValueError("--refit-epochs must be positive")
+            if refit_epochs < 0:
+                raise ValueError("--refit-epochs must be non-negative")
             x_full = np.asarray(train_all[:, indices], dtype=np.float32)
             y_full = np.asarray(target[:, finger], dtype=np.float32)
             full_mean = x_full.mean(axis=0, dtype=np.float64).astype(np.float32)
@@ -218,7 +281,14 @@ def main() -> None:
                     yb = np.stack([y_full[s : s + args.sequence_steps] for s in batch_starts])
                     estimate = refit_train(torch.from_numpy(xb).to(device))
                     observed = torch.from_numpy(yb).to(device)
-                    loss = torch.mean((estimate - observed).square())
+                    loss = training_loss(
+                        estimate,
+                        observed,
+                        args.movement_threshold,
+                        args.movement_loss_weight,
+                        args.correlation_loss_weight,
+                        args.derivative_correlation_weight,
+                    )
                     refit_optimizer.zero_grad(set_to_none=True)
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(refit.parameters(), 1.0)
@@ -251,6 +321,12 @@ def main() -> None:
         "target": args.target,
         "finger_targets": dict(zip(FINGER_NAMES, target_names)),
         "selection_root": str(args.selection_root),
+        "training_objective": {
+            "movement_threshold": args.movement_threshold,
+            "movement_loss_weight": args.movement_loss_weight,
+            "correlation_loss_weight": args.correlation_loss_weight,
+            "derivative_correlation_weight": args.derivative_correlation_weight,
+        },
         "per_finger": report,
         "validation_raw_metrics": trajectory_metrics(validation_prediction, raw_train[train_count:]),
         "test_raw_metrics": metrics,

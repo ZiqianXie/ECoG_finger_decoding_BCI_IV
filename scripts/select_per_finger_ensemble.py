@@ -58,11 +58,16 @@ def main() -> None:
     test_output = np.zeros_like(test_truth, dtype=np.float32)
     selection: dict[str, object] = {}
     for finger, finger_name in enumerate(FINGER_NAMES):
-        validation_scores = {
-            name: pearson(prediction[0][:, finger], validation_truth[:, finger])
-            for name, prediction in candidates.items()
-        }
+        validation_scores = {}
+        for name, prediction in candidates.items():
+            column = prediction[0][:, finger]
+            if not np.isfinite(column).all() or np.std(column) <= 1.0e-8:
+                validation_scores[name] = -float("inf")
+            else:
+                validation_scores[name] = pearson(column, validation_truth[:, finger])
         winner = max(validation_scores, key=validation_scores.get)
+        if not np.isfinite(validation_scores[winner]):
+            raise ValueError(f"no valid prediction candidate for {finger_name}")
         validation_output[:, finger] = candidates[winner][0][:, finger]
         test_output[:, finger] = candidates[winner][1][:, finger]
         selection[finger_name] = {
