@@ -41,7 +41,9 @@ useful for documenting what the current code can reproduce, but they must not be
 treated as unbiased estimates of model-selection performance. A separately
 frozen protocol uses blocked folds only within the training partition and
 reserves the chronological validation segment for a single final evaluation;
-its results will be reported separately after completion.
+its results will be reported separately after completion. This prevents new
+selection leakage, but it cannot retroactively make that segment pristine,
+because earlier development already inspected it.
 
 | Subject | Result | Thumb | Index | Middle | Ring | Little | Macro-5 |
 |---|---|---:|---:|---:|---:|---:|---:|
