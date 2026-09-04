@@ -191,23 +191,27 @@ finger-specific fixed-feature LSTMs with exact end-to-end wavelet refinement for
 selected fingers. S3 benefited from movement-versus-rest CSP and a shape-aware
 TCN, then a validation-selected blend with beta-gated/high-gamma components.
 
-For clarity, this report uses **learned filter** only when the ICA/spatial
-projection and wavelet taps were updated by end-to-end gradient training. A CSP
-filter is estimated from the training labels and a temporal head has learned
-parameters, but neither makes the spectral filter bank end-to-end trainable.
+Filter terminology separates the spectral and spatial stages. In a
+trainable-wavelet route, gradient descent updates both the bior6.8 wavelet taps
+and the FastICA-initialized spatial projection. In a fixed-wavelet route, both
+are frozen. A fixed-bandpass+CSP route instead uses conventional frozen
+frequency bands with CSP spatial filters estimated on training data and then
+frozen. A learned temporal head alone does not make either front end trainable.
 
-| Subject | Thumb | Index | Middle | Ring | Little |
-|---|---|---|---|---|---|
-| S1 | no | yes | no | no | mixed |
-| S2 | no | yes | yes | no | no |
-| S3 | no | no | no | no | no |
+| Final route | Subject/fingers | Spectral front end | Spatial front end |
+|---|---|---|---|
+| Trainable wavelet | S1 index; S2 index, middle | Gradient-trained bior6.8 taps | Gradient-trained, FastICA-initialized projection |
+| Fixed wavelet | S1 ring; S2 thumb, ring, little | Frozen bior6.8 taps | Frozen FastICA projection |
+| Fixed bandpass+CSP | S1 middle; all S3 fingers | Frozen conventional bandpass filters | Training-estimated, frozen CSP |
+| Fixed-only ensemble | S1 thumb | Fixed wavelet and fixed bandpass candidates | Fixed FastICA/CSP/SPoC candidates |
+| Mixed ensemble | S1 little | Fixed candidates plus a trainable-wavelet candidate | Mixed fixed and gradient-trained candidates |
 
 S1 little is the sole mixed case: its validation stack includes the
-end-to-end little-finger candidate with standardized coefficient 0.0465. S1
-thumb also considered an end-to-end candidate, but its selected coefficient
-was exactly zero. S1 index and S2 index/middle are the only final outputs driven
-directly by an end-to-end learned ICA/wavelet model. The machine-readable audit
-is `docs/results/learned-filter-map.json`.
+trainable-wavelet little-finger candidate with standardized coefficient 0.0465.
+S1 thumb also considered a trainable-wavelet candidate, but its selected
+coefficient was exactly zero. S1 index and S2 index/middle are the only final
+outputs driven directly by a gradient-trained ICA/wavelet front end. The
+machine-readable audit is `docs/results/learned-filter-map.json`.
 
 The table describes the frozen final routing rather than claiming that only
 those fingers benefited during development. A later S2-thumb end-to-end run

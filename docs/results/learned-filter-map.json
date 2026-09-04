@@ -1,5 +1,11 @@
 {
-  "definition": "learned_filter means the ICA/spatial projection and wavelet taps were updated by end-to-end gradient training; analytically estimated CSP, fixed wavelet features, and learned downstream sequence heads are not counted",
+  "definition": "status refers specifically to whether spectral wavelet taps contribute after end-to-end gradient training; spatial filtering is documented separately in each route",
+  "taxonomy": {
+    "trainable_wavelet": "gradient-trained bior6.8 spectral taps with a gradient-trained FastICA-initialized spatial projection",
+    "fixed_wavelet": "frozen bior6.8 spectral taps with a frozen FastICA spatial projection",
+    "fixed_bandpass_csp": "frozen conventional frequency bands with CSP spatial filters estimated from training data and then frozen",
+    "downstream_learning": "a learned LSTM or TCN head does not by itself make the spectral or spatial front end trainable"
+  },
   "scope": "status records the frozen final routing, not every candidate that improved validation",
   "training_rates": {
     "frontend": 1e-05,

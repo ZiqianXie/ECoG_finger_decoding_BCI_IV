@@ -52,19 +52,24 @@ single end-to-end model and is therefore shown beside the non-stacked baseline.
 Numerical scores are complemented by held-out trajectory plots and morphology
 diagnostics in the project report.
 
-Here, a **learned filter** specifically means that the ICA/spatial projection
-and wavelet taps were updated by end-to-end gradient training. Fixed wavelet
-features, CSP filters estimated from training data, and learned downstream
-LSTM/TCN heads are not counted as end-to-end learned spectral filters.
+The filter terminology separates the **spectral** and **spatial** stages. A
+trainable-wavelet route updates both the bior6.8 wavelet taps and the
+FastICA-initialized spatial projection by gradient descent. A fixed-wavelet
+route freezes both. A fixed-bandpass+CSP route instead uses conventional fixed
+frequency bands and training-estimated, then frozen, CSP spatial filters.
+Learning only the downstream LSTM/TCN does not make the spectral filters
+trainable.
 
-| Subject | Thumb | Index | Middle | Ring | Little |
-|---|---|---|---|---|---|
-| S1 final route | fixed/mixed stack | learned | fixed CSP | fixed wavelet | mixed stack with a small learned-filter contribution |
-| S2 final route | fixed wavelet | learned | learned | fixed wavelet | fixed wavelet |
-| S3 final route | fixed bands + CSP | fixed bands + CSP | fixed bands + CSP | fixed bands + CSP | fixed bands + CSP |
+| Final route | Subject/fingers | Spectral front end | Spatial front end |
+|---|---|---|---|
+| Trainable wavelet | S1 index; S2 index, middle | Gradient-trained bior6.8 wavelet taps | Gradient-trained, FastICA-initialized projection |
+| Fixed wavelet | S1 ring; S2 thumb, ring, little | Frozen bior6.8 wavelet taps | Frozen FastICA projection |
+| Fixed bandpass+CSP | S1 middle; all S3 fingers | Frozen conventional bandpass filters | CSP estimated on training data, then frozen |
+| Fixed-only ensemble | S1 thumb | Mixture of fixed-wavelet and fixed-band candidates | Mixture of fixed FastICA/CSP/SPoC candidates |
+| Mixed ensemble | S1 little | Fixed candidates plus one trainable-wavelet candidate | Mixed fixed and gradient-trained candidates |
 
-For S1 thumb the end-to-end candidate received zero stack weight, whereas S1
-little retained a small standardized weight of 0.0465. The complete
+For S1 thumb the trainable-wavelet candidate received zero stack weight,
+whereas S1 little retained a small standardized weight of 0.0465. The complete
 machine-readable routing audit is in
 [`docs/results/learned-filter-map.json`](docs/results/learned-filter-map.json).
 This table reports the frozen final routing, not every validation benefit. In
