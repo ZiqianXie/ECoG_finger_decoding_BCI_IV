@@ -17,10 +17,13 @@ code, and the results should not be described as a bit-for-bit reproduction.
 The reconstruction recovered the main modeling ideas: a trainable spatial
 filter initialized by FastICA; a three-level, dilated, biorthogonal wavelet tree;
 40 ms band-energy bins; and temporal decoding. It also made three important
-changes. First, every data-derived choice is fit on a chronological training or
-validation partition. Second, each subject and finger may use a different
-validated decoder, avoiding competition between five output heads. Third, model
-quality is judged from held-out trajectory shape as well as Pearson correlation.
+modeling and evaluation changes. First, every data-derived choice is fit on a
+chronological training or validation partition. Second, each subject and finger
+may use a different validated decoder, avoiding competition between five output
+heads. Third, model quality is judged from held-out trajectory shape as well as
+Pearson correlation.
+The rebuilt preprocessing also explicitly applies zero-phase notch filters at
+60 Hz and its 120/180 Hz harmonics to suppress power-line contamination.
 
 The current raw-test `Macro-5` PCC is 0.574 for S1, 0.429 for S2, and 0.645 for
 S3. The paper's aggregate is a five-finger average, so these values—not

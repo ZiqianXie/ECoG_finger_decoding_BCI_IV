@@ -19,7 +19,8 @@ The reconstruction deliberately tests newer alternatives where the old design
 can be improved. It retains the paper's biorthogonal wavelet initialization,
 energy-binning idea, FastICA spatial initialization, and recurrent comparison,
 while adding stricter leakage controls, per-finger model selection, modern
-sequence backbones, and visual trajectory diagnostics.
+sequence backbones, explicit zero-phase notch filtering at 60 Hz and its 120/180
+Hz harmonics, and visual trajectory diagnostics.
 
 The full methods, experiment history, numerical tables, limitations, and visual
 diagnosis are in the [project report](docs/project-report.md).
