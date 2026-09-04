@@ -26,12 +26,22 @@ diagnostics.
 The full methods, experiment history, numerical tables, limitations, and visual
 diagnosis are in the [project report](docs/project-report.md).
 
-## Current status
+## Retrospective development results
 
 The primary score is Pearson correlation against the released, unmodified test
 glove trajectories. `Macro-5` is the mean across all five fingers, matching the
 aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 2018.
+
+**Interpretation warning:** the reconstructed rows below are retrospective
+development results, not an untouched confirmatory benchmark. Validation traces
+were consulted repeatedly during reconstruction, and released-test trajectories
+were later inspected for morphology and failure analysis. The numbers remain
+useful for documenting what the current code can reproduce, but they must not be
+treated as unbiased estimates of model-selection performance. A separately
+frozen protocol uses blocked folds only within the training partition and
+reserves the chronological validation segment for a single final evaluation;
+its results will be reported separately after completion.
 
 | Subject | Result | Thumb | Index | Middle | Ring | Little | Macro-5 |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -44,7 +54,8 @@ aggregate reported in the paper. Paper values are rounded CNN-LSTM results from
 | S3 | Paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
 | S3 | Selected per-finger system + output projection | 0.720 | 0.525 | 0.632 | 0.666 | 0.687 | **0.646** |
 
-The selected systems improve the five-finger aggregate for all three subjects
+Within this retrospective development comparison, the selected systems improve
+the five-finger aggregate for all three subjects
 and exceed the paper value on nine of fifteen individual fingers. S1's highest
 number is explicitly exploratory: thumb and little are learned second-stage
 stacks over candidate predictions, middle uses its selected base model, ring
