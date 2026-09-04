@@ -128,6 +128,9 @@ per subject and per finger using only a chronological validation partition.
 An experimental nonnegative ridge stack combines diverse S1 candidates for
 thumb and little finger; its regularization is selected with blocked splits
 inside validation, and its weights never read the released test labels.
+In the stack audit, labels such as `h10s1`, `h20s2`, and `h40s1` denote
+fixed-feature LSTMs with 10, 20, or 40 hidden units and random seed 1 or 2;
+`h` does not denote the input-history duration.
 S1 index averages six independently optimized trainable-wavelet LSTMs, each
 warm-started from the selected single-model checkpoint and selected using only
 validation performance. The ensemble keeps independently trained spectral and

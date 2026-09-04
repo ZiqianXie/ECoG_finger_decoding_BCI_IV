@@ -3,6 +3,15 @@
   "method": "nonnegative ridge stack fit on chronological validation predictions; alpha selected by blocked TimeSeriesSplit within validation",
   "base_candidate": "current",
   "downstream_output_projection": "the public final prediction applies pointwise maximum(prediction, 0); this file retains the unconstrained stack metrics",
+  "candidate_label_definitions": {
+    "current": "selected per-finger prediction before second-stage stacking",
+    "csp": "uncalibrated fixed bandpass plus CSP candidate",
+    "localridge": "local-target fixed-feature ridge candidate",
+    "cspcal": "validation-calibrated CSP candidate",
+    "spoc": "fixed bandpass plus SPoC ridge candidate",
+    "e2e_<finger>": "trainable ICA/wavelet end-to-end LSTM candidate for the named finger",
+    "h<width>s<seed>": "fixed-feature LSTM candidate; h is hidden-state width (10, 20, or 40), s is random seed (1 or 2), and h is not history length"
+  },
   "selection": {
     "thumb": {
       "status": "stacked",

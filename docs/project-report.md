@@ -251,6 +251,11 @@ the selected model is then fit on all validation predictions and frozen before
 test scoring. Ring uses a separate smooth floor/dead-zone/gain calibration whose
 PCC, derivative PCC, recall, peak ratio, and rest-RMS constraints are likewise
 evaluated only on validation data.
+
+The compact stack labels `h10s1`, `h20s2`, and `h40s1` mean fixed-feature
+LSTMs with hidden-state widths 10, 20, and 40 and random seed 1 or 2. Here `h`
+means hidden width, not history length; all six candidates use the same
+25-bin (one-second) exact-window feature history.
 Finally, positive affine scale and offset are fitted on the cleaned validation
 target for stacked thumb and little predictions. Pearson correlation is
 unchanged by that affine operation; it only calibrates amplitude and baseline.
