@@ -110,7 +110,7 @@ def fit_fastica_spatial_weights(
 
 
 def compact_wavelet_taps(
-    wavelet: str = "bior2.2",
+    wavelet: str = "bior6.8",
     branch: str = "decomposition_highpass",
     trim_boundary_zeros: bool = True,
     zero_tolerance: float = 1.0e-12,
@@ -199,7 +199,7 @@ class DilatedWaveletFilterBank(nn.Module):
 
     def __init__(
         self,
-        wavelet: str = "bior2.2",
+        wavelet: str = "bior6.8",
         branch: str = "decomposition_highpass",
         dilations: Sequence[int] = (1, 2, 4, 8, 16, 32, 64),
         trim_boundary_zeros: bool = True,

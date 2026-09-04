@@ -28,7 +28,9 @@ def test_bior22_omits_zero_padding_but_keeps_wavelet_taps() -> None:
 
 
 def test_dilated_bank_preserves_time_and_shares_filters_over_electrodes() -> None:
-    bank = DilatedWaveletFilterBank(dilations=(1, 2, 4))
+    # Keep explicit coverage for the compact bior2.2 compatibility path while
+    # the public default follows the paper's bior6.8 initialization.
+    bank = DilatedWaveletFilterBank(wavelet="bior2.2", dilations=(1, 2, 4))
     x = torch.zeros(2, 5, 101)
     x[:, :, 50] = 1.0
     output = bank(x)
@@ -64,6 +66,13 @@ def test_bior68_analysis_filters_are_symmetric_17_tap_kernels() -> None:
         taps = fixed_length_wavelet_taps("bior6.8", branch, 17)
         assert taps.shape == (17,)
         np.testing.assert_allclose(taps, taps[::-1], atol=1e-12)
+
+
+def test_wavelet_defaults_follow_paper_bior68_initialization() -> None:
+    expected = compact_wavelet_taps("bior6.8", "decomposition_highpass")
+    np.testing.assert_allclose(compact_wavelet_taps(), expected)
+    bank = DilatedWaveletFilterBank(dilations=(1,))
+    np.testing.assert_allclose(bank.kernel_taps.detach().numpy()[0, 0], expected)
 
 
 def test_wavelet_packet_calculates_eight_log_energy_bands_at_25_hz() -> None:
