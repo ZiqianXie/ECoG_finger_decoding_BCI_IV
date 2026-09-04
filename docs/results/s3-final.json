@@ -1,0 +1,82 @@
+{
+  "selection": {
+    "thumb": {
+      "left": "TCN",
+      "right": "soft-calibrated",
+      "left_weight": 0.0,
+      "validation_morphology": 0.6048220539551983
+    },
+    "index": {
+      "left": "TCN",
+      "right": "beta-gated",
+      "left_weight": 0.75,
+      "validation_morphology": 0.4508235907682785
+    },
+    "middle": {
+      "left": "soft-calibrated",
+      "right": "beta-gated",
+      "left_weight": 0.5,
+      "validation_morphology": 0.5684661664416362
+    },
+    "ring": {
+      "left": "soft-calibrated",
+      "right": "beta-gated",
+      "left_weight": 0.5,
+      "validation_morphology": 0.5445131197009139
+    },
+    "little": {
+      "left": "soft-calibrated",
+      "right": "beta-gated",
+      "left_weight": 0.5,
+      "validation_morphology": 0.4545069335997098
+    }
+  },
+  "validation_cleaned_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.752316418707767,
+      "index": 0.5206345621304165,
+      "middle": 0.6925363804041056,
+      "ring": 0.6518099776136729,
+      "little": 0.5624607901801552
+    },
+    "pearson_macro_five": 0.6359516258072234,
+    "pearson_historical_four": 0.6319870378556111,
+    "rmse": 0.1877938256511184
+  },
+  "validation_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.730142241195528,
+      "index": 0.5037936252730049,
+      "middle": 0.6371695698611177,
+      "ring": 0.6267513338273536,
+      "little": 0.5653645526717103
+    },
+    "pearson_macro_five": 0.6126442645657428,
+    "pearson_historical_four": 0.6091174972503401,
+    "rmse": 0.9091079997980325
+  },
+  "test_cleaned_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7413832511205406,
+      "index": 0.5694325545955262,
+      "middle": 0.744149971222726,
+      "ring": 0.7086420886219087,
+      "little": 0.7127708162378723
+    },
+    "pearson_macro_five": 0.6952757363597147,
+    "pearson_historical_four": 0.6919341482941662,
+    "rmse": 0.15601361876447847
+  },
+  "test_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.7114990008481842,
+      "index": 0.5079408402563063,
+      "middle": 0.6367745057934203,
+      "ring": 0.6764234474175008,
+      "little": 0.6928093566208344
+    },
+    "pearson_macro_five": 0.6450894301872493,
+    "pearson_historical_four": 0.6372559258796864,
+    "rmse": 0.8038456170666229
+  }
+}

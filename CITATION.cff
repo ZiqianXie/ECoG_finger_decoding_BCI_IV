@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this reimplementation, please cite the original paper."
+title: "ECoG Finger-Trajectory Decoding: Late Reimplementation"
+type: software
+authors:
+  - family-names: Xie
+    given-names: Ziqian
+version: 0.1.0
+date-released: 2026-09-04
+repository-code: "https://github.com/ZiqianXie/ECoG_finger_decoding_BCI_IV"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Xie
+      given-names: Ziqian
+    - family-names: Schwartz
+      given-names: Odelia
+    - family-names: Prasad
+      given-names: Abhishek
+  title: "Decoding of finger trajectory from ECoG using deep learning"
+  journal: "Journal of Neural Engineering"
+  year: 2018
+  volume: 15
+  issue: 3
+  start: "036009"
+  doi: "10.1088/1741-2552/aa9dbe"

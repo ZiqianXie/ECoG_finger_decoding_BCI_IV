@@ -1,0 +1,22 @@
+wavelet_packet_frontend:
+  wavelet: bior6.8
+  levels: 3
+  kernel_size: 17
+  trainable: false
+  # Keras "same" convolution in the original implementation pads with zeros.
+  padding_mode: constant
+  activation: scaled_tanh
+  energy_window_samples: 40
+  energy_stride_samples: 40
+  energy: l2_norm
+  log_transform: log1p
+
+decoder:
+  spatial_components: null
+  spatial_initialization: fastica
+  # Use the mature FastICA implementation for the fixed-feature checkpoint.
+  fastica_backend: sklearn
+  fastica_device: cpu
+  fastica_max_samples: 50000
+  fastica_random_state: 0
+  cnn_history_bins: 25

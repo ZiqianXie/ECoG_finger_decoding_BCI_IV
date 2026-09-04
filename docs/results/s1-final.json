@@ -1,0 +1,79 @@
+{
+  "subject": 1,
+  "selection_rule": "highest validation PCC independently for each finger",
+  "candidate_methods": [
+    "stable",
+    "e2e_index"
+  ],
+  "selection": {
+    "thumb": {
+      "selected_method": "stable",
+      "validation_r": 0.587078332901001,
+      "test_r": 0.6955874562263489,
+      "all_validation_r": {
+        "stable": 0.587078332901001,
+        "e2e_index": 0.0
+      }
+    },
+    "index": {
+      "selected_method": "e2e_index",
+      "validation_r": 0.8445904850959778,
+      "test_r": 0.808566153049469,
+      "all_validation_r": {
+        "stable": 0.8044767379760742,
+        "e2e_index": 0.8445904850959778
+      }
+    },
+    "middle": {
+      "selected_method": "stable",
+      "validation_r": 0.39074939489364624,
+      "test_r": 0.2957538366317749,
+      "all_validation_r": {
+        "stable": 0.39074939489364624,
+        "e2e_index": 0.0
+      }
+    },
+    "ring": {
+      "selected_method": "stable",
+      "validation_r": 0.5889413952827454,
+      "test_r": 0.6120262145996094,
+      "all_validation_r": {
+        "stable": 0.5889413952827454,
+        "e2e_index": 0.0
+      }
+    },
+    "little": {
+      "selected_method": "stable",
+      "validation_r": 0.39118000864982605,
+      "test_r": 0.3951655626296997,
+      "all_validation_r": {
+        "stable": 0.39118000864982605,
+        "e2e_index": 0.0
+      }
+    }
+  },
+  "validation_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.58707862871327,
+      "index": 0.8445901629915626,
+      "middle": 0.390749377972452,
+      "ring": 0.5889413674997348,
+      "little": 0.3911801251360257
+    },
+    "pearson_macro_five": 0.560507932462609,
+    "pearson_historical_four": 0.5533995737033276,
+    "rmse": 0.8911648865045917
+  },
+  "test_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.6955877073020466,
+      "index": 0.8085664091808625,
+      "middle": 0.29575386324764485,
+      "ring": 0.6120262968426172,
+      "little": 0.3951654336690416
+    },
+    "pearson_macro_five": 0.5614199420484425,
+    "pearson_historical_four": 0.5487683533498989,
+    "rmse": 0.9277391842041349
+  }
+}

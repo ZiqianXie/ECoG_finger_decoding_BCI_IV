@@ -1,0 +1,85 @@
+{
+  "subject": 2,
+  "selection_rule": "highest validation PCC independently for each finger",
+  "candidate_methods": [
+    "h40",
+    "e2e_index",
+    "e2e_middle"
+  ],
+  "selection": {
+    "thumb": {
+      "selected_method": "h40",
+      "validation_r": 0.6002341508865356,
+      "test_r": 0.5991333723068237,
+      "all_validation_r": {
+        "h40": 0.6002341508865356,
+        "e2e_index": 0.0,
+        "e2e_middle": 0.0
+      }
+    },
+    "index": {
+      "selected_method": "e2e_index",
+      "validation_r": 0.5003502368927002,
+      "test_r": 0.4721358120441437,
+      "all_validation_r": {
+        "h40": 0.46870818734169006,
+        "e2e_index": 0.5003502368927002,
+        "e2e_middle": 0.0
+      }
+    },
+    "middle": {
+      "selected_method": "e2e_middle",
+      "validation_r": 0.45471489429473877,
+      "test_r": 0.2076217532157898,
+      "all_validation_r": {
+        "h40": 0.43119120597839355,
+        "e2e_index": 0.0,
+        "e2e_middle": 0.45471489429473877
+      }
+    },
+    "ring": {
+      "selected_method": "h40",
+      "validation_r": 0.45886439085006714,
+      "test_r": 0.4948289096355438,
+      "all_validation_r": {
+        "h40": 0.45886439085006714,
+        "e2e_index": 0.0,
+        "e2e_middle": 0.0
+      }
+    },
+    "little": {
+      "selected_method": "h40",
+      "validation_r": 0.3290584683418274,
+      "test_r": 0.37288352847099304,
+      "all_validation_r": {
+        "h40": 0.3290584683418274,
+        "e2e_index": 0.0,
+        "e2e_middle": 0.0
+      }
+    }
+  },
+  "validation_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.6002345389655784,
+      "index": 0.5003502681746785,
+      "middle": 0.45471492623231696,
+      "ring": 0.45886431123975097,
+      "little": 0.32905848196518955
+    },
+    "pearson_macro_five": 0.4686445053155028,
+    "pearson_historical_four": 0.47108955383444084,
+    "rmse": 0.8893531901445927
+  },
+  "test_raw_metrics": {
+    "pearson_by_finger": {
+      "thumb": 0.599133059487797,
+      "index": 0.47213572043093727,
+      "middle": 0.20762165669769914,
+      "ring": 0.4948290903821838,
+      "little": 0.37288356461269356
+    },
+    "pearson_macro_five": 0.42932061832226226,
+    "pearson_historical_four": 0.4129435003072818,
+    "rmse": 0.9158715944503029
+  }
+}

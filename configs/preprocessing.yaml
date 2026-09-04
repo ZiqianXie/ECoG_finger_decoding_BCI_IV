@@ -1,0 +1,17 @@
+sampling_rate_hz: 1000
+glove_rate_hz: 25
+notch_frequencies_hz: [60, 120, 180]
+notch_quality_factor: 30.0
+baseline_smoothness: 100000.0
+baseline_asymmetry: 0.05
+baseline_iterations: 20
+movement_activation_threshold: 0.08
+movement_state_transition_penalty: 0.05
+coupling_minimum_activation: 0.20
+coupling_em_iterations: 4
+normalization_fit_fraction: 0.6666666667
+bad_channels_one_based:
+  1: [55]
+  2: [21, 38]
+  # Channel 49 is paper-listed; channel 50 has a test-only extreme burst.
+  3: [49, 50]

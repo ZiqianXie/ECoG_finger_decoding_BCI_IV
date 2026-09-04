@@ -1,0 +1,55 @@
+wavelet_packet_frontend:
+  wavelet: bior6.8
+  levels: 3
+  kernel_size: 17
+  trainable: true
+  padding_mode: reflect
+  activation: scaled_tanh
+  energy_window_samples: 40
+  energy_stride_samples: 40
+  energy: l2_norm
+  log_transform: log1p
+
+decoder:
+  spatial_components: null
+  spatial_initialization: fastica
+  fastica_backend: torch
+  fastica_device: cuda
+  fastica_max_samples: 50000
+  fastica_random_state: 0
+  feature_width: 64
+  temporal_backbone: diagonal_ssm
+  temporal_layers: 3
+  state_size: 16
+  dropout: 0.1
+  output_fingers: 5
+  cnn_history_bins: 25
+  direct_linear_head: true
+  output_activation: relu
+  zero_initialize_residual: true
+  training_chunk_steps: null
+
+runtime:
+  compile: true
+  compile_mode: reduce-overhead
+  float32_matmul_precision: high
+
+training:
+  target_array: train_glove_paper_baseline_only
+  seed: 0
+  epochs: 200
+  learning_rate: 0.001
+  initialized_learning_rate_scale: 0.02
+  weight_decay: 0.0001
+  ridge_initialize: true
+  ridge_top_features: 512
+  ridge_alphas: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+  movement_threshold: 0.08
+  movement_weight: 0.0
+  velocity_loss_weight: 0.0
+  correlation_loss_weight: 0.0
+  level_loss: mse
+  huber_delta: 0.1
+  gradient_clip_norm: 1.0
+  validation_interval: 5
+  patience_validations: 12
