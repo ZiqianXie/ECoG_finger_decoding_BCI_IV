@@ -18,11 +18,11 @@ original experiments. I also used the opportunity to revisit decisions that
 were constrained by the software and compute available at the time. The result
 is both a late reimplementation and a continuation of the original work.
 
-This reconstruction was developed with substantial assistance from
-[OpenAI Codex](https://openai.com/codex/) using **GPT-5.6 Sol** for code
+I developed this reconstruction with substantial assistance from
+[OpenAI Codex](https://openai.com/codex/) using GPT-5.6 Sol for code
 reconstruction, experiment orchestration, quantitative and visual diagnostics,
-and documentation. The scientific decisions and interpretation remain the
-author's responsibility.
+and documentation. I remain responsible for the scientific decisions and
+interpretation.
 
 The [project report](docs/project-report.md) contains the complete experimental
 record. This README is meant to explain what the current pipeline does, why its
@@ -54,11 +54,10 @@ model at a smaller learning rate.
 
 Four subject/finger pairs selected a broader fixed dictionary during the same
 out-of-fold comparison: S1 middle and S3 thumb, middle, and ring. These models
-concatenate the ICA-wavelet energies with seven designed frequency bands passed
-through movement-versus-rest CSP filters, then apply LARS and the same nonlinear
-LSTM. The fixed route is used only where it improved the predeclared
-development-fold score; it is not a universal replacement for the trainable
-wavelet stem.
+concatenate the ICA-wavelet energies with seven conventional frequency bands and
+movement-versus-rest CSP features. LARS chooses useful atoms from both families
+before initializing the same nonlinear LSTM. The exact bands and their purpose
+are described below.
 
 The original four-second minibatches were largely a Theano static-graph
 constraint, not a physiological assumption. The current implementation can use
@@ -129,6 +128,37 @@ intended eight-band coverage is shown below.
 
 ![Measured frequency responses of the initialized wavelet tree](docs/figures/wavelet-initialization-frequency-response.png)
 
+### Why seven additional frequency bands?
+
+The wavelet tree gives a principled multiresolution initialization. The seven
+designed bands give the sparse selector a second, familiar ECoG vocabulary:
+
+| Band | What it is intended to expose |
+|---|---|
+| 4–8 Hz | Slow/theta-range movement modulation |
+| 8–12 Hz | Mu/alpha rhythm |
+| 12–30 Hz | Beta rhythm and movement-related desynchronization |
+| 30–55 Hz | Low gamma below the strongest 60 Hz line component |
+| 65–95 Hz | Lower high gamma above the 60 Hz component |
+| 105–145 Hz | A middle high-gamma scale |
+| 155–195 Hz | An upper high-gamma scale |
+
+The bands are produced with fourth-order zero-phase Butterworth filters after
+the 60, 120, and 180 Hz notch stage. Separating 30–55 from 65–95 Hz avoids
+burying the strongest power-line region inside one broad gamma feature, while
+three high-gamma ranges let the data choose the useful scale instead of averaging
+all broadband activity together.
+
+For each band and training fold, I fit two CSP problems: movement of the decoded
+finger versus common rest, and movement of any finger versus common rest. From
+each problem I retain the two filters at both ends of the generalized
+eigenspectrum. This produces eight spatial projections per band, or 56 CSP
+energy channels per 40 ms bin. Their `log1p` L2 energies and one-second histories
+are combined with the ICA-wavelet histories. Fold-local LARS then decides which
+atoms survive. CSP, normalization, and LARS are all refitted without the held-out
+event, and the selected carrier/CSP filters remain fixed during the final LSTM
+training.
+
 ## Clean-conscience result: no test peek, no cheat
 
 The primary comparison remains Pearson correlation with the released,
@@ -168,14 +198,13 @@ we report whether it wins or loses.
 | S3 | Ring | 0.41 | 0.657 | +0.247 |
 | S3 | Little | 0.75 | 0.423 | -0.327 |
 
-This label describes the current decision path. It does not mean that nobody
-working on this 2026 repository had previously seen the released labels: before
-this protocol was fixed, they were used to diagnose earlier models and compare
-saved runs. The author's present recollection is also that the original
-exploratory workflow behind the 2018 result may have been influenced by repeated
-test feedback; the lost code and logs make that impossible to quantify. The
-paper numbers are therefore a historical reference, not a prospectively sealed
-benchmark.
+This label describes how I selected the current result. It does not mean I had
+never seen the released labels. Before I fixed this protocol, I used them to
+diagnose earlier models and compare saved runs. Looking back, I also think the
+exploratory workflow behind my 2018 result was probably influenced by repeated
+test feedback. Because the old code and logs were lost, I cannot quantify that
+influence. I therefore treat the paper numbers as a historical reference, not a
+prospectively sealed benchmark.
 
 ### How the final refit is produced
 

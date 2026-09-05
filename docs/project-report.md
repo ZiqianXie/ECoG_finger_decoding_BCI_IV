@@ -15,7 +15,7 @@ Data Set 4 recordings, and methodological recollection. It is not the original
 code, and the results should not be described as a bit-for-bit reproduction.
 
 The 2026 reconstruction was developed by the first author with substantial
-assistance from OpenAI Codex using **GPT-5.6 Sol** for code reconstruction,
+assistance from OpenAI Codex using GPT-5.6 Sol for code reconstruction,
 remote experiment orchestration, quantitative and visual diagnostics, and
 documentation. Codex is credited as a research and software assistant, not as a
 scientific author; the author remains responsible for the decisions and
@@ -224,6 +224,48 @@ The 100-step/four-second block in the legacy implementation was a Theano
 static-graph limitation. It is not retained as a biological context limit. The
 modern code can train over complete contiguous sequences or use chunks only to
 manage memory.
+
+## Designed-band CSP complement
+
+The heterogeneous route adds seven conventional passbands to the wavelet tree:
+
+| Band | Intended view |
+|---|---|
+| 4–8 Hz | Low-frequency/theta activity and slow movement-related modulation |
+| 8–12 Hz | Mu/alpha rhythm |
+| 12–30 Hz | Beta rhythm and movement-related desynchronization |
+| 30–55 Hz | Low-gamma activity below the strongest 60 Hz line component |
+| 65–95 Hz | Lower high-gamma activity above the 60 Hz component |
+| 105–145 Hz | Middle high-gamma scale |
+| 155–195 Hz | Upper high-gamma scale |
+
+These labels describe the intended physiological views rather than asserting
+that every selected feature has a single canonical interpretation. Each carrier
+band is produced by a fourth-order zero-phase Butterworth filter. The explicit
+30–55/65–95 Hz separation avoids placing the strongest 60 Hz contamination
+inside one broadband gamma feature; the preceding notch stage also removes the
+narrow 60, 120, and 180 Hz components before this decomposition. Splitting high
+gamma into three ranges lets LARS retain a subject/finger-specific scale instead
+of averaging all broadband activity together.
+
+CSP then supplies the spatial part of each designed-band atom. Within every
+training fold and band, one CSP contrasts the decoded finger's movement
+(`target > 0.20`) against common rest (all five targets `< 0.05`), while a second
+contrasts movement of any finger against the same rest state. The first contrast
+asks where activity is most specific to the requested output; the second offers
+a shared movement detector that can still be useful when finger-specific labels
+are noisy or fingers co-move. From each generalized eigenspectrum, the two
+smallest- and two largest-eigenvalue filters are retained. Thus each band
+contributes four decoded-finger and four any-movement spatial projections, or 56
+CSP energy channels per 40 ms bin across seven bands.
+
+For every projection, the feature is `log1p` of the 40 ms L2 amplitude. A
+25-bin history is unfolded before selection, and fold-local LARS chooses from
+these CSP histories together with the ICA-wavelet histories. CSP weights,
+standardization, and sparse selection are all refitted without the held-out
+event. In the final four joint models, both carrier filters and CSP weights stay
+fixed; only the nonlinear LSTM head is trained. This makes the designed bands a
+complementary dictionary, not a second end-to-end spectral network.
 
 ## Architecture experiments and historical retrospective routing
 

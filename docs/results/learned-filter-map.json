@@ -6,6 +6,16 @@
     "trainable_ica_wavelet": "FastICA initializes the spatial projection and bior6.8 initializes the eight-band wavelet tree; the stem is frozen during LSTM warm-up and then fine-tuned",
     "fixed_joint_dictionary": "frozen ICA-wavelet energies are concatenated with seven fixed designed-band energies passed through training-fitted own-finger and any-movement CSP; fold-local LARS selects features and a nonlinear LSTM is trained"
   },
+  "designed_band_csp": {
+    "bands_hz": [[4, 8], [8, 12], [12, 30], [30, 55], [65, 95], [105, 145], [155, 195]],
+    "intended_views": ["low-frequency/theta", "mu/alpha", "beta", "low gamma", "lower high gamma", "middle high gamma", "upper high gamma"],
+    "carrier_filter": "fourth-order zero-phase Butterworth after 60/120/180 Hz notch filtering",
+    "contrasts_per_band": ["decoded-finger movement versus common rest", "any-finger movement versus common rest"],
+    "components_per_contrast": "two smallest- and two largest-generalized-eigenvalue filters",
+    "energy": "log1p of L2 amplitude in each nonoverlapping 40 ms bin",
+    "channels_per_bin": 56,
+    "fit_boundary": "CSP, normalization, and LARS are refit inside every development fold"
+  },
   "training_rates": {
     "temporal_head": 0.0001,
     "trainable_ica_wavelet_spatial": 0.000003,

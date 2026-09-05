@@ -20,6 +20,14 @@
     "baseline": "six-seed trainable FastICA-initialized ICA-wavelet LSTM",
     "joint": "six-seed fixed ICA-wavelet plus seven designed-band own-finger/any-movement CSP dictionary, fold-local LARS selection, nonlinear LSTM"
   },
+  "designed_band_csp": {
+    "bands_hz": [[4, 8], [8, 12], [12, 30], [30, 55], [65, 95], [105, 145], [155, 195]],
+    "physiological_grouping": ["low-frequency/theta", "mu/alpha", "beta", "low gamma", "lower high gamma", "middle high gamma", "upper high gamma"],
+    "per_band_spatial_filters": {"decoded_finger_vs_rest": 4, "any_movement_vs_rest": 4},
+    "total_csp_energy_channels_per_bin": 56,
+    "binning": "log1p L2 amplitude over 40 ms",
+    "fixed_in_final_refit": true
+  },
   "promoted_pairs": {
     "S1_middle": {
       "baseline_raw_pcc": 0.128041,
