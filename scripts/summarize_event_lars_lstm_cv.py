@@ -108,6 +108,40 @@ def plot_event_windows(
     plt.close(figure)
 
 
+def plot_hurdle_event_windows(
+    path: Path,
+    groups: list[dict[str, int]],
+    target: np.ndarray,
+    prediction: np.ndarray,
+    probability: np.ndarray,
+    amplitude: np.ndarray,
+    title: str,
+) -> None:
+    selected = sorted(
+        groups,
+        key=lambda group: float(
+            np.max(target[int(group["start"]):int(group["stop"])])
+        ),
+        reverse=True,
+    )[:12]
+    figure, axes = plt.subplots(4, 3, figsize=(14, 10))
+    for axis, group in zip(axes.flat, selected):
+        start, stop = int(group["start"]), int(group["stop"])
+        time = np.arange(start, stop) / 25.0
+        axis.plot(time, target[start:stop], color="black", linewidth=0.9, label="target")
+        axis.plot(time, prediction[start:stop], color="#2563eb", linewidth=0.9, label="gate × amp")
+        axis.plot(time, amplitude[start:stop], color="#7c3aed", linewidth=0.7, linestyle="--", label="amplitude")
+        axis.plot(time, probability[start:stop], color="#db2777", linewidth=0.7, alpha=0.8, label="P(move)")
+        axis.set_title(f"{start / 25:.1f}-{stop / 25:.1f} s", fontsize=9)
+    for axis in axes.flat[len(selected):]:
+        axis.set_visible(False)
+    axes.flat[0].legend(frameon=False, ncol=2, fontsize=7)
+    figure.suptitle(title)
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-root", type=Path, default=Path("outputs/event_lars_lstm_wavelet_v1"))
@@ -138,6 +172,19 @@ def main() -> None:
             seed_predictions = {
                 seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds
             }
+            reference_root = (
+                args.input_root / f"sub{subject}" / finger / "fold0"
+                / f"seed{args.seeds[0]}"
+            )
+            has_hurdle = (reference_root / "validation_movement_probability.npy").exists()
+            seed_probabilities = (
+                {seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds}
+                if has_hurdle else {}
+            )
+            seed_amplitudes = (
+                {seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds}
+                if has_hurdle else {}
+            )
             fold_scores: dict[str, list[float]] = {str(seed): [] for seed in args.seeds}
             best_epochs: dict[str, list[int]] = {str(seed): [] for seed in args.seeds}
             for fold in range(3):
@@ -155,6 +202,13 @@ def main() -> None:
                     root = args.input_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{seed}"
                     prediction = np.load(root / "validation_prediction.npy")
                     seed_predictions[seed][indices] = prediction
+                    if has_hurdle:
+                        seed_probabilities[seed][indices] = np.load(
+                            root / "validation_movement_probability.npy"
+                        )
+                        seed_amplitudes[seed][indices] = np.load(
+                            root / "validation_conditional_amplitude.npy"
+                        )
                     summary = json.loads((root / "summary.json").read_text())
                     fold_scores[str(seed)].append(pearson(prediction, target))
                     best_epochs[str(seed)].append(
@@ -199,6 +253,35 @@ def main() -> None:
             }
             destination = args.input_root / f"sub{subject}"
             destination.mkdir(parents=True, exist_ok=True)
+            if has_hurdle:
+                if any(
+                    not np.isfinite(values).all()
+                    for values in (*seed_probabilities.values(), *seed_amplitudes.values())
+                ):
+                    raise RuntimeError(f"incomplete hurdle OOF coverage for S{subject} {finger}")
+                probability = np.mean(
+                    np.stack([seed_probabilities[seed] for seed in included_seeds]), axis=0
+                )
+                amplitude = np.mean(
+                    np.stack([seed_amplitudes[seed] for seed in included_seeds]), axis=0
+                )
+                moving = cleaned >= 0.08
+                predicted_moving = probability >= 0.5
+                subject_report["per_finger"][finger]["hurdle"] = {
+                    "movement_state_f1": binary_f1(predicted_moving, moving),
+                    "mean_rest_probability": float(np.mean(probability[~moving])),
+                    "mean_movement_probability": float(np.mean(probability[moving])),
+                    "conditional_amplitude_movement_rmse": float(
+                        np.sqrt(np.mean(np.square(amplitude[moving] - cleaned[moving])))
+                    ),
+                }
+                np.save(destination / f"{finger}_oof_movement_probability.npy", probability)
+                np.save(destination / f"{finger}_oof_conditional_amplitude.npy", amplitude)
+                plot_hurdle_event_windows(
+                    destination / f"{finger}_oof_hurdle_event_windows.png",
+                    definition["groups"], cleaned, ensemble, probability, amplitude,
+                    f"Subject {subject} {finger}: hurdle components by event",
+                )
             plot_event_windows(
                 destination / f"{finger}_oof_event_windows.png",
                 definition["groups"],
