@@ -231,7 +231,9 @@ def main() -> None:
             ]
             included_seeds = [seed for seed in args.seeds if seed not in collapsed_seeds]
             if not included_seeds:
-                included_seeds = list(args.seeds)
+                raise RuntimeError(
+                    f"all requested seeds collapsed for S{subject} {finger}"
+                )
             ensemble = np.mean(
                 np.stack([seed_predictions[seed] for seed in included_seeds]), axis=0
             )
