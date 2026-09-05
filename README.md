@@ -77,6 +77,13 @@ event-level correction, on the other hand, can distort the movement itself.
 The current target pipeline estimates a local lower envelope and subtracts it
 before normalization.
 
+The fitted envelope is subtracted completely, but it remains an estimate: a
+smooth baseline cannot always distinguish sensor drift from a sustained finger
+position. Slow upward changes can therefore remain in the movement target. They
+can still be decoded from ECoG because the model uses the slowly varying power
+envelopes of its higher-frequency bands, rather than trying to match the glove
+frequency directly.
+
 Crucially, that envelope is refitted inside every training fold. “Split-safe
 target” in this repository means that neither the baseline nor the normalization
 for a held-out interval was estimated from that interval. This matters because
@@ -263,6 +270,13 @@ with the glove while having almost no visible amplitude, or it can follow the
 main events while producing unacceptable motion during rest. PCC is retained
 for comparison with the paper, but model diagnosis also includes derivative
 PCC, rest RMS, movement-state F1, peak amplitude, and event-aligned plots.
+
+This distinction is especially important for S3 little finger. Its cleaned
+flexion PCC (0.703) is higher than its raw-trajectory PCC (0.669), so the result
+is not explained by following raw glove drift. Its derivative PCC is only
+0.205, however, and its peak amplitude is about 66% of the target. The model is
+therefore better at recovering movement state and the broad flexion envelope
+than at reproducing every individual flexion cycle.
 
 The visualization uses a label-free display transform: a development-derived
 baseline is removed, a smooth nonnegative projection is applied, and gain is
