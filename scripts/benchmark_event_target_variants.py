@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 from pathlib import Path
 
 import matplotlib
@@ -30,8 +32,56 @@ DEFAULT_METHODS = (
     "local_w6_q10", "local_w6_q20", "local_w6_q30",
 )
 
+LOCAL_METHOD = re.compile(r"^local_w(?P<window>[0-9]+(?:p[0-9]+)?)_q[0-9]+$")
+
+
+def target_support_bins(
+    method: str,
+    sampling_rate_hz: float = 25.0,
+    smoothing_seconds: float = 0.16,
+    gaussian_sigmas: float = 5.0,
+) -> int | None:
+    """Return the held-out margin needed by a precomputed target.
+
+    Local targets use a centred percentile window followed by Gaussian
+    smoothing.  Five Gaussian standard deviations make the residual influence
+    of a held-out sample negligible.  The paper rope baseline is global, so no
+    finite temporal margin can make a precomputed copy fold-local.
+    """
+    if method == "raw_25hz":
+        return 0
+    if method == "paper_baseline_only":
+        return None
+    match = LOCAL_METHOD.match(method)
+    if match is None:
+        raise ValueError(f"cannot determine temporal support for {method!r}")
+    window_seconds = float(match.group("window").replace("p", "."))
+    window_samples = max(3, int(round(window_seconds * sampling_rate_hz)))
+    if window_samples % 2 == 0:
+        window_samples += 1
+    return window_samples // 2 + int(
+        math.ceil(gaussian_sigmas * smoothing_seconds * sampling_rate_hz)
+    )
+
+
+def purge_near_validation(
+    training: np.ndarray,
+    validation_intervals: list[list[int]],
+    row_count: int,
+    margin: int,
+) -> np.ndarray:
+    """Remove training rows whose target transform can see validation rows."""
+    if margin <= 0:
+        return training
+    safe = np.ones(row_count, dtype=bool)
+    for start, stop in validation_intervals:
+        safe[max(0, start - margin) : min(row_count, stop + margin)] = False
+    return training[safe[training]]
+
 
 def target_path(prepared: Path, method: str) -> Path:
+    if method == "raw_25hz":
+        return prepared / "train_glove_25hz_raw.npy"
     return prepared / f"train_glove_{method}.npy"
 
 
@@ -65,6 +115,9 @@ def main() -> None:
     parser.add_argument("--selection-cache-root", type=Path, default=Path("outputs/event_lars_selection_v1"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/event_target_variant_ridge_v1"))
     parser.add_argument("--alphas", type=float, nargs="+", default=(1.0e-3, 1.0e-2, 0.1, 1.0, 10.0, 100.0))
+    parser.add_argument("--sampling-rate", type=float, default=25.0)
+    parser.add_argument("--target-smoothing-seconds", type=float, default=0.16)
+    parser.add_argument("--gaussian-safety-sigmas", type=float, default=5.0)
     args = parser.parse_args()
 
     for subject in args.subjects:
@@ -80,7 +133,14 @@ def main() -> None:
         )
         report: dict[str, object] = {
             "subject": subject,
-            "protocol": "outer per-finger event folds; fixed outer-training-selected wavelet features; training-only RidgeCV",
+            "protocol": (
+                "outer per-finger event folds; fixed outer-training-selected wavelet features; "
+                "training-only RidgeCV; method-specific target-support purge"
+            ),
+            "selection_eligibility": (
+                "raw and finite-support local targets only; the globally fitted paper rope "
+                "baseline is reported for context but cannot be made leakage-safe by a finite purge"
+            ),
             "official_final_validation_touched": False,
             "released_test_touched": False,
             "methods": {},
@@ -107,22 +167,42 @@ def main() -> None:
                 selection = np.load(
                     args.selection_cache_root / f"sub{subject}" / finger / f"fold{fold}.npz"
                 )["selected_source"]
-                x_train = np.asarray(feature_all[training][:, selection], dtype=np.float64)
                 x_validation = np.asarray(feature_all[validation][:, selection], dtype=np.float64)
-                scaler = StandardScaler()
-                x_train = scaler.fit_transform(x_train)
-                x_validation = scaler.transform(x_validation)
                 for method in methods:
+                    support = target_support_bins(
+                        method,
+                        sampling_rate_hz=args.sampling_rate,
+                        smoothing_seconds=args.target_smoothing_seconds,
+                        gaussian_sigmas=args.gaussian_safety_sigmas,
+                    )
+                    # A global baseline has no finite support.  Retain the
+                    # existing event purge only for its explicitly exploratory
+                    # score; it is never eligible for method selection.
+                    method_training = training if support is None else purge_near_validation(
+                        training,
+                        fold_definition["validation_intervals"],
+                        rows,
+                        support,
+                    )
+                    x_train = np.asarray(
+                        feature_all[method_training][:, selection], dtype=np.float64
+                    )
+                    scaler = StandardScaler()
+                    x_train = scaler.fit_transform(x_train)
+                    x_validation_scaled = scaler.transform(x_validation)
                     target = target_arrays[method][24 : 24 + rows, finger_index]
                     model = RidgeCV(alphas=np.asarray(args.alphas), fit_intercept=True)
-                    model.fit(x_train, target[training])
-                    estimate = model.predict(x_validation).astype(np.float32)
+                    model.fit(x_train, target[method_training])
+                    estimate = model.predict(x_validation_scaled).astype(np.float32)
                     predictions[method][validation] = estimate
                     fold_records[method].append(
                         {
                             "fold": fold,
                             "alpha": float(model.alpha_),
                             "raw_pcc": pearson(estimate, raw[validation]),
+                            "target_support_bins": support,
+                            "training_bins": int(method_training.size),
+                            "eligible_for_selection": support is not None,
                         }
                     )
             scores = {}
@@ -135,7 +215,25 @@ def main() -> None:
                     "oof_raw_pcc": score,
                     "folds": fold_records[method],
                 }
-            best_index = int(np.argmax(score_matrix[:, finger_index]))
+            eligible = np.asarray(
+                [
+                    target_support_bins(
+                        method,
+                        sampling_rate_hz=args.sampling_rate,
+                        smoothing_seconds=args.target_smoothing_seconds,
+                        gaussian_sigmas=args.gaussian_safety_sigmas,
+                    )
+                    is not None
+                    for method in methods
+                ],
+                dtype=bool,
+            )
+            eligible_indices = np.flatnonzero(eligible)
+            best_index = int(
+                eligible_indices[
+                    np.argmax(score_matrix[eligible_indices, finger_index])
+                ]
+            )
             report["per_finger_selection"][finger] = {
                 "selected_method": methods[best_index],
                 "oof_raw_pcc": float(score_matrix[best_index, finger_index]),
