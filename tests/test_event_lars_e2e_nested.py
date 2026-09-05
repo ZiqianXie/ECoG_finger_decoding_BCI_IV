@@ -1,6 +1,8 @@
 import numpy as np
+import torch
+from types import SimpleNamespace
 
-from scripts.train_event_grouped_lars_e2e_nested import event_grouped_cv_splits
+from scripts.train_event_grouped_lars_e2e_nested import batch_loss, event_grouped_cv_splits
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
 from scripts.summarize_event_lars_lstm_cv import morphology_metrics
 
@@ -26,3 +28,22 @@ def test_morphology_metrics_reward_matching_shape() -> None:
     assert exact["velocity_pcc"] > flat["velocity_pcc"]
     assert exact["movement_state_f1"] > flat["movement_state_f1"]
     assert exact["median_event_peak_ratio"] == 1.0
+
+
+def test_hurdle_likelihood_backpropagates_through_both_heads() -> None:
+    target = torch.tensor([[0.0, 0.2, 0.5]])
+    state_logit = torch.zeros_like(target, requires_grad=True)
+    amplitude = torch.full_like(target, 0.3, requires_grad=True)
+    prediction = torch.sigmoid(state_logit) * amplitude
+    loss = batch_loss(
+        (prediction, state_logit, amplitude),
+        target,
+        SimpleNamespace(movement_threshold=0.08),
+        torch.tensor(0.5),
+        torch.tensor(1.0),
+    )
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert state_logit.grad is not None
+    assert amplitude.grad is not None

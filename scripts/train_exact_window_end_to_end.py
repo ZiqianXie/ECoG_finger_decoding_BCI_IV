@@ -111,7 +111,7 @@ class ExactWindowFingerDecoder(nn.Module):
         self.head_initialization = head_initialization
         if head_initialization not in ("lars_linear_regime", "residual_ridge"):
             raise ValueError(f"unsupported head initialization {head_initialization!r}")
-        if output_activation not in ("linear", "relu", "softplus"):
+        if output_activation not in ("linear", "relu", "softplus", "hurdle"):
             raise ValueError(f"unsupported output activation {output_activation!r}")
         if softplus_beta <= 0:
             raise ValueError("softplus beta must be positive")
@@ -121,6 +121,12 @@ class ExactWindowFingerDecoder(nn.Module):
         self.temporal = nn.Linear(hidden_size, 1)
         nn.init.zeros_(self.temporal.weight)
         nn.init.zeros_(self.temporal.bias)
+        if output_activation == "hurdle":
+            self.movement_head = nn.Linear(hidden_size, 1)
+            nn.init.normal_(self.movement_head.weight, mean=0.0, std=1.0e-3)
+            # Start close to the LARS trajectory; the gate is then free to learn
+            # when the amplitude should be suppressed.
+            nn.init.constant_(self.movement_head.bias, 5.0)
 
     @torch.no_grad()
     def initialize_lars_linear_regime(
@@ -183,6 +189,30 @@ class ExactWindowFingerDecoder(nn.Module):
         )
         self.temporal.bias.zero_()
 
+        if self.output_activation == "hurdle":
+            self.movement_head.weight.normal_(0.0, near_zero_std)
+            self.movement_head.bias.fill_(5.0)
+
+    def decode_with_hurdle(
+        self, features: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.output_activation != "hurdle":
+            raise RuntimeError("decode_with_hurdle requires hurdle output activation")
+        standardized = (features - self.feature_mean) / self.feature_scale
+        direct = self.direct(standardized)
+        recurrent, _ = self.lstm(standardized)
+        amplitude = F.softplus(
+            direct + self.temporal(recurrent), beta=self.softplus_beta
+        ).squeeze(-1)
+        state_logit = self.movement_head(recurrent).squeeze(-1)
+        prediction = torch.sigmoid(state_logit) * amplitude
+        return prediction, state_logit, amplitude
+
+    def forward_with_hurdle(
+        self, windows: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self.decode_with_hurdle(self.extract(windows))
+
     def extract(self, windows: torch.Tensor) -> torch.Tensor:
         """Return selected features from exact one-second windows."""
         if self.frontend == "csp_band":
@@ -201,6 +231,8 @@ class ExactWindowFingerDecoder(nn.Module):
         return selected.reshape(batch, steps, -1)
 
     def decode(self, features: torch.Tensor) -> torch.Tensor:
+        if self.output_activation == "hurdle":
+            return self.decode_with_hurdle(features)[0]
         standardized = (features - self.feature_mean) / self.feature_scale
         direct = self.direct(standardized)
         recurrent, _ = self.lstm(standardized)

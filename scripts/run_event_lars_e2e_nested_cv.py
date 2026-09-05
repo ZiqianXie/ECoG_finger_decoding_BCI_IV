@@ -58,7 +58,11 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--unfrozen-batch-size", type=int, default=6)
     parser.add_argument("--loss", choices=("mse", "joint"), default="mse")
-    parser.add_argument("--output-activation", choices=("linear", "softplus"), default="linear")
+    parser.add_argument(
+        "--output-activation",
+        choices=("linear", "softplus", "hurdle"),
+        default="linear",
+    )
     parser.add_argument("--claim-timeout-hours", type=float, default=6.0)
     args = parser.parse_args()
     if args.target is not None and args.target_map is not None:

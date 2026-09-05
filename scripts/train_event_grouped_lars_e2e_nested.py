@@ -23,6 +23,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch.nn import functional as F
 from sklearn.linear_model import LassoLarsCV
 from sklearn.preprocessing import StandardScaler
 
@@ -149,12 +150,15 @@ def make_optimizer(
     head_learning_rate: float,
     weight_decay: float,
 ) -> torch.optim.Optimizer:
+    head_parameters = list(model.lstm.parameters()) + list(model.temporal.parameters())
+    if model.output_activation == "hurdle":
+        head_parameters += list(model.movement_head.parameters())
     return torch.optim.AdamW(
         [
             {"params": model.spatial.parameters(), "lr": 0.0},
             {"params": model.wavelet.parameters(), "lr": 0.0},
             {
-                "params": list(model.lstm.parameters()) + list(model.temporal.parameters()),
+                "params": head_parameters,
                 "lr": head_learning_rate,
             },
         ],
@@ -179,10 +183,31 @@ def padded_batches(
 
 
 def batch_loss(
-    prediction: torch.Tensor,
+    decoded: torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     observed: torch.Tensor,
     args: argparse.Namespace,
+    amplitude_scale: torch.Tensor,
+    positive_weight: torch.Tensor,
 ) -> torch.Tensor:
+    if isinstance(decoded, tuple):
+        _, state_logit, amplitude = decoded
+        moving = observed >= args.movement_threshold
+        state_loss = F.binary_cross_entropy_with_logits(
+            state_logit,
+            moving.to(observed.dtype),
+            pos_weight=positive_weight,
+        )
+        if moving.any():
+            amplitude_loss = F.mse_loss(
+                amplitude[moving] / amplitude_scale,
+                observed[moving] / amplitude_scale,
+            )
+        else:
+            amplitude_loss = amplitude.sum() * 0.0
+        # Weighted Bernoulli state likelihood plus a unit-variance
+        # conditional Gaussian amplitude likelihood on moving bins.
+        return state_loss + 0.5 * amplitude_loss
+    prediction = decoded
     if args.loss == "mse":
         return (prediction - observed).square().mean()
     loss, _ = joint_trajectory_loss(
@@ -221,6 +246,42 @@ def predict_intervals(
     return np.concatenate(all_indices), np.concatenate(all_predictions)
 
 
+@torch.inference_mode()
+def predict_hurdle_intervals(
+    model: ExactWindowFingerDecoder,
+    cached_features: torch.Tensor,
+    raw_windows: torch.Tensor,
+    intervals: list[list[int]],
+    use_raw: bool,
+    chunk_steps: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if model.output_activation != "hurdle":
+        raise RuntimeError("hurdle diagnostics require hurdle output activation")
+    model.eval()
+    all_indices: list[np.ndarray] = []
+    all_predictions: list[np.ndarray] = []
+    all_probabilities: list[np.ndarray] = []
+    all_amplitudes: list[np.ndarray] = []
+    for start, stop in intervals:
+        for begin in range(start, stop, chunk_steps):
+            end = min(stop, begin + chunk_steps)
+            prediction, state_logit, amplitude = (
+                model.forward_with_hurdle(raw_windows[begin:end][None])
+                if use_raw
+                else model.decode_with_hurdle(cached_features[begin:end][None])
+            )
+            all_indices.append(np.arange(begin, end, dtype=np.int64))
+            all_predictions.append(prediction[0].float().cpu().numpy())
+            all_probabilities.append(torch.sigmoid(state_logit[0]).float().cpu().numpy())
+            all_amplitudes.append(amplitude[0].float().cpu().numpy())
+    return (
+        np.concatenate(all_indices),
+        np.concatenate(all_predictions),
+        np.concatenate(all_probabilities),
+        np.concatenate(all_amplitudes),
+    )
+
+
 def train_one_epoch(
     *,
     model: ExactWindowFingerDecoder,
@@ -234,6 +295,8 @@ def train_one_epoch(
     use_raw: bool,
     args: argparse.Namespace,
     rng: np.random.Generator,
+    amplitude_scale: torch.Tensor,
+    positive_weight: torch.Tensor,
 ) -> float:
     model.train()
     offsets = torch.arange(args.sequence_steps, device=target.device)
@@ -242,12 +305,14 @@ def train_one_epoch(
     for chosen in padded_batches(starts, batch_size, rng):
         origins = torch.as_tensor(chosen, device=target.device)
         indices = origins[:, None] + offsets[None]
-        prediction = (
+        decoded = (
             forward(raw_windows[indices])
             if use_raw
             else decode(cached_features[indices])
         )
-        loss = batch_loss(prediction, target[indices], args)
+        loss = batch_loss(
+            decoded, target[indices], args, amplitude_scale, positive_weight
+        )
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(trainable_parameters(model), 1.0)
@@ -259,12 +324,32 @@ def train_one_epoch(
 def compiled_calls(
     model: ExactWindowFingerDecoder, enabled: bool
 ) -> tuple[object, object]:
+    forward = model.forward_with_hurdle if model.output_activation == "hurdle" else model
+    decode = model.decode_with_hurdle if model.output_activation == "hurdle" else model.decode
     if not enabled:
-        return model, model.decode
+        return forward, decode
     return (
-        torch.compile(model, mode="reduce-overhead"),
-        torch.compile(model.decode, mode="reduce-overhead"),
+        torch.compile(forward, mode="reduce-overhead"),
+        torch.compile(decode, mode="reduce-overhead"),
     )
+
+
+def hurdle_training_constants(
+    target: torch.Tensor,
+    training_intervals: list[list[int]],
+    movement_threshold: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    indices = torch.as_tensor(
+        indices_from_intervals(training_intervals), device=target.device
+    )
+    values = target[indices]
+    moving = values >= movement_threshold
+    if moving.any():
+        amplitude_scale = torch.quantile(values[moving], 0.95).clamp_min(1.0e-3)
+    else:
+        amplitude_scale = values.new_tensor(1.0)
+    positive_weight = ((~moving).sum() / moving.sum().clamp_min(1)).clamp(1.0, 12.0)
+    return amplitude_scale.detach(), positive_weight.detach()
 
 
 def train_with_validation(
@@ -281,6 +366,9 @@ def train_with_validation(
 ) -> tuple[int, float, list[dict[str, object]]]:
     optimizer = make_optimizer(model, args.learning_rate, args.weight_decay)
     forward, decode = compiled_calls(model, args.compile)
+    amplitude_scale, positive_weight = hurdle_training_constants(
+        target, training_intervals, args.movement_threshold
+    )
     starts = starts_from_intervals(
         training_intervals, args.sequence_steps, args.sequence_stride
     )
@@ -313,6 +401,8 @@ def train_with_validation(
             use_raw=use_raw,
             args=args,
             rng=rng,
+            amplitude_scale=amplitude_scale,
+            positive_weight=positive_weight,
         )
         if (
             epoch == 1
@@ -353,6 +443,9 @@ def train_fixed_epochs(
         return []
     optimizer = make_optimizer(model, args.learning_rate, args.weight_decay)
     forward, decode = compiled_calls(model, args.compile)
+    amplitude_scale, positive_weight = hurdle_training_constants(
+        target, training_intervals, args.movement_threshold
+    )
     starts = starts_from_intervals(
         training_intervals, args.sequence_steps, args.sequence_stride
     )
@@ -376,6 +469,8 @@ def train_fixed_epochs(
                 use_raw=use_raw,
                 args=args,
                 rng=rng,
+                amplitude_scale=amplitude_scale,
+                positive_weight=positive_weight,
             )
         )
     return losses
@@ -407,6 +502,44 @@ def plot_result(
     axes[1].plot(time_axis, series[3], color="#2563eb", linewidth=0.8, label="two-stage prediction")
     axes[1].legend(frameon=False, ncol=2)
     axes[1].set_xlabel("original training time (s); gaps reset recurrent state")
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
+def plot_hurdle_result(
+    path: Path,
+    indices: np.ndarray,
+    target: np.ndarray,
+    prediction: np.ndarray,
+    probability: np.ndarray,
+    amplitude: np.ndarray,
+    threshold: float,
+) -> None:
+    order = np.argsort(indices)
+    index = indices[order]
+    gap = np.r_[False, np.diff(index) > 1]
+    time_axis = index / 25.0
+    series = [target[order].copy(), prediction[order].copy(), probability[order].copy(), amplitude[order].copy()]
+    for values in series:
+        values[gap] = np.nan
+    figure, axes = plt.subplots(3, 1, figsize=(15, 8), sharex=True)
+    axes[0].plot(time_axis, series[0], color="black", linewidth=0.8, label="cleaned target")
+    axes[0].plot(time_axis, series[1], color="#2563eb", linewidth=0.8, label="gate × amplitude")
+    axes[0].legend(frameon=False, ncol=2)
+    axes[1].plot(time_axis, series[2], color="#db2777", linewidth=0.8, label="movement probability")
+    axes[1].axhline(0.5, color="#94a3b8", linestyle="--", linewidth=0.7)
+    axes[1].fill_between(
+        time_axis, 0, 1,
+        where=np.nan_to_num(series[0], nan=0.0) >= threshold,
+        color="#f59e0b", alpha=0.12, label="target moving",
+    )
+    axes[1].set_ylim(-0.03, 1.03)
+    axes[1].legend(frameon=False, ncol=2)
+    axes[2].plot(time_axis, series[3], color="#7c3aed", linewidth=0.8, label="conditional amplitude")
+    axes[2].plot(time_axis, series[0], color="black", linewidth=0.6, alpha=0.7, label="target")
+    axes[2].legend(frameon=False, ncol=2)
+    axes[2].set_xlabel("original training time (s); gaps reset recurrent state")
     figure.tight_layout()
     figure.savefig(path, dpi=160)
     plt.close(figure)
@@ -446,7 +579,11 @@ def main() -> None:
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
     parser.add_argument("--validation-interval", type=int, default=2)
     parser.add_argument("--near-zero-std", type=float, default=1.0e-3)
-    parser.add_argument("--output-activation", choices=("linear", "softplus"), default="linear")
+    parser.add_argument(
+        "--output-activation",
+        choices=("linear", "softplus", "hurdle"),
+        default="linear",
+    )
     parser.add_argument("--loss", choices=("mse", "joint"), default="mse")
     parser.add_argument("--movement-threshold", type=float, default=0.08)
     parser.add_argument("--movement-weight", type=float, default=4.0)
@@ -648,6 +785,41 @@ def main() -> None:
         output / "validation_trajectories.png", outer_order,
         raw_all[outer_order], target_all[outer_order], initialized, prediction,
     )
+    hurdle_metrics: dict[str, float] = {}
+    if args.output_activation == "hurdle":
+        hurdle_order, hurdle_prediction, probability, amplitude = predict_hurdle_intervals(
+            final_model, cached_features, raw_windows, outer_validation_intervals,
+            use_raw, args.prediction_chunk_steps,
+        )
+        if not np.array_equal(hurdle_order, outer_order):
+            raise RuntimeError("hurdle and trajectory validation order disagree")
+        if not np.allclose(hurdle_prediction, prediction, atol=1.0e-6):
+            raise RuntimeError("hurdle and trajectory predictions disagree")
+        moving = target_all[outer_order] >= args.movement_threshold
+        predicted_moving = probability >= 0.5
+        true_positive = int(np.sum(moving & predicted_moving))
+        false_positive = int(np.sum(~moving & predicted_moving))
+        false_negative = int(np.sum(moving & ~predicted_moving))
+        precision = true_positive / max(true_positive + false_positive, 1)
+        recall = true_positive / max(true_positive + false_negative, 1)
+        hurdle_metrics = {
+            "movement_state_f1": float(
+                2.0 * precision * recall / max(precision + recall, 1.0e-12)
+            ),
+            "movement_state_precision": float(precision),
+            "movement_state_recall": float(recall),
+            "mean_rest_probability": float(np.mean(probability[~moving])) if (~moving).any() else 0.0,
+            "mean_movement_probability": float(np.mean(probability[moving])) if moving.any() else 0.0,
+            "rest_prediction_rms": float(np.sqrt(np.mean(np.square(prediction[~moving])))) if (~moving).any() else 0.0,
+            "movement_amplitude_rmse": float(np.sqrt(np.mean(np.square(amplitude[moving] - target_all[outer_order][moving])))) if moving.any() else 0.0,
+        }
+        np.save(output / "validation_movement_probability.npy", probability)
+        np.save(output / "validation_conditional_amplitude.npy", amplitude)
+        plot_hurdle_result(
+            output / "validation_hurdle_components.png",
+            outer_order, target_all[outer_order], prediction, probability,
+            amplitude, args.movement_threshold,
+        )
     torch.save(
         {
             "model_state_dict": copy.deepcopy(final_model.state_dict()),
@@ -673,6 +845,7 @@ def main() -> None:
         "outer_validation_raw_pcc": pearson(prediction, raw_all[outer_order]),
         "outer_validation_cleaned_pcc": pearson(prediction, target_all[outer_order]),
         "training_losses": losses,
+        "hurdle_metrics": hurdle_metrics,
         "runtime_seconds": time.perf_counter() - started,
         "configuration": {
             "warmup_epochs": args.warmup_epochs,

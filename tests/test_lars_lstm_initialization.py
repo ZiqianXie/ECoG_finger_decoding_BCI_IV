@@ -46,6 +46,26 @@ def test_softplus_output_preserves_gradient_below_zero() -> None:
     assert model.direct.bias.grad.abs().item() > 0
 
 
+def test_hurdle_output_is_gate_times_positive_amplitude() -> None:
+    model = ExactWindowFingerDecoder(
+        input_channels=2,
+        component_count=2,
+        selected_indices=np.arange(3),
+        feature_mean=np.zeros(3, dtype=np.float32),
+        feature_scale=np.ones(3, dtype=np.float32),
+        hidden_size=4,
+        output_activation="hurdle",
+    )
+    prediction, state_logit, amplitude = model.decode_with_hurdle(
+        torch.zeros(1, 5, 3)
+    )
+
+    torch.testing.assert_close(prediction, torch.sigmoid(state_logit) * amplitude)
+    assert torch.all(amplitude > 0)
+    prediction.sum().backward()
+    assert model.movement_head.weight.grad is not None
+
+
 def test_gpu_unfold_matches_numpy_stride_windows() -> None:
     recording = np.arange(40, dtype=np.float32).reshape(20, 2)
     expected = make_windows(recording, window_samples=5, stride_samples=2)
