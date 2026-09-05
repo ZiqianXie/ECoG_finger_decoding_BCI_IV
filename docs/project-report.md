@@ -25,14 +25,23 @@ Pearson correlation.
 The rebuilt preprocessing also explicitly applies zero-phase notch filters at
 60 Hz and its 120/180 Hz harmonics to suppress power-line contamination.
 
-The final leakage-controlled experiment refits the glove baseline inside every
-split, groups complete movement/rest events, and purges 95 bins around held-out
-intervals. Its frozen two-seed configuration reaches training-only event-fold
-`Macro-5` PCC of 0.488, 0.444, and 0.373 for S1--S3. After fixed-epoch refitting
-on all development rows, terminal released-test `Macro-5` is 0.506, 0.415, and
-0.486. The S1/S3 loss relative to event CV is too large to attribute to random
-seed alone. It is evidence of chronological nonstationarity and target-regime
-shift.
+Each prediction uses several seconds of preceding ECoG, so neighboring 40 ms
+samples share most of their input. A random sample-level split would therefore
+place nearly identical signal histories in training and validation. To avoid
+that leakage, the final experiment divides each subject/finger recording into
+three folds made from complete movement and rest events, and leaves a 95-bin
+(3.8 s) buffer around every held-out interval. The glove baseline is re-estimated
+inside each fold for the same reason: a validation target must not depend on a
+baseline fitted using the validation interval itself. Models and random seeds
+are chosen only from these out-of-fold predictions.
+
+Under this protocol, the selected two-seed configurations reach mean
+five-finger validation PCC of 0.488, 0.444, and 0.373 for S1--S3. They are then
+refitted for a fixed number of epochs using the complete development recording.
+On the released test recording, mean five-finger PCC is 0.506, 0.415, and 0.486.
+The S1 and S3 changes from cross-validation to the chronological test segment
+are too large to explain by seed variation alone, pointing instead to temporal
+nonstationarity and a change in the target regime.
 
 A separate retrospective diagnostic routes the best already-saved prediction
 per subject and finger after the released test has been inspected. It reaches
