@@ -90,6 +90,37 @@ def frozen_oof_seed_inclusion(
     }
 
 
+def resolve_ensemble_spec(
+    default_root: Path,
+    default_seeds: list[int] | tuple[int, ...],
+    ensemble_map: dict[str, object],
+    subject: int,
+    finger_name: str,
+) -> tuple[Path, tuple[int, ...]]:
+    """Resolve a predeclared per-finger model family and seed set."""
+    defaults = ensemble_map.get("default", {})
+    if not isinstance(defaults, dict):
+        raise TypeError("ensemble map default must be a mapping")
+    root = Path(defaults.get("input_root", default_root))
+    seeds = tuple(int(seed) for seed in defaults.get("seeds", default_seeds))
+    subjects = ensemble_map.get("subjects", {})
+    if not isinstance(subjects, dict):
+        raise TypeError("ensemble map subjects must be a mapping")
+    subject_map = subjects.get(subject, subjects.get(str(subject), {}))
+    if not isinstance(subject_map, dict):
+        raise TypeError(f"ensemble map subject {subject} must be a mapping")
+    finger_map = subject_map.get(finger_name, {})
+    if not isinstance(finger_map, dict):
+        raise TypeError(f"ensemble map S{subject} {finger_name} must be a mapping")
+    if "input_root" in finger_map:
+        root = Path(finger_map["input_root"])
+    if "seeds" in finger_map:
+        seeds = tuple(int(seed) for seed in finger_map["seeds"])
+    if not seeds:
+        raise ValueError(f"ensemble map gives no seeds for S{subject} {finger_name}")
+    return root, seeds
+
+
 def restore_model(
     checkpoint_path: Path,
     summary_path: Path,
@@ -183,6 +214,12 @@ def main() -> None:
     parser.add_argument("--input-root", type=Path, required=True)
     parser.add_argument("--fold-root", type=Path, required=True)
     parser.add_argument("--target-map", type=Path, required=True)
+    parser.add_argument(
+        "--ensemble-map",
+        type=Path,
+        default=None,
+        help="optional frozen per-finger input-root and seed overrides",
+    )
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--subjects", type=int, nargs="+", default=(1, 2, 3))
@@ -195,6 +232,7 @@ def main() -> None:
     args = parser.parse_args()
 
     target_map = yaml.safe_load(args.target_map.read_text())
+    ensemble_map = yaml.safe_load(args.ensemble_map.read_text()) if args.ensemble_map else {}
     device = torch.device(args.device)
     report: dict[str, object] = {
         "protocol": "frozen event-crossfold seed ensemble on official final validation",
@@ -223,18 +261,25 @@ def main() -> None:
                 24 + validation_start : 24 + validation_stop, finger
             ]
             raw_target = raw[validation_start:validation_stop, finger]
-            included_seeds, inclusion_report = frozen_oof_seed_inclusion(
+            model_root, requested_seeds = resolve_ensemble_spec(
                 args.input_root,
+                tuple(args.seeds),
+                ensemble_map,
+                subject,
+                finger_name,
+            )
+            included_seeds, inclusion_report = frozen_oof_seed_inclusion(
+                model_root,
                 args.fold_root,
                 subject,
                 finger_name,
-                tuple(args.seeds),
+                requested_seeds,
             )
             predictions: list[np.ndarray] = []
             member_reports: list[dict[str, object]] = []
             for seed in included_seeds:
                 for fold in range(3):
-                    root = args.input_root / f"sub{subject}" / finger_name / f"fold{fold}" / f"seed{seed}"
+                    root = model_root / f"sub{subject}" / finger_name / f"fold{fold}" / f"seed{seed}"
                     model = restore_model(
                         root / "model.pt", root / "summary.json", ecog.shape[1], device
                     )
@@ -265,6 +310,8 @@ def main() -> None:
             )
             subject_report["per_finger"][finger_name] = {
                 "target": target_name,
+                "model_root": str(model_root),
+                "requested_seeds": list(requested_seeds),
                 "metrics": metrics,
                 "seed_inclusion": inclusion_report,
                 "members": member_reports,

@@ -13,6 +13,7 @@ from scripts.summarize_event_lars_lstm_cv import morphology_metrics
 from scripts.evaluate_cv_ensemble_final_validation import (
     frozen_oof_seed_inclusion,
     movement_groups,
+    resolve_ensemble_spec,
     restore_model,
 )
 from scripts.train_exact_window_end_to_end import ExactWindowFingerDecoder
@@ -159,3 +160,20 @@ def test_final_validation_freezes_seed_inclusion_from_oof(tmp_path) -> None:
     assert included == [0]
     assert report["collapsed_seeds"] == [1]
     assert report["selection_partition"] == "training-partition out-of-fold predictions only"
+
+
+def test_final_validation_resolves_per_finger_ensemble_override() -> None:
+    mapping = {
+        "default": {"input_root": "outputs/base", "seeds": [0, 1]},
+        "subjects": {
+            3: {
+                "little": {"input_root": "outputs/long", "seeds": [1, 2]},
+            }
+        },
+    }
+
+    default = resolve_ensemble_spec(Path("unused"), (7,), mapping, 3, "ring")
+    overridden = resolve_ensemble_spec(Path("unused"), (7,), mapping, 3, "little")
+
+    assert default == (Path("outputs/base"), (0, 1))
+    assert overridden == (Path("outputs/long"), (1, 2))
