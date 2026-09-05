@@ -41,6 +41,13 @@ def main() -> None:
     parser.add_argument("--gpus", nargs="+", default=("0", "1", "2", "3"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/event_lars_e2e_nested_strict_v1"))
     parser.add_argument("--fold-root", type=Path, default=Path("outputs/event_stratified_folds_v1"))
+    parser.add_argument("--feature-root", type=Path, default=Path("outputs/windowed_ica_wavelet_asymmetric_v1"))
+    parser.add_argument("--ica-root", type=Path, default=Path("outputs/paper_ica_lars_v1"))
+    parser.add_argument(
+        "--frontend",
+        choices=("asymmetric", "overcomplete"),
+        default="asymmetric",
+    )
     parser.add_argument("--selection-cache-root", type=Path, default=Path("outputs/event_lars_selection_v1"))
     parser.add_argument("--inner-selection-cache-root", type=Path, default=Path("outputs/event_lars_inner_selection_v1"))
     parser.add_argument("--target", default=None)
@@ -133,6 +140,9 @@ def main() -> None:
                         "--output-activation", args.output_activation,
                         "--output-root", str(args.output_root),
                         "--fold-root", str(args.fold_root),
+                        "--feature-root", str(args.feature_root),
+                        "--ica-root", str(args.ica_root),
+                        "--frontend", args.frontend,
                         "--selection-cache-root", str(args.selection_cache_root),
                         "--inner-selection-cache-root", str(args.inner_selection_cache_root),
                     ]

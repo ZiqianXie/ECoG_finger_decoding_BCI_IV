@@ -1,0 +1,41 @@
+experiment: overcomplete_wavelet_nested_v1
+purpose: >-
+  Test whether redundant bior6.8 parent and child bands become useful when the
+  wavelet tree is fine-tuned end to end, rather than merely offered to a fixed
+  LARS fit.
+comparison:
+  control: event_lars_e2e_fulldev_seq50_v1
+  changed_factor: retain depth-3 parents beside their selected depth-4 children
+selection:
+  scope: full-development
+  folds: outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
+  target_map: configs/targetsafe_conservative_targets.yaml
+  lars_max_features: 512
+model:
+  frontend: overcomplete
+  initialized_features: outputs/windowed_ica_wavelet_overcomplete_v1
+  spatial_initialization: outputs/paper_ica_lars_v1
+  head: nonlinear LSTM initialized in the LARS linear regime
+  output_activation: softplus
+  sequence_steps: 50
+training:
+  seeds: [0]
+  warmup_epochs: 8
+  maximum_epochs: 48
+  learning_rate: 1.0e-4
+  spatial_learning_rate: 3.0e-6
+  wavelet_learning_rate: 3.0e-6
+  batch_size: 32
+  unfrozen_batch_size: 6
+evaluation:
+  primary: per-finger event-grouped out-of-fold PCC
+  secondary:
+    - velocity PCC
+    - movement-state F1
+    - rest RMS
+    - event peak ratio
+  released_test_touched: false
+next_stage_if_promising: >-
+  Replace static LARS atom activation with data-dependent bottom-up gates and
+  then compare a top-down recurrent query and an idle-capable Sinkhorn
+  assignment under the same folds.

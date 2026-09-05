@@ -6,6 +6,7 @@ import torch
 
 from scripts.train_event_grouped_lars_e2e_nested import (
     batch_loss,
+    build_model,
     event_grouped_cv_splits,
     fit_or_load_inner_lars,
     hurdle_validation_nll,
@@ -31,6 +32,29 @@ def test_event_grouped_subfolds_are_disjoint_and_complete() -> None:
         assert np.union1d(training, validation).size == training_indices.size
         validation_seen.extend(validation.tolist())
     assert np.array_equal(np.sort(validation_seen), np.arange(training_indices.size))
+
+
+def test_nested_builder_supports_trainable_overcomplete_wavelet_tree() -> None:
+    selected = np.array([0, 17, 324], dtype=np.int64)
+    model = build_model(
+        input_channels=2,
+        ica=np.eye(2, dtype=np.float32),
+        selected=selected,
+        mean=np.zeros(selected.size, dtype=np.float32),
+        scale=np.ones(selected.size, dtype=np.float32),
+        coefficients=np.array([0.2, -0.1, 0.05], dtype=np.float32),
+        intercept=0.01,
+        hidden_size=3,
+        near_zero_std=1.0e-3,
+        output_activation="linear",
+        device=torch.device("cpu"),
+        frontend="overcomplete",
+    )
+
+    output = model(torch.randn(1, 2, 2, 1000))
+
+    assert output.shape == (1, 2)
+    assert model.frontend == "overcomplete"
 
 
 def test_morphology_metrics_reward_matching_shape() -> None:

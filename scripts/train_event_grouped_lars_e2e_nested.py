@@ -46,6 +46,7 @@ def build_model(
     output_activation: str, device: torch.device,
     movement_fraction: float | None = None,
     candidate_scale: float = 1.0,
+    frontend: str = "asymmetric",
 ) -> ExactWindowFingerDecoder:
     model = ExactWindowFingerDecoder(
         input_channels=input_channels,
@@ -54,7 +55,7 @@ def build_model(
         feature_mean=mean,
         feature_scale=scale,
         hidden_size=hidden_size,
-        frontend="asymmetric",
+        frontend=frontend,
         head_initialization="lars_linear_regime",
         output_activation=output_activation,
     ).to(device)
@@ -675,6 +676,12 @@ def main() -> None:
     )
     parser.add_argument("--feature-root", type=Path, default=Path("outputs/windowed_ica_wavelet_asymmetric_v1"))
     parser.add_argument("--ica-root", type=Path, default=Path("outputs/paper_ica_lars_v1"))
+    parser.add_argument(
+        "--frontend",
+        choices=("asymmetric", "overcomplete"),
+        default="asymmetric",
+        help="wavelet topology corresponding to --feature-root",
+    )
     parser.add_argument("--fold-root", type=Path, default=Path("outputs/event_stratified_folds_v1"))
     parser.add_argument("--selection-cache-root", type=Path, default=Path("outputs/event_lars_selection_v1"))
     parser.add_argument("--inner-selection-cache-root", type=Path, default=Path("outputs/event_lars_inner_selection_v1"))
@@ -791,6 +798,7 @@ def main() -> None:
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
         candidate_scale=args.candidate_scale,
+        frontend=args.frontend,
         output_activation=args.output_activation, device=device,
         movement_fraction=float(
             np.mean(target_all[outer_training_mask] >= args.movement_threshold)
@@ -850,6 +858,7 @@ def main() -> None:
             hidden_size=args.hidden_size,
             near_zero_std=args.near_zero_std,
             candidate_scale=args.candidate_scale,
+            frontend=args.frontend,
             output_activation=args.output_activation, device=device,
             movement_fraction=float(
                 np.mean(target_all[training_mask] >= args.movement_threshold)
@@ -891,6 +900,7 @@ def main() -> None:
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
         candidate_scale=args.candidate_scale,
+        frontend=args.frontend,
         output_activation=args.output_activation, device=device,
         movement_fraction=float(
             np.mean(target_all[outer_training_mask] >= args.movement_threshold)
@@ -966,7 +976,10 @@ def main() -> None:
         output / "model.pt",
     )
     report = {
-        "protocol": "nested per-finger event folds; frozen LARS-LSTM then end-to-end ICA/bior6.8 fine-tuning",
+        "protocol": (
+            "nested per-finger event folds; frozen LARS-LSTM then end-to-end "
+            f"ICA/bior6.8 {args.frontend} fine-tuning"
+        ),
         "subject": args.subject,
         "finger": args.finger,
         "fold": args.fold,
@@ -994,6 +1007,9 @@ def main() -> None:
             "loss": args.loss,
             "output_activation": args.output_activation,
             "target": target_name,
+            "frontend": args.frontend,
+            "feature_root": str(args.feature_root),
+            "ica_root": str(args.ica_root),
         },
     }
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")

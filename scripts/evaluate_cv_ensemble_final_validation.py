@@ -113,7 +113,7 @@ def restore_model(
         feature_mean=np.asarray(state["feature_mean"], dtype=np.float32),
         feature_scale=np.asarray(state["feature_scale"], dtype=np.float32),
         hidden_size=hidden_size,
-        frontend="asymmetric",
+        frontend=summary.get("configuration", {}).get("frontend", "asymmetric"),
         head_initialization="lars_linear_regime",
         output_activation=summary["configuration"]["output_activation"],
     ).to(device)
