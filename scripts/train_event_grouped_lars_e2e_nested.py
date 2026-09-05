@@ -251,8 +251,8 @@ def batch_loss(
             )
         else:
             amplitude_loss = amplitude.sum() * 0.0
-        # Weighted Bernoulli state likelihood plus a unit-variance
-        # conditional Gaussian amplitude likelihood on moving bins.
+        # Bernoulli state likelihood plus a unit-variance conditional
+        # Gaussian amplitude likelihood on moving bins.
         return state_loss + 0.5 * amplitude_loss
     prediction = decoded
     if args.loss == "mse":
@@ -395,7 +395,8 @@ def hurdle_training_constants(
         amplitude_scale = torch.quantile(values[moving], 0.95).clamp_min(1.0e-3)
     else:
         amplitude_scale = values.new_tensor(1.0)
-    positive_weight = ((~moving).sum() / moving.sum().clamp_min(1)).clamp(1.0, 12.0)
+    # Keep this a calibrated likelihood rather than a class-balanced surrogate.
+    positive_weight = values.new_tensor(1.0)
     return amplitude_scale.detach(), positive_weight.detach()
 
 
