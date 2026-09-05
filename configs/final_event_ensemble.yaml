@@ -4,22 +4,45 @@
 default:
   input_root: outputs/event_lars_e2e_softplus_targetsafe_lr1e4_v1
   seeds: [0, 1]
+  sequence_steps: 50
+  sequence_stride: 25
+  batch_size: 32
+  unfrozen_batch_size: 6
+  warmup_epochs: 8
+  learning_rate: 1.0e-4
+  spatial_learning_rate: 3.0e-6
+  wavelet_learning_rate: 3.0e-6
+  weight_decay: 1.0e-4
+  output_activation: softplus
+  loss: mse
 
 subjects:
   1:
     thumb:
       input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
       seeds: [0, 1]
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
     index:
       input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
       seeds: [0, 1]
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
     little:
       input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
       seeds: [0, 1]
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
   2:
     ring:
       input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
       seeds: [0, 1]
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
     little:
       input_root: outputs/event_lars_e2e_softplus_targetsafe_lr1e4_v1
       seeds: [0]
@@ -27,3 +50,6 @@ subjects:
     little:
       input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
       seeds: [0, 1]
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
