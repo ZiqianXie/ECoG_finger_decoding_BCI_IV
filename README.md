@@ -129,14 +129,15 @@ The ECoG is notch-filtered at 60, 120, and 180 Hz before the learned filter bank
 This explicitly removes narrow power-line components instead of asking the
 network to suppress them from limited data.
 
-For the eleven ICA-wavelet routes, the spatial and wavelet filters are
+For the ten ICA-wavelet routes, the spatial and wavelet filters are
 initialized from FastICA and the biorthogonal tree, then trained during the
 second stage. The four joint-dictionary routes keep both their ICA-wavelet and
 CSP/designed-band atoms fixed and train only the selected nonlinear temporal
-head. The initial wavelet frequency responses are measured directly; the
-intended eight-band coverage is shown below.
-
-![Measured frequency responses of the initialized wavelet tree](docs/figures/wavelet-initialization-frequency-response.png)
+head. The wavelet tree begins as eight overlapping views ordered from low to
+high frequency; gradient descent can then adjust their filters. The measured
+responses and implementation checks are kept in the
+[project report](docs/project-report.md), where they can be read with the
+corresponding validation details.
 
 ### Why seven additional frequency bands?
 
@@ -271,12 +272,10 @@ main events while producing unacceptable motion during rest. PCC is retained
 for comparison with the paper, but model diagnosis also includes derivative
 PCC, rest RMS, movement-state F1, peak amplitude, and event-aligned plots.
 
-This distinction is especially important for S3 little finger. Its cleaned
-flexion PCC (0.703) is higher than its raw-trajectory PCC (0.669), so the result
-is not explained by following raw glove drift. Its derivative PCC is only
-0.205, however, and its peak amplitude is about 66% of the target. The model is
-therefore better at recovering movement state and the broad flexion envelope
-than at reproducing every individual flexion cycle.
+This distinction is especially important for S3 little finger. That decoder
+reliably finds broad movement episodes but smooths some individual flexion
+cycles. Its PCC should therefore be read as evidence for movement-state and
+envelope reconstruction, not equally precise recovery of every peak.
 
 The visualization uses a label-free display transform: a development-derived
 baseline is removed, a smooth nonnegative projection is applied, and gain is
@@ -295,56 +294,19 @@ rest leakage. S2 often recovers onset while missing individual peaks, and its
 weak middle and little-finger routes remain an open problem. These observations,
 not PCC alone, motivate the cross-finger and velocity experiments in the report.
 
-### Little-finger target audit
+### Why S3 little finger is handled differently
 
-The S3 discrepancy was exceptional: the paper reported 0.64 for LARS, 0.68 for
-linear regression, and 0.75 for LSTM, whereas the initial OOF-routed final
-refit reached only 0.423. The paper plots example trajectories only for S1, so
-its S3 trajectory cannot be visually compared. A retrospectively selected S3
-model at 0.759 nevertheless showed that the signal was recoverable.
+S3 contains unusually strong little/ring co-movement. Treating every small
+deflection as intended little-finger motion makes the target ambiguous, while
+hard winner-take-all cleaning can erase genuine coupled movement or assign it
+to the wrong finger. The current model instead combines the evidence from all
+five decoders to estimate a soft movement state. It suppresses likely rest
+activity without forcing the hand into five mutually exclusive categories.
 
-I tested the target-cleaning hypothesis using the development recording alone.
-In S1 and S2, only 0.9% and 1.5% of little-finger target energy occurs while
-another finger has the larger trajectory. S3 is different: another finger
-dominates 52.7% of little-active bins, the little and ring targets correlate
-0.649, and the OOF little decoder correlates more strongly with ring (0.327)
-than with little (0.269).
-
-That is training-only evidence for genuine S3 little/ring ambiguity, but it is
-not evidence for blindly deleting coupled motion. Two conservative probes were
-cross-fitted within the purged event folds: nonnegative subtraction of estimated
-passive coupling, and soft attenuation only when another finger was stronger.
-Neither improved a newly fitted held-out linear decoder for any subject. The
-unmodified/half-strength raw-glove PCC pairs were 0.390/0.390 for S1,
-0.267/0.266 for S2, and 0.274/0.271 for S3. The headline targets therefore stay
-unchanged at that stage. This ruled out fixed target deletion and motivated
-learned event-level attribution.
-
-The paper used a different target family: a global fitted baseline, removal of
-small fluctuations, and winner-take-all cleaning. On the same development
-folds, changing only the S3 little target to the paper baseline improved the
-fast held-out linear probe from 0.274 to 0.290. Adding a little-only winner mask
-reached 0.280, so the baseline helped but winner-take-all did not explain the
-old 0.75. A nested comparison with the stronger multibase/state-aware decoder
-then confirmed that result: the paper baseline without winner-take-all reached
-mean fold PCC 0.620, versus 0.590 for the current local target and 0.539 with
-winner-take-all.
-
-A soft six-state gate—rest or one dominant finger—uses all five decoded
-trajectories while retaining training-estimated co-movement. It improved the
-three held-out folds from 0.630/0.610/0.641 to 0.696/0.633/0.697; every fold
-selected strength 0.5. The frozen six-seed refit then reached 0.669 on S3
-little and raised S3 Macro-5 to 0.601. The cleaned trajectory captures the main
-movement trains and has no negative values, but individual cycles remain
-smoothed, amplitude is conservative, and some rest activity persists.
-
-![Little-finger training-only audit](docs/figures/little-finger-training-only-audit.png)
-
-![Representative little-finger development events](docs/figures/little-finger-training-only-examples.png)
-
-![Paper-style little-target screen](docs/figures/little-paper-target-oof.png)
-
-![S3 little state-aware strongest events](docs/figures/s3-little-paper-latent-events.png)
+This subject-specific route is used only because it was selected from held-out
+development events. The headline table reports its final result; the target
+comparisons, fold scores, and event plots are retained in the
+[project report](docs/project-report.md#development-only-little-finger-target-audit).
 
 ## Main experimental conclusions
 

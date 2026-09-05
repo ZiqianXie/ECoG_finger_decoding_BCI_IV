@@ -754,6 +754,19 @@ S3 little and visually follows the three strongest released-test events. This
 is diagnostic rather than confirmatory, but it proves that the available ECoG
 and the reconstructed feature families can recover the S3 little signal.
 
+The saved six-seed ICA-wavelet refit was subsequently checked against its
+FastICA initialization. The early event-fold implementation used a spatial
+learning rate of `1e-6`; the full-development selection and refit increased it
+to `3e-6`. Each selected full refit nevertheless stopped at epoch 14 after an
+eight-epoch frozen warm-up, leaving only six epochs of spatial updates. Across
+the six seeds, the complete spatial matrix changed by only 0.053--0.062% in
+Frobenius norm. The 14 ICA components retained by LARS changed by a median of
+only 0.111--0.130%, and the largest rotation of any row was 0.125 degrees. Thus
+this route was trainable in software but remained effectively at its ICA
+initialization; it was not a strong reproduction of the spatial adaptation
+reported in the paper. The per-seed audit is stored in
+`docs/results/s3-little-ica-spatial-update-audit.json`.
+
 That large gap raised a narrower hypothesis: retaining every baseline-corrected
 glove displacement may preserve useful middle/ring motion but make the little
 target less specific. Because that observation came from the released-test
