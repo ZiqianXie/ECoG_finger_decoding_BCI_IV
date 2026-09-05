@@ -44,6 +44,13 @@ of the 2018 model:
 4. LARS selects a sparse set of spatial-spectral features.
 5. A nonlinear LSTM models the temporal history and predicts the trajectory.
 
+The wavelet tree is literal: one signal is split into low/high children at the
+first level, those two are split into four at the second, and the four are split
+into eight at the third. Every node starts from the same low/high `bior6.8`
+prototype pair, but each copy is an independent trainable filter. Dilations of
+1, 2, and 4 replace temporal downsampling, so all eight paths retain the original
+time grid. Initially zero cross-branch connections are also trainable.
+
 The LARS solution is more than a pruning step. It gives the recurrent decoder a
 working regression function before nonlinear optimization begins. Parameters
 that should initially contribute little are randomized at approximately
@@ -262,8 +269,6 @@ without a selection rule that generalizes across recording periods.
 The per-finger values and the provenance of every route are recorded in
 [`docs/results/retrospective-extension.json`](docs/results/retrospective-extension.json).
 
-![Paper values and retrospective per-finger PCC](docs/figures/retrospective-extension-pcc.png)
-
 ## PCC and trajectory quality
 
 PCC is invariant to affine scaling. A prediction can therefore correlate well
@@ -294,18 +299,19 @@ rest leakage. S2 often recovers onset while missing individual peaks, and its
 weak middle and little-finger routes remain an open problem. These observations,
 not PCC alone, motivate the cross-finger and velocity experiments in the report.
 
-### Why S3 little finger is handled differently
+### Why S3 little finger needs a state model
 
 S3 contains unusually strong little/ring co-movement. Treating every small
 deflection as intended little-finger motion makes the target ambiguous, while
 hard winner-take-all cleaning can erase genuine coupled movement or assign it
-to the wrong finger. The current model instead combines the evidence from all
-five decoders to estimate a soft movement state. It suppresses likely rest
-activity without forcing the hand into five mutually exclusive categories.
+to the wrong finger. The S3 little-finger decoder therefore combines evidence
+from all five finger decoders to estimate a soft rest-versus-movement state.
+The gate can suppress activity that looks like rest, but it never transfers a
+trajectory from one finger to another.
 
-This subject-specific route is used only because it was selected from held-out
-development events. The headline table reports its final result; the target
-comparisons, fold scores, and event plots are retained in the
+This extra state model is subject-specific because the little/ring ambiguity is
+much stronger in S3 than in S1 or S2. Its validation and event-level diagnostics
+are kept in the
 [project report](docs/project-report.md#development-only-little-finger-target-audit).
 
 ## Main experimental conclusions

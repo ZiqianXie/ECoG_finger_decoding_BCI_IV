@@ -58,6 +58,13 @@ def main() -> None:
     parser.add_argument("--checkpoint-root", type=Path, required=True)
     parser.add_argument("--ica-path", type=Path, required=True)
     parser.add_argument("--seeds", type=int, nargs="+", default=range(6))
+    parser.add_argument(
+        "--folds",
+        type=int,
+        nargs="+",
+        default=None,
+        help="optional nested-CV fold directories below checkpoint-root",
+    )
     parser.add_argument("--warmup-epochs", type=int, default=8)
     parser.add_argument("--features-per-component", type=int, default=11 * 25)
     parser.add_argument("--output", type=Path, required=True)
@@ -65,38 +72,60 @@ def main() -> None:
 
     initial = np.load(args.ica_path)
     runs: list[dict[str, object]] = []
-    for seed in args.seeds:
-        run = args.checkpoint_root / f"seed{seed}"
+    run_locations = (
+        [
+            (fold, seed, args.checkpoint_root / f"fold{fold}" / f"seed{seed}")
+            for fold in args.folds
+            for seed in args.seeds
+        ]
+        if args.folds is not None
+        else [(None, seed, args.checkpoint_root / f"seed{seed}") for seed in args.seeds]
+    )
+    for fold, seed, run in run_locations:
         payload = torch.load(run / "model.pt", map_location="cpu", weights_only=False)
         state = payload["model_state_dict"]
         trained = state["spatial.weight"][:, :, 0].numpy()
         selected = np.asarray(payload["feature_indices"], dtype=np.int64)
         selected_components = np.unique(selected // args.features_per_component)
-        summary = json.loads((run / "training_summary.json").read_text())
+        summary_path = run / "training_summary.json"
+        if not summary_path.exists():
+            summary_path = run / "summary.json"
+        summary = json.loads(summary_path.read_text())
         selected_epoch = int(payload["selected_epoch"])
-        runs.append(
-            {
-                "seed": seed,
-                "selected_epoch": selected_epoch,
-                "warmup_epochs": args.warmup_epochs,
-                "unfrozen_epochs": max(0, selected_epoch - args.warmup_epochs),
-                "spatial_learning_rate": summary["configuration"]["spatial_learning_rate"],
-                **spatial_change_metrics(initial, trained, selected_components),
-            }
-        )
+        run_result: dict[str, object] = {
+            "seed": seed,
+            "selected_epoch": selected_epoch,
+            "warmup_epochs": args.warmup_epochs,
+            "unfrozen_epochs": max(0, selected_epoch - args.warmup_epochs),
+            "spatial_learning_rate": summary["configuration"]["spatial_learning_rate"],
+            **spatial_change_metrics(initial, trained, selected_components),
+        }
+        if fold is not None:
+            run_result["fold"] = fold
+        runs.append(run_result)
 
     frobenius = np.asarray([run["relative_frobenius_change"] for run in runs])
     selected_median = np.asarray(
         [run["selected_row_relative_change_median"] for run in runs]
     )
     max_angles = np.asarray([run["max_row_angle_degrees"] for run in runs])
+    unfrozen_epochs = np.asarray([run["unfrozen_epochs"] for run in runs])
+    effectively_initialized = bool(
+        max_angles.max() < 0.5 and selected_median.max() < 0.005
+    )
     result = {
         "checkpoint_root": str(args.checkpoint_root),
         "ica_initialization": str(args.ica_path),
         "definition": "trained spatial convolution minus its FastICA initialization",
         "runs": runs,
         "aggregate": {
-            "seed_count": len(runs),
+            "run_count": len(runs),
+            "seed_count": len(set(args.seeds)),
+            "runs_with_spatial_updates": int(np.sum(unfrozen_epochs > 0)),
+            "unfrozen_epoch_range": [
+                int(unfrozen_epochs.min()),
+                int(unfrozen_epochs.max()),
+            ],
             "relative_frobenius_change_range": [
                 float(frobenius.min()),
                 float(frobenius.max()),
@@ -109,6 +138,9 @@ def main() -> None:
             "interpretation": (
                 "The spatial layer was technically unfrozen but remained effectively at its "
                 "FastICA initialization."
+                if effectively_initialized
+                else "At least one selected checkpoint moved measurably from its FastICA "
+                "initialization."
             ),
         },
     }

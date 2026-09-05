@@ -767,6 +767,19 @@ initialization; it was not a strong reproduction of the spatial adaptation
 reported in the paper. The per-seed audit is stored in
 `docs/results/s3-little-ica-spatial-update-audit.json`.
 
+To test whether the conservative spatial learning rate caused this near-freeze,
+I screened `1e-5`, `3e-5`, and `1e-4` against the existing `3e-6` setting using
+the same three purged event folds and two seeds, without consulting released-test
+labels. The two-seed OOF PCC values were 0.2700, 0.2568, and 0.2672, respectively,
+versus 0.2696 at `3e-6`. At `1e-5`, the largest selected-checkpoint row rotation
+was still only 0.146 degrees. The larger rates did move the spatial matrix
+measurably—up to 1.275 degrees at `3e-5` and 4.532 degrees at `1e-4`—but did not
+improve OOF decoding. The `1e-5` gain was 0.0005 and smaller than the observed
+seed variation, so it does not justify another final refit. The missing
+paper-level gain is therefore not explained by spatial learning rate alone.
+The compact screen record is stored in
+`docs/results/s3-little-spatial-lr-screen.json`.
+
 That large gap raised a narrower hypothesis: retaining every baseline-corrected
 glove displacement may preserve useful middle/ring motion but make the little
 target less specific. Because that observation came from the released-test

@@ -1,0 +1,47 @@
+{
+  "question": "Does a larger spatial learning rate make the FastICA-initialized S3 little-finger stem learn enough to improve decoding?",
+  "selection_data": "complete 400000-sample development recording",
+  "protocol": "three purged event-grouped folds; two seeds per fold",
+  "released_test_touched": false,
+  "fixed_settings": {
+    "warmup_epochs": 8,
+    "maximum_epochs": 48,
+    "head_learning_rate": 0.0001,
+    "wavelet_learning_rate": 0.000003
+  },
+  "results": [
+    {
+      "spatial_learning_rate": 0.000003,
+      "ensemble_oof_pcc": 0.26955413067470396,
+      "seed_oof_pcc": [0.270146054706842, 0.26673301770861096],
+      "maximum_relative_frobenius_change": 0.0005315972002243168,
+      "maximum_selected_row_median_relative_change": 0.0007958464171371204,
+      "maximum_row_angle_degrees": 0.0719198794156845
+    },
+    {
+      "spatial_learning_rate": 0.00001,
+      "ensemble_oof_pcc": 0.2700310151428082,
+      "seed_oof_pcc": [0.27128018507947577, 0.26839262117045626],
+      "maximum_relative_frobenius_change": 0.0008666020706739984,
+      "maximum_selected_row_median_relative_change": 0.0014410931264980612,
+      "maximum_row_angle_degrees": 0.14597462934233288
+    },
+    {
+      "spatial_learning_rate": 0.00003,
+      "ensemble_oof_pcc": 0.25679289896025004,
+      "seed_oof_pcc": [0.2538241458064579, 0.25882508256566994],
+      "maximum_relative_frobenius_change": 0.006136376898332438,
+      "maximum_selected_row_median_relative_change": 0.012253192239469766,
+      "maximum_row_angle_degrees": 1.2745475940544615
+    },
+    {
+      "spatial_learning_rate": 0.0001,
+      "ensemble_oof_pcc": 0.26724958105255486,
+      "seed_oof_pcc": [0.2692600016667857, 0.2583728422766317],
+      "maximum_relative_frobenius_change": 0.02459122475940609,
+      "maximum_selected_row_median_relative_change": 0.047836812743932915,
+      "maximum_row_angle_degrees": 4.531617253673846
+    }
+  ],
+  "decision": "Retain 3e-6. The 1e-5 improvement is negligible relative to seed variation, while larger rates move the spatial filters but reduce OOF PCC."
+}
