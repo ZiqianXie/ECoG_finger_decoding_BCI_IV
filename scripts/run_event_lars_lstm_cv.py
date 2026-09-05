@@ -21,6 +21,8 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=(0, 1))
     parser.add_argument("--gpus", nargs="+", default=("2", "3"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/event_lars_lstm_wavelet_v1"))
+    parser.add_argument("--feature-root", type=Path, default=Path("outputs/windowed_ica_wavelet_asymmetric_v1"))
+    parser.add_argument("--selection-cache-root", type=Path, default=Path("outputs/event_lars_selection_v1"))
     parser.add_argument("--epochs", type=int, default=40)
     args = parser.parse_args()
 
@@ -49,6 +51,8 @@ def main() -> None:
                         "--fold", str(fold),
                         "--seed", str(seed),
                         "--epochs", str(args.epochs),
+                        "--feature-root", str(args.feature_root),
+                        "--selection-cache-root", str(args.selection_cache_root),
                         "--output-root", str(args.output_root),
                     ]
                     tasks.append((name, command, destination))

@@ -66,12 +66,15 @@ def generate(
     stride_samples: int,
     batch_size: int,
     device: torch.device,
+    retain_split_parents: bool = False,
 ) -> tuple[int, int, list[str]]:
     windows = np.lib.stride_tricks.sliding_window_view(
         ecog, window_shape=window_samples, axis=0
     )[::stride_samples]
     retained = np.asarray(
-        [index for index in range(8) if index not in set(split_parents.tolist())],
+        list(range(8))
+        if retain_split_parents
+        else [index for index in range(8) if index not in set(split_parents.tolist())],
         dtype=np.int64,
     )
     children = np.asarray(
@@ -123,6 +126,11 @@ def main() -> None:
     parser.add_argument("--stride-samples", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--minimum-split-power", type=float, default=0.25)
+    parser.add_argument(
+        "--retain-split-parents",
+        action="store_true",
+        help="retain selected depth-3 parents as redundant atoms beside their children",
+    )
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
 
@@ -154,6 +162,7 @@ def main() -> None:
         },
         "split_depth3_paths": [depth3.band_names[index] for index in split_parents],
         "lmp": {"cutoff_hz": 5.0, "signed": True, "fir_taps": 201},
+        "retain_split_parents": args.retain_split_parents,
     }
     for prefix in ("train", "test"):
         ecog = np.load(prepared / f"{prefix}_ecog.npy", mmap_mode="r")
@@ -169,6 +178,7 @@ def main() -> None:
             args.stride_samples,
             args.batch_size,
             device,
+            args.retain_split_parents,
         )
         result[prefix] = {"rows": rows, "features": columns}
         result["feature_band_names"] = names

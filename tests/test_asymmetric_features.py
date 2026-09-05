@@ -52,3 +52,20 @@ def test_asymmetric_initialization_matches_full_packet_children() -> None:
         F.conv1d(F.pad(flat, (100, 100), mode="reflect"), kernel), 40, 40
     ).reshape(1, 2, 1, 25)
     torch.testing.assert_close(observed[:, :, 10:], expected_lmp)
+
+
+def test_overcomplete_variant_retains_parents_and_children() -> None:
+    torch.manual_seed(5)
+    values = torch.randn(1, 2, 1000)
+    overcomplete = AsymmetricWaveletPacketEnergy(
+        trainable=False, retain_split_parents=True
+    )
+    depth3 = WaveletPacketEnergy(levels=3, trainable=False, padding_mode="constant")
+    depth4 = WaveletPacketEnergy(levels=4, trainable=False, padding_mode="constant")
+    observed = overcomplete(values)
+    assert observed.shape == (1, 2, 13, 25)
+    torch.testing.assert_close(observed[:, :, :8], depth3(values))
+    torch.testing.assert_close(
+        observed[:, :, 8:12],
+        depth4(values).index_select(2, torch.tensor([2, 3, 6, 7])),
+    )

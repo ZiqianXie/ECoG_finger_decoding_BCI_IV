@@ -496,6 +496,7 @@ class AsymmetricWaveletPacketEnergy(nn.Module):
         sampling_rate_hz: float = 1000.0,
         lmp_cutoff_hz: float = 5.0,
         lmp_kernel_size: int = 201,
+        retain_split_parents: bool = False,
     ) -> None:
         super().__init__()
         parsed = tuple(sorted(set(int(index) for index in split_parents)))
@@ -546,7 +547,12 @@ class AsymmetricWaveletPacketEnergy(nn.Module):
         self.lmp.weight.requires_grad_(trainable)
 
         self.split_parents = parsed
-        self.retained_parents = tuple(index for index in range(8) if index not in parsed)
+        self.retain_split_parents = bool(retain_split_parents)
+        self.retained_parents = tuple(
+            range(8)
+            if self.retain_split_parents
+            else (index for index in range(8) if index not in parsed)
+        )
         self.padding_mode = padding_mode
         self.energy_window_samples = int(energy_window_samples)
         self.energy_stride_samples = int(energy_stride_samples)

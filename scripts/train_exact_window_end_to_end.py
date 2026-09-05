@@ -79,7 +79,7 @@ class ExactWindowFingerDecoder(nn.Module):
                 energy_stride_samples=40,
                 padding_mode="constant",
             )
-        elif frontend == "asymmetric":
+        elif frontend in ("asymmetric", "overcomplete"):
             self.spatial = nn.Conv1d(input_channels, component_count, 1, bias=False)
             self.wavelet = AsymmetricWaveletPacketEnergy(
                 wavelet="bior6.8",
@@ -89,6 +89,7 @@ class ExactWindowFingerDecoder(nn.Module):
                 padding_mode="constant",
                 energy_window_samples=40,
                 energy_stride_samples=40,
+                retain_split_parents=frontend == "overcomplete",
             )
         elif frontend == "wavelet":
             self.spatial = nn.Conv1d(input_channels, component_count, 1, bias=False)
@@ -311,7 +312,7 @@ def main() -> None:
     parser.add_argument("--wavelet-levels", type=int, choices=(3, 4), default=3)
     parser.add_argument(
         "--frontend",
-        choices=("wavelet", "asymmetric", "csp_band"),
+        choices=("wavelet", "asymmetric", "overcomplete", "csp_band"),
         default="wavelet",
     )
     parser.add_argument("--csp-correction-kernel-size", type=int, default=33)
