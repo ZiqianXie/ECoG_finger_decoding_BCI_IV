@@ -52,10 +52,15 @@ def main() -> None:
     )
     parser.add_argument("--warmup-epochs", type=int, default=6)
     parser.add_argument("--max-epochs", type=int, default=24)
+    parser.add_argument("--max-features", type=int, default=512)
+    parser.add_argument("--hidden-size", type=int, default=10)
+    parser.add_argument("--near-zero-std", type=float, default=1.0e-3)
+    parser.add_argument("--candidate-scale", type=float, default=1.0)
     parser.add_argument("--learning-rate", type=float, default=3.0e-5)
     parser.add_argument("--gate-learning-rate", type=float, default=1.0e-3)
     parser.add_argument("--spatial-learning-rate", type=float, default=1.0e-6)
     parser.add_argument("--wavelet-learning-rate", type=float, default=1.0e-6)
+    parser.add_argument("--weight-decay", type=float, default=1.0e-4)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--unfrozen-batch-size", type=int, default=6)
     parser.add_argument("--sequence-steps", type=int, default=50)
@@ -107,10 +112,15 @@ def main() -> None:
                         "--seed", str(seed),
                         "--warmup-epochs", str(args.warmup_epochs),
                         "--max-epochs", str(args.max_epochs),
+                        "--max-features", str(args.max_features),
+                        "--hidden-size", str(args.hidden_size),
+                        "--near-zero-std", str(args.near_zero_std),
+                        "--candidate-scale", str(args.candidate_scale),
                         "--learning-rate", str(args.learning_rate),
                         "--gate-learning-rate", str(args.gate_learning_rate),
                         "--spatial-learning-rate", str(args.spatial_learning_rate),
                         "--wavelet-learning-rate", str(args.wavelet_learning_rate),
+                        "--weight-decay", str(args.weight_decay),
                         "--batch-size", str(args.batch_size),
                         "--unfrozen-batch-size", str(args.unfrozen_batch_size),
                         "--sequence-steps", str(args.sequence_steps),

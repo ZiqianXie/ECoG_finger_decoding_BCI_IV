@@ -1,0 +1,16 @@
+default:
+  input_root: outputs/targeted_h40_seq100_mf512_v1
+  seeds: [0]
+  sequence_steps: 100
+  sequence_stride: 25
+  batch_size: 24
+  unfrozen_batch_size: 4
+  warmup_epochs: 8
+  learning_rate: 1.0e-4
+  spatial_learning_rate: 3.0e-6
+  wavelet_learning_rate: 3.0e-6
+  weight_decay: 1.0e-4
+  output_activation: softplus
+  loss: mse
+
+subjects: {}

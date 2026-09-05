@@ -1,0 +1,18 @@
+default:
+  input_root: outputs/targeted_s1thumb_raw_h40_linear_v1
+  # Frozen from training-only OOF evidence: pair PCC 0.6138, versus 0.6102
+  # for all three seeds. No released validation/test label informed this choice.
+  seeds: [1, 2]
+  sequence_steps: 100
+  sequence_stride: 25
+  batch_size: 24
+  unfrozen_batch_size: 4
+  warmup_epochs: 8
+  learning_rate: 1.0e-4
+  spatial_learning_rate: 3.0e-6
+  wavelet_learning_rate: 3.0e-6
+  weight_decay: 1.0e-4
+  output_activation: linear
+  loss: mse
+
+subjects: {}

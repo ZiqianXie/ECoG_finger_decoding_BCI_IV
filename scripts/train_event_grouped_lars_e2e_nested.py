@@ -45,6 +45,7 @@ def build_model(
     intercept: float, hidden_size: int, near_zero_std: float,
     output_activation: str, device: torch.device,
     movement_fraction: float | None = None,
+    candidate_scale: float = 1.0,
 ) -> ExactWindowFingerDecoder:
     model = ExactWindowFingerDecoder(
         input_channels=input_channels,
@@ -60,7 +61,10 @@ def build_model(
     with torch.no_grad():
         model.spatial.weight[:, :, 0].copy_(torch.as_tensor(ica, device=device))
         model.initialize_lars_linear_regime(
-            coefficients, intercept, near_zero_std=near_zero_std
+            coefficients,
+            intercept,
+            candidate_scale=candidate_scale,
+            near_zero_std=near_zero_std,
         )
         if output_activation == "hurdle":
             if movement_fraction is None:
@@ -692,6 +696,7 @@ def main() -> None:
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
     parser.add_argument("--validation-interval", type=int, default=2)
     parser.add_argument("--near-zero-std", type=float, default=1.0e-3)
+    parser.add_argument("--candidate-scale", type=float, default=1.0)
     parser.add_argument(
         "--output-activation",
         choices=("linear", "softplus", "hurdle"),
@@ -785,6 +790,7 @@ def main() -> None:
         mean=mean, scale=scale, coefficients=coefficients,
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
+        candidate_scale=args.candidate_scale,
         output_activation=args.output_activation, device=device,
         movement_fraction=float(
             np.mean(target_all[outer_training_mask] >= args.movement_threshold)
@@ -843,6 +849,7 @@ def main() -> None:
             intercept=float(inner_selection["intercept"]),
             hidden_size=args.hidden_size,
             near_zero_std=args.near_zero_std,
+            candidate_scale=args.candidate_scale,
             output_activation=args.output_activation, device=device,
             movement_fraction=float(
                 np.mean(target_all[training_mask] >= args.movement_threshold)
@@ -883,6 +890,7 @@ def main() -> None:
         mean=mean, scale=scale, coefficients=coefficients,
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
+        candidate_scale=args.candidate_scale,
         output_activation=args.output_activation, device=device,
         movement_fraction=float(
             np.mean(target_all[outer_training_mask] >= args.movement_threshold)

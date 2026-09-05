@@ -48,6 +48,72 @@ def plot_subject_overview(
     plt.close(figure)
 
 
+def cross_finger_matrix(prediction: np.ndarray, target: np.ndarray) -> np.ndarray:
+    return np.asarray(
+        [
+            [pearson(prediction[:, decoded], target[:, observed]) for observed in range(5)]
+            for decoded in range(5)
+        ],
+        dtype=np.float64,
+    )
+
+
+def standardized_attribution(prediction: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Unique standardized target weights explaining each decoded output."""
+    target_z = (target - target.mean(axis=0)) / np.maximum(target.std(axis=0), 1.0e-8)
+    prediction_z = (prediction - prediction.mean(axis=0)) / np.maximum(
+        prediction.std(axis=0), 1.0e-8
+    )
+    gram = target_z.T @ target_z
+    coefficients = np.linalg.solve(
+        gram + 1.0e-3 * np.eye(gram.shape[0]), target_z.T @ prediction_z
+    )
+    return coefficients.T
+
+
+def best_lag(prediction: np.ndarray, target: np.ndarray, maximum: int = 25) -> dict[str, float]:
+    records = []
+    for lag in range(-maximum, maximum + 1):
+        if lag < 0:
+            score = pearson(prediction[-lag:], target[:lag])
+        elif lag > 0:
+            score = pearson(prediction[:-lag], target[lag:])
+        else:
+            score = pearson(prediction, target)
+        records.append((score, lag))
+    score, lag = max(records)
+    return {"lag_bins": int(lag), "lag_seconds": lag / 25.0, "pcc": float(score)}
+
+
+def plot_cross_finger_matrices(
+    path: Path,
+    raw: np.ndarray,
+    cleaned: np.ndarray,
+    target_cross: np.ndarray,
+    subject: int,
+) -> None:
+    figure, axes = plt.subplots(1, 3, figsize=(16, 4.5))
+    for axis, matrix, title in zip(
+        axes,
+        (raw, cleaned, target_cross),
+        ("prediction vs raw glove", "prediction vs cleaned target", "cleaned target vs target"),
+    ):
+        image = axis.imshow(matrix, vmin=-0.2, vmax=0.8, cmap="coolwarm")
+        axis.set_xticks(range(5), FINGER_NAMES, rotation=35, ha="right")
+        axis.set_yticks(range(5), FINGER_NAMES)
+        axis.set_xlabel("observed finger")
+        axis.set_ylabel("decoded model")
+        axis.set_title(title)
+        for row in range(5):
+            for column in range(5):
+                axis.text(column, row, f"{matrix[row, column]:.2f}", ha="center", va="center", fontsize=8)
+        figure.colorbar(image, ax=axis, shrink=0.8)
+    figure.suptitle(f"Subject {subject}: cross-finger released-test correlation")
+    figure.tight_layout()
+    figure.savefig(path, dpi=180)
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-root", type=Path, default=Path("outputs/frozen_event_full_refit_v1"))
@@ -147,11 +213,46 @@ def main() -> None:
             "macro5_delta_vs_paper": float(np.mean(raw_scores) - np.mean(paper_scores)),
             "fingers_beating_paper": int(sum(score > paper for score, paper in zip(raw_scores, paper_scores))),
         }
+        raw_cross = cross_finger_matrix(predictions, raw_all)
+        cleaned_cross = cross_finger_matrix(predictions, cleaned_all)
+        target_cross = cross_finger_matrix(cleaned_all, cleaned_all)
+        attribution = standardized_attribution(predictions, cleaned_all)
+        subject_report["cross_finger_raw_pcc"] = raw_cross.tolist()
+        subject_report["cross_finger_cleaned_pcc"] = cleaned_cross.tolist()
+        subject_report["cleaned_target_cross_finger_pcc"] = target_cross.tolist()
+        subject_report["standardized_unique_target_attribution"] = attribution.tolist()
+        subject_report["strongest_unique_target_attribution"] = {
+            FINGER_NAMES[row]: FINGER_NAMES[int(np.argmax(attribution[row]))]
+            for row in range(5)
+        }
+        subject_report["best_matching_raw_finger"] = {
+            FINGER_NAMES[row]: FINGER_NAMES[int(np.argmax(raw_cross[row]))]
+            for row in range(5)
+        }
+        subject_report["diagonal_margin_over_best_off_diagonal"] = {
+            FINGER_NAMES[row]: float(
+                raw_cross[row, row] - np.max(np.delete(raw_cross[row], row))
+            )
+            for row in range(5)
+        }
+        subject_report["best_diagonal_lag"] = {
+            FINGER_NAMES[finger]: best_lag(
+                predictions[:, finger], raw_all[:, finger]
+            )
+            for finger in range(5)
+        }
         report["subjects"][str(subject)] = subject_report
         plot_subject_overview(
             subject_output / "all_fingers_full_trajectory.png",
             cleaned_all,
             predictions,
+            subject,
+        )
+        plot_cross_finger_matrices(
+            subject_output / "cross_finger_correlation.png",
+            raw_cross,
+            cleaned_cross,
+            target_cross,
             subject,
         )
     all_deltas = [

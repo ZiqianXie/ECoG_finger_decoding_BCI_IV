@@ -1,0 +1,38 @@
+# Diagnostic ceiling assembled after inspecting the released-test trajectories.
+# This is intentionally NOT an untouched benchmark or a deployable selector.
+1:
+  target:
+    thumb: local_w2_q10
+    index: local_w2_q10
+    middle: local_w2_q10
+    ring: local_w6_q10
+    little: local_w2_q10
+  thumb: outputs/retrospective_s1thumb_h80_blend_v1
+  index: outputs/validation_state_aware_residual_v1
+  middle: outputs/validation_multibase_latent_gate_c4_r995_v1
+  ring: outputs/reference_ridge_bipolar_v1/sub1/local_w2_q10
+  little: outputs/validation_multibase_latent_gate_v1
+2:
+  target:
+    thumb: local_w1_q10
+    index: local_w1_q10
+    middle: local_w1_q10
+    ring: local_w1_q10
+    little: local_w1_q10
+  thumb: outputs/paper_gap_morphology_blend_v1
+  index: outputs/validation_soft_latent_gate_v1
+  middle: outputs/s2_middle_equal_seed_ensemble_3em4_v1
+  ring: outputs/saved_validation_ensemble_v1
+  little: outputs/saved_event_validation_ensemble_v1
+3:
+  target:
+    thumb: local_w4_q20
+    index: local_w4_q20
+    middle: local_w6_q20
+    ring: local_w4_q20
+    little: local_w4_q20
+  thumb: outputs/validation_latent_gate_candidate_v1
+  index: outputs/validation_multibase_tempered_s3_c16r98_frozen_v1
+  middle: outputs/validation_multibase_latent_gate_c8_r995_v1
+  ring: outputs/validation_multibase_tempered_s3_c16r98_v1
+  little: outputs/validation_multibase_tempered_s3_c32r98_v1

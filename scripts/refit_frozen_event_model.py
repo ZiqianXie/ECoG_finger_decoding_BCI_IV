@@ -137,6 +137,13 @@ def main() -> None:
     parser.add_argument("--stride-samples", type=int, default=40)
     parser.add_argument("--prediction-chunk-steps", type=int, default=512)
     parser.add_argument("--near-zero-std", type=float, default=1.0e-3)
+    parser.add_argument("--candidate-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--epoch-override",
+        type=int,
+        default=None,
+        help="diagnostic fixed epoch count; omit to use the frozen OOF median",
+    )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
@@ -156,6 +163,10 @@ def main() -> None:
     selected_epoch, outer_epochs = frozen_epoch(
         options["input_root"], args.subject, args.finger, args.seed
     )
+    if args.epoch_override is not None:
+        if args.epoch_override < 0:
+            parser.error("--epoch-override must be nonnegative")
+        selected_epoch = args.epoch_override
     subject_targets = target_map.get(args.subject, target_map.get(str(args.subject)))
     target_policy = str(subject_targets[args.finger])
     full_target_policy = target_policy.removesuffix("_split_safe")
@@ -195,6 +206,7 @@ def main() -> None:
         intercept=float(selection["intercept"]),
         hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
+        candidate_scale=args.candidate_scale,
         output_activation=str(options["output_activation"]),
         device=device,
         movement_fraction=float(np.mean(target_train >= 0.08)),
@@ -264,12 +276,17 @@ def main() -> None:
         "source_cv_root": str(options["input_root"]),
         "outer_fold_selected_epochs": outer_epochs,
         "selected_epoch": selected_epoch,
-        "epoch_rule": "rounded median of three outer-fold selected epochs",
+        "epoch_rule": (
+            "explicit diagnostic override"
+            if args.epoch_override is not None
+            else "rounded median of three outer-fold selected epochs"
+        ),
         "target_policy_selected_in_oof": target_policy,
         "full_refit_target_policy": full_target_policy,
         "feature_count": int(selected.size),
         "lars_alpha": float(selection["alpha"]),
         "linear_initializer": str(selection["selection_method"]),
+        "lars_candidate_scale": args.candidate_scale,
         "cached_vs_raw_initial_feature_audit": feature_audit,
         "initialized_full_train_raw_pcc": pearson(initialized_train, raw_train),
         "fitted_full_train_raw_pcc": pearson(fitted_train, raw_train),

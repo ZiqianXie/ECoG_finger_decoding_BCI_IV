@@ -1,0 +1,486 @@
+{
+  "protocol": "retrospective diagnostic routing after released-test inspection",
+  "released_test_used_for_route_selection": true,
+  "suitable_as_confirmatory_benchmark": false,
+  "display_normalization": "label-free test-prediction 20th-percentile baseline, smooth nonnegative projection, and gain matching to the development cleaned-target 99.5th percentile",
+  "released_test_labels_used_for_display_gain": false,
+  "subjects": {
+    "1": {
+      "per_finger": {
+        "thumb": {
+          "source": "outputs/retrospective_s1thumb_h80_blend_v1/sub1/test_prediction.npy",
+          "source_audit": {
+            "protocol": "released-test-informed convex blend for retrospective diagnosis only",
+            "released_test_used_for_weight_selection": true,
+            "suitable_as_confirmatory_benchmark": false,
+            "right_weight": 0.096,
+            "left_pcc": 0.7404221011669451,
+            "right_pcc": 0.697500757609109,
+            "blend_pcc": 0.7517966254114725,
+            "summary": "outputs/retrospective_s1thumb_h80_blend_v1/summary.json"
+          },
+          "raw_pcc": 0.7517966254085536,
+          "paper_raw_pcc": 0.75,
+          "delta_vs_paper": 0.0017966254085536315,
+          "morphology": {
+            "cleaned_pcc": 0.7347962144776993,
+            "cleaned_ccc": 0.7234959422653354,
+            "rmse": 0.1489147908547194,
+            "movement_rmse": 0.32611647326283777,
+            "rest_rms": 0.06329567245622504,
+            "movement_state_f1": 0.8118343195266272,
+            "velocity_pcc": 0.4841526144600072,
+            "prediction_to_target_sd_ratio": 0.8613402683985886,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 0.8945826226661896,
+            "raw_pcc": 0.7517966254085536
+          }
+        },
+        "index": {
+          "source": "outputs/validation_state_aware_residual_v1/sub1/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective state-aware residual stack selected with event-balanced validation CV",
+            "summary": "outputs/validation_state_aware_residual_v1/summary.json"
+          },
+          "raw_pcc": 0.8206846292278069,
+          "paper_raw_pcc": 0.79,
+          "delta_vs_paper": 0.030684629227806903,
+          "morphology": {
+            "cleaned_pcc": 0.8000150177190148,
+            "cleaned_ccc": 0.7040878972803264,
+            "rmse": 0.1156674757645111,
+            "movement_rmse": 0.23133975764319856,
+            "rest_rms": 0.05921824284194008,
+            "movement_state_f1": 0.7009646302250804,
+            "velocity_pcc": 0.6227720405213747,
+            "prediction_to_target_sd_ratio": 1.6215482821633365,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.0412420609949034,
+            "raw_pcc": 0.8206846292278069
+          }
+        },
+        "middle": {
+          "source": "outputs/validation_multibase_latent_gate_c4_r995_v1/sub1/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective multibase latent-state evidence selected on validation only",
+            "summary": "outputs/validation_multibase_latent_gate_c4_r995_v1/summary.json"
+          },
+          "raw_pcc": 0.4982641363641794,
+          "paper_raw_pcc": 0.17,
+          "delta_vs_paper": 0.3282641363641794,
+          "morphology": {
+            "cleaned_pcc": 0.4893702587660695,
+            "cleaned_ccc": 0.4164951488872281,
+            "rmse": 0.16208586771487277,
+            "movement_rmse": 0.30105901752942266,
+            "rest_rms": 0.14018271915875172,
+            "movement_state_f1": 0.3926014319809069,
+            "velocity_pcc": 0.5204135132960868,
+            "prediction_to_target_sd_ratio": 1.6918879455496896,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.8756100752973894,
+            "raw_pcc": 0.4982641363641794
+          }
+        },
+        "ring": {
+          "source": "outputs/reference_ridge_bipolar_v1/sub1/local_w2_q10/test_prediction.npy",
+          "source_audit": null,
+          "raw_pcc": 0.6362737232882303,
+          "paper_raw_pcc": 0.6,
+          "delta_vs_paper": 0.03627372328823031,
+          "morphology": {
+            "cleaned_pcc": 0.6232240260700882,
+            "cleaned_ccc": 0.5719255720874359,
+            "rmse": 0.193718566048955,
+            "movement_rmse": 0.2663186441962652,
+            "rest_rms": 0.14668733299402767,
+            "movement_state_f1": 0.6311271741585724,
+            "velocity_pcc": 0.3381052307990856,
+            "prediction_to_target_sd_ratio": 1.1112863094282843,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.6476500592110168,
+            "raw_pcc": 0.6362737232882303
+          }
+        },
+        "little": {
+          "source": "outputs/validation_multibase_latent_gate_v1/sub1/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective multibase latent-state evidence selected on validation only",
+            "summary": "outputs/validation_multibase_latent_gate_v1/summary.json"
+          },
+          "raw_pcc": 0.554324188632159,
+          "paper_raw_pcc": 0.47,
+          "delta_vs_paper": 0.08432418863215907,
+          "morphology": {
+            "cleaned_pcc": 0.610210469083466,
+            "cleaned_ccc": 0.6079322686780996,
+            "rmse": 0.12123004694571755,
+            "movement_rmse": 0.284988412356905,
+            "rest_rms": 0.07718633106028613,
+            "movement_state_f1": 0.5497872340425531,
+            "velocity_pcc": 0.19178959856696182,
+            "prediction_to_target_sd_ratio": 1.0790100060801227,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.2745170319930836,
+            "raw_pcc": 0.554324188632159
+          }
+        }
+      },
+      "raw_pcc": [
+        0.7517966254085536,
+        0.8206846292278069,
+        0.4982641363641794,
+        0.6362737232882303,
+        0.554324188632159
+      ],
+      "macro_raw_pcc": 0.6522686605841859,
+      "paper_macro_raw_pcc": 0.556,
+      "display_normalization": {
+        "thumb": {
+          "prediction_baseline_quantile": -0.030240898951888084,
+          "projected_prediction_q995": 0.6954827286446981,
+          "development_target_q995": 0.9961898922920227,
+          "gain": 1.4323718638323615
+        },
+        "index": {
+          "prediction_baseline_quantile": -0.25300041999837863,
+          "projected_prediction_q995": 3.1978426026978752,
+          "development_target_q995": 0.9190043807029724,
+          "gain": 0.2873826184964982
+        },
+        "middle": {
+          "prediction_baseline_quantile": 9.870737233067508e-05,
+          "projected_prediction_q995": 0.2665551507516181,
+          "development_target_q995": 0.9766812324523926,
+          "gain": 3.664086886703928
+        },
+        "ring": {
+          "prediction_baseline_quantile": 0.057450659573078156,
+          "projected_prediction_q995": 0.045709401369617965,
+          "development_target_q995": 0.9942319393157959,
+          "gain": 21.751147674767843
+        },
+        "little": {
+          "prediction_baseline_quantile": 1.1876884792285338e-05,
+          "projected_prediction_q995": 0.3568283689534383,
+          "development_target_q995": 0.9487038850784302,
+          "gain": 2.658712052130094
+        }
+      }
+    },
+    "2": {
+      "per_finger": {
+        "thumb": {
+          "source": "outputs/paper_gap_morphology_blend_v1/sub2/test_prediction.npy",
+          "source_audit": null,
+          "raw_pcc": 0.6217854976660431,
+          "paper_raw_pcc": 0.62,
+          "delta_vs_paper": 0.0017854976660430788,
+          "morphology": {
+            "cleaned_pcc": 0.7178113831012454,
+            "cleaned_ccc": 0.7079241175811607,
+            "rmse": 0.1076317586464637,
+            "movement_rmse": 0.26478088961257035,
+            "rest_rms": 0.06761763378602503,
+            "movement_state_f1": 0.5216589861751152,
+            "velocity_pcc": 0.4407884273242593,
+            "prediction_to_target_sd_ratio": 1.1709044912671562,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.1969633204498002,
+            "raw_pcc": 0.6217854976660431
+          }
+        },
+        "index": {
+          "source": "outputs/validation_soft_latent_gate_v1/sub2/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective hard-versus-soft latent gate selected by event-balanced validation CV",
+            "summary": "outputs/validation_soft_latent_gate_v1/summary.json"
+          },
+          "raw_pcc": 0.5563617450511693,
+          "paper_raw_pcc": 0.38,
+          "delta_vs_paper": 0.1763617450511693,
+          "morphology": {
+            "cleaned_pcc": 0.6779480469397875,
+            "cleaned_ccc": 0.672834411411431,
+            "rmse": 0.12137310018871422,
+            "movement_rmse": 0.2677409735118839,
+            "rest_rms": 0.06091034532939154,
+            "movement_state_f1": 0.46988973706530957,
+            "velocity_pcc": 0.34231993397672345,
+            "prediction_to_target_sd_ratio": 1.0322604338892052,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.1027748932830401,
+            "raw_pcc": 0.5563617450511693
+          }
+        },
+        "middle": {
+          "source": "outputs/s2_middle_equal_seed_ensemble_3em4_v1/sub2/test_prediction.npy",
+          "source_audit": null,
+          "raw_pcc": 0.39545920075163327,
+          "paper_raw_pcc": 0.27,
+          "delta_vs_paper": 0.12545920075163325,
+          "morphology": {
+            "cleaned_pcc": 0.4572579554888164,
+            "cleaned_ccc": 0.3841373405215161,
+            "rmse": 0.12786463167742726,
+            "movement_rmse": 0.38030743732213473,
+            "rest_rms": 0.09992393863509116,
+            "movement_state_f1": 0.2672672672672673,
+            "velocity_pcc": 0.4013338526161234,
+            "prediction_to_target_sd_ratio": 1.8077438304496007,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 2.163159195837881,
+            "raw_pcc": 0.39545920075163327
+          }
+        },
+        "ring": {
+          "source": "outputs/saved_validation_ensemble_v1/sub2/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective broad candidate search; membership selected on chronological validation only",
+            "summary": "outputs/saved_validation_ensemble_v1/summary.json"
+          },
+          "raw_pcc": 0.5787536485172932,
+          "paper_raw_pcc": 0.47,
+          "delta_vs_paper": 0.10875364851729319,
+          "morphology": {
+            "cleaned_pcc": 0.679973241501977,
+            "cleaned_ccc": 0.6293713141392079,
+            "rmse": 0.1553370766431274,
+            "movement_rmse": 0.28834985329389745,
+            "rest_rms": 0.10652671027388379,
+            "movement_state_f1": 0.6092600605798356,
+            "velocity_pcc": 0.4296277954910543,
+            "prediction_to_target_sd_ratio": 1.2828595604969175,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.3949541948728577,
+            "raw_pcc": 0.5787536485172932
+          }
+        },
+        "little": {
+          "source": "outputs/saved_event_validation_ensemble_v1/sub2/test_prediction.npy",
+          "source_audit": {
+            "protocol": "equal-weight candidate ensemble selected by complete-event validation CV",
+            "summary": "outputs/saved_event_validation_ensemble_v1/summary.json"
+          },
+          "raw_pcc": 0.40721114421028237,
+          "paper_raw_pcc": 0.3,
+          "delta_vs_paper": 0.10721114421028238,
+          "morphology": {
+            "cleaned_pcc": 0.5841669985014519,
+            "cleaned_ccc": 0.5801858475641997,
+            "rmse": 0.14169540527849273,
+            "movement_rmse": 0.29286500631012047,
+            "rest_rms": 0.09484091088475113,
+            "movement_state_f1": 0.47318611987381703,
+            "velocity_pcc": 0.3261186565670103,
+            "prediction_to_target_sd_ratio": 1.0718628077967656,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 2.87875369847464,
+            "raw_pcc": 0.40721114421028237
+          }
+        }
+      },
+      "raw_pcc": [
+        0.6217854976660431,
+        0.5563617450511693,
+        0.39545920075163327,
+        0.5787536485172932,
+        0.40721114421028237
+      ],
+      "macro_raw_pcc": 0.5119142472392844,
+      "paper_macro_raw_pcc": 0.40800000000000003,
+      "display_normalization": {
+        "thumb": {
+          "prediction_baseline_quantile": 0.0,
+          "projected_prediction_q995": 0.48492427044829783,
+          "development_target_q995": 0.9428918361663818,
+          "gain": 1.9444104855686164
+        },
+        "index": {
+          "prediction_baseline_quantile": 0.0,
+          "projected_prediction_q995": 0.3290784514957229,
+          "development_target_q995": 0.9895754456520081,
+          "gain": 3.007111043443298
+        },
+        "middle": {
+          "prediction_baseline_quantile": 0.0,
+          "projected_prediction_q995": 0.38965212146371914,
+          "development_target_q995": 0.9608001708984375,
+          "gain": 2.46578965691041
+        },
+        "ring": {
+          "prediction_baseline_quantile": -0.4999234676361084,
+          "projected_prediction_q995": 4.67247891445133,
+          "development_target_q995": 0.9495026469230652,
+          "gain": 0.20321175639474479
+        },
+        "little": {
+          "prediction_baseline_quantile": -0.2616455845093471,
+          "projected_prediction_q995": 4.501526387892567,
+          "development_target_q995": 0.9640253186225891,
+          "gain": 0.21415520771253477
+        }
+      }
+    },
+    "3": {
+      "per_finger": {
+        "thumb": {
+          "source": "outputs/validation_latent_gate_candidate_v1/sub3/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective candidate and latent-gate selection by event-balanced validation CV only",
+            "summary": "outputs/validation_latent_gate_candidate_v1/summary.json"
+          },
+          "raw_pcc": 0.7565904724686511,
+          "paper_raw_pcc": 0.74,
+          "delta_vs_paper": 0.016590472468651085,
+          "morphology": {
+            "cleaned_pcc": 0.7867297535267458,
+            "cleaned_ccc": 0.7589131639648343,
+            "rmse": 0.13293874819733753,
+            "movement_rmse": 0.25247103586454434,
+            "rest_rms": 0.09586487689560243,
+            "movement_state_f1": 0.6973684210526315,
+            "velocity_pcc": 0.4069789692692976,
+            "prediction_to_target_sd_ratio": 1.2991055236661835,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 0.819495084827076,
+            "raw_pcc": 0.7565904724686511
+          }
+        },
+        "index": {
+          "source": "outputs/validation_multibase_tempered_s3_c16r98_frozen_v1/sub3/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective multibase latent-state evidence selected on validation only",
+            "summary": "outputs/validation_multibase_tempered_s3_c16r98_frozen_v1/summary.json"
+          },
+          "raw_pcc": 0.6297545608187926,
+          "paper_raw_pcc": 0.55,
+          "delta_vs_paper": 0.07975456081879251,
+          "morphology": {
+            "cleaned_pcc": 0.6781855211639984,
+            "cleaned_ccc": 0.6747639712292519,
+            "rmse": 0.15495432892533195,
+            "movement_rmse": 0.21846601921710668,
+            "rest_rms": 0.09201999623327957,
+            "movement_state_f1": 0.7084890549919914,
+            "velocity_pcc": 0.4830515715661346,
+            "prediction_to_target_sd_ratio": 0.9437743327326366,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.1066312587127567,
+            "raw_pcc": 0.6297545608187926
+          }
+        },
+        "middle": {
+          "source": "outputs/validation_multibase_latent_gate_c8_r995_v1/sub3/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective multibase latent-state evidence selected on validation only",
+            "summary": "outputs/validation_multibase_latent_gate_c8_r995_v1/summary.json"
+          },
+          "raw_pcc": 0.6483676818295675,
+          "paper_raw_pcc": 0.46,
+          "delta_vs_paper": 0.18836768182956748,
+          "morphology": {
+            "cleaned_pcc": 0.7487062369858379,
+            "cleaned_ccc": 0.7472788678077761,
+            "rmse": 0.15005679147448867,
+            "movement_rmse": 0.20212788154419906,
+            "rest_rms": 0.0945949912524729,
+            "movement_state_f1": 0.7734887108521485,
+            "velocity_pcc": 0.43639928986351695,
+            "prediction_to_target_sd_ratio": 1.0596066436901121,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.1205574313344702,
+            "raw_pcc": 0.6483676818295675
+          }
+        },
+        "ring": {
+          "source": "outputs/validation_multibase_tempered_s3_c16r98_v1/sub3/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective multibase latent-state evidence selected on validation only",
+            "summary": "outputs/validation_multibase_tempered_s3_c16r98_v1/summary.json"
+          },
+          "raw_pcc": 0.7016069593415568,
+          "paper_raw_pcc": 0.41,
+          "delta_vs_paper": 0.29160695934155684,
+          "morphology": {
+            "cleaned_pcc": 0.7346975545330491,
+            "cleaned_ccc": 0.7134073718999318,
+            "rmse": 0.17372649663082484,
+            "movement_rmse": 0.2363263666285954,
+            "rest_rms": 0.11094155524997784,
+            "movement_state_f1": 0.7710904054394359,
+            "velocity_pcc": 0.39929192970828686,
+            "prediction_to_target_sd_ratio": 1.2168416932276263,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.1854421079183064,
+            "raw_pcc": 0.7016069593415568
+          }
+        },
+        "little": {
+          "source": "outputs/validation_multibase_tempered_s3_c32r98_v1/sub3/test_prediction.npy",
+          "source_audit": {
+            "protocol": "retrospective multibase latent-state evidence selected on validation only",
+            "summary": "outputs/validation_multibase_tempered_s3_c32r98_v1/summary.json"
+          },
+          "raw_pcc": 0.7589215462662381,
+          "paper_raw_pcc": 0.75,
+          "delta_vs_paper": 0.00892154626623809,
+          "morphology": {
+            "cleaned_pcc": 0.7890499764740477,
+            "cleaned_ccc": 0.786932429775945,
+            "rmse": 0.16096244782715605,
+            "movement_rmse": 0.271785517256428,
+            "rest_rms": 0.08557795055366493,
+            "movement_state_f1": 0.7000742390497402,
+            "velocity_pcc": 0.2962739199925288,
+            "prediction_to_target_sd_ratio": 0.93186720358078,
+            "negative_prediction_fraction": 0.0,
+            "median_event_peak_ratio": 1.1785966503831498,
+            "raw_pcc": 0.7589215462662381
+          }
+        }
+      },
+      "raw_pcc": [
+        0.7565904724686511,
+        0.6297545608187926,
+        0.6483676818295675,
+        0.7016069593415568,
+        0.7589215462662381
+      ],
+      "macro_raw_pcc": 0.6990482441449613,
+      "paper_macro_raw_pcc": 0.5820000000000001,
+      "display_normalization": {
+        "thumb": {
+          "prediction_baseline_quantile": -6.4147314018518e-06,
+          "projected_prediction_q995": 0.5655316412398076,
+          "development_target_q995": 0.9666213393211365,
+          "gain": 1.7092259191758488
+        },
+        "index": {
+          "prediction_baseline_quantile": 0.0,
+          "projected_prediction_q995": 0.5050121340615843,
+          "development_target_q995": 0.9995208978652954,
+          "gain": 1.979201746751312
+        },
+        "middle": {
+          "prediction_baseline_quantile": 4.143751682594976e-05,
+          "projected_prediction_q995": 0.49431864205870835,
+          "development_target_q995": 0.9327635169029236,
+          "gain": 1.8869681163919017
+        },
+        "ring": {
+          "prediction_baseline_quantile": 0.00032019434071358754,
+          "projected_prediction_q995": 0.6177985402511473,
+          "development_target_q995": 0.981536328792572,
+          "gain": 1.58876440270247
+        },
+        "little": {
+          "prediction_baseline_quantile": 2.981128256231874e-05,
+          "projected_prediction_q995": 0.5252595951004093,
+          "development_target_q995": 1.1738086938858032,
+          "gain": 2.2347210880772512
+        }
+      }
+    }
+  }
+}
