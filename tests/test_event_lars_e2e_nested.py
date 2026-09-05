@@ -1,6 +1,8 @@
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import torch
-from types import SimpleNamespace
 
 from scripts.train_event_grouped_lars_e2e_nested import (
     batch_loss,
