@@ -1,134 +1,208 @@
 # ECoG finger-trajectory decoding
 
-Late reimplementation and research continuation of:
+In 2018, we published a CNN-LSTM model for continuous finger-trajectory
+decoding from ECoG:
 
 > Z. Xie, O. Schwartz, and A. Prasad, “Decoding of finger trajectory from
 > ECoG using deep learning,” *Journal of Neural Engineering*, 15(3), 036009,
 > 2018. [doi:10.1088/1741-2552/aa9dbe](https://doi.org/10.1088/1741-2552/aa9dbe)
 
-## Provenance
+Several people have asked me for the source code since then. Unfortunately, the
+original code was lost when my laptop hard drive failed during a move. I began
+this repository in 2026 because those requests deserved a better answer than
+“the code is gone.”
 
-This repository is **not the original 2018 source release**. The original code
-was lost when the first author's laptop hard drive failed during a move. This
-implementation was rebuilt in 2026 from the paper, the public BCI Competition
-IV data, and the author's methodological recollection. It is a late independent
-reimplementation and extension, not an archival recovery or a claim of
-bit-for-bit reproduction.
+This is not a recovered copy of the old Theano project. I rebuilt the method
+from the paper, the public BCI Competition IV data, and my recollection of the
+original experiments. I also used the opportunity to revisit decisions that
+were constrained by the software and compute available at the time. The result
+is both a late reimplementation and a continuation of the original work.
 
-The reconstruction retains the paper's FastICA spatial initialization,
-three-level dilated biorthogonal-wavelet tree, 40 ms energy bins, sparse linear
-feature selection, and recurrent decoder. It adds explicit 60/120/180 Hz notch
-filtering, split-safe glove baselines, per-subject/per-finger models, event-level
-cross-validation, modern GPU training, seed ensembles, and trajectory-shape
-diagnostics.
+The [project report](docs/project-report.md) contains the complete experimental
+record. This README is meant to explain what the current pipeline does, why its
+less obvious choices were made, and how to reproduce it.
 
-The [project report](docs/project-report.md) gives the full methods, experiment
-history, numerical results, limitations, and visual diagnosis.
+## Overview
+
+The task is BCI Competition IV, Data Set 4: continuous reconstruction of five
+glove trajectories from ECoG in three subjects. The model is trained separately
+for each subject and finger.
+
+The signal path follows the main structure of the 2018 model:
+
+1. FastICA initializes a trainable spatial convolution.
+2. A three-level, dilated `bior6.8` wavelet-packet tree produces eight spectral
+   outputs without temporal decimation.
+3. Squared activation is accumulated in non-overlapping 40 ms bins.
+4. LARS selects a sparse set of spatial-spectral features.
+5. A nonlinear LSTM models the temporal history and predicts the trajectory.
+
+The LARS solution is more than a pruning step. It gives the recurrent decoder a
+working regression function before nonlinear optimization begins. Parameters
+that should initially contribute little are randomized at approximately
+`1e-3`, rather than fixed at zero, so the LSTM starts in a near-linear regime
+without losing nonlinear capacity. Training first fits the recurrent head with
+the spatial and spectral stem frozen, then fine-tunes the complete differentiable
+model at a smaller learning rate.
+
+The original four-second minibatches were largely a Theano static-graph
+constraint, not a physiological assumption. The current implementation can use
+longer histories, caches reconstructed windows, and keeps the small dataset in
+GPU memory.
+
+## What was changed, and why
+
+### Glove baseline correction
+
+The raw glove channels have a slowly varying baseline. A single baseline for an
+entire recording leaves long segments with different resting levels; aggressive
+event-level correction, on the other hand, can distort the movement itself.
+The current target pipeline estimates a local lower envelope and subtracts it
+before normalization.
+
+Crucially, that envelope is refitted inside every training fold. “Split-safe
+target” in this repository means that neither the baseline nor the normalization
+for a held-out interval was estimated from that interval. This matters because
+the target preprocessing is part of the fitted model, even though it occurs on
+the glove rather than the ECoG.
+
+### Cross-finger movement
+
+Ring and little finger trajectories often contain genuine co-movement. An early
+version of this reconstruction assigned each event to whichever finger had the
+largest corrected trajectory. That winner-take-all rule produced visually clean
+targets, but it also moved small deflections from one finger to another and
+occasionally created an apparent movement where none existed.
+
+The released trajectories are therefore preserved for scoring, and the cleaned
+targets use conservative baseline subtraction rather than hard finger
+assignment. Separate per-finger models allow spatial and spectral filters to
+specialize without pretending that the biomechanics are independent.
+
+### Event-grouped validation
+
+Every 40 ms prediction uses several seconds of preceding ECoG. Randomly
+splitting adjacent bins would put strongly overlapping input histories on both
+sides of the split and give an optimistic validation score. The cross-validation
+code instead keeps complete movement/rest events together and removes 95 bins
+(3.8 s) around each held-out boundary.
+
+The folds are built per subject and finger because their event distributions
+differ. This makes the folds less exchangeable than ordinary iid
+cross-validation, so the report includes fold-level results and chronological
+test behavior rather than presenting one mean as the whole story.
+
+### Notch filtering and trainable filters
+
+The ECoG is notch-filtered at 60, 120, and 180 Hz before the learned filter bank.
+This explicitly removes narrow power-line components instead of asking the
+network to suppress them from limited data.
+
+The spatial and wavelet filters are initialized from FastICA and the
+biorthogonal tree, but they remain trainable during the second stage. Their
+initial frequency responses are measured directly; the intended eight-band
+coverage is shown below.
+
+![Measured frequency responses of the initialized wavelet tree](docs/figures/wavelet-initialization-frequency-response.png)
 
 ## Current results
 
-The primary score is Pearson correlation against the released unmodified test
-glove trajectory. `Macro-5` is the mean across all five fingers. The paper
-numbers below are rounded per-finger CNN-LSTM values; its aggregate is also a
-five-finger mean, so a rounded `0.56` must not be compared with any one finger.
+The primary comparison remains Pearson correlation with the released,
+unmodified test glove trajectory. `Macro-5` is the mean across all five fingers.
+The paper values below are calculated from its rounded per-finger CNN-LSTM
+numbers, so they should not be interpreted as more precise versions of the
+paper's rounded aggregate.
 
-Three result tiers are kept separate:
+| Subject | 2018 paper | Frozen 2026 refit | Retrospective diagnostic |
+|---|---:|---:|---:|
+| S1 | 0.556 | 0.506 | **0.652** |
+| S2 | 0.408 | **0.415** | **0.512** |
+| S3 | 0.582 | 0.486 | **0.699** |
 
-1. **Training-only event CV.** Target baselines are refit inside each split,
-   complete movement/rest events define three folds, 95 bins are purged around
-   every held-out interval, and model/seed decisions use only out-of-fold data.
-   The frozen configuration has OOF `Macro-5` 0.488, 0.444, and 0.373 for
-   S1--S3.
-2. **Frozen full-development refit.** The OOF-selected configurations are fit
-   on all development rows for a fixed median epoch count and the released test
-   is evaluated once. This is the strongest protocol implemented here, although
-   the released labels had already been viewed during earlier reconstruction.
-3. **Retrospective diagnostic ceiling.** Previously saved predictions are
-   routed per finger after released-test inspection. This answers whether the
-   signal is present and supports visual diagnosis, but it is not an unbiased
-   benchmark or a deployable selector.
+### What “frozen refit” means
 
-### Frozen full-development refit
+For this result, preprocessing, architecture, seed membership, and training
+duration are selected from event-grouped cross-validation. The chosen
+configuration is then refitted on the complete development recording for a
+fixed number of epochs and evaluated on the released test recording. No choice
+is changed in response to that final score.
 
-| Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Mean of rounded paper fingers* |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| S1 | 0.647 | 0.774 | 0.111 | 0.565 | 0.435 | **0.506** | 0.556 |
-| S2 | 0.602 | 0.394 | 0.298 | 0.534 | 0.245 | **0.415** | 0.408 |
-| S3 | 0.715 | 0.346 | 0.439 | 0.513 | 0.417 | **0.486** | 0.582 |
+This is the result to use when evaluating the current reproducible pipeline.
+It exceeds the rounded paper mean for S2, but not yet for S1 or S3. The largest
+gaps are not explained by a global finger permutation or a simple temporal lag.
+They are concentrated in particular fingers and recording periods, consistent
+with target-regime and ECoG nonstationarity.
 
-`*` This is computed from the paper's rounded per-finger values; it is not a
-more precise reconstruction of the paper's rounded aggregate figure.
+### Why show a retrospective diagnostic
 
-The large OOF-to-chronological drop is concentrated in S1 and S3 and is not
-explained by a global finger permutation or a one-bin lag. It is evidence of
-temporal nonstationarity and target-regime mismatch. S1 middle is especially
-confounded with index movement; S3 has genuine multi-finger co-movement, which
-makes hard winner-take-all reassignment unsafe.
+During reconstruction, many models were trained and their test predictions were
+inspected. The diagnostic column chooses the best-supported saved route for
+each finger after this inspection. For S1 thumb, it also includes a small convex
+blend whose weight was selected on test PCC.
 
-### Retrospective diagnostic ceiling
+This is deliberately reported as a diagnostic ceiling, not as held-out
+performance. It answers a useful engineering question: *did any of the explored
+representations recover the signal for this finger?* All fifteen diagnostic
+routes exceed the corresponding rounded paper values, suggesting that the
+remaining problem is robust training-time selection rather than an absolute
+lack of decodable signal. Because the test labels influenced that conclusion,
+the diagnostic table must not be used as a confirmatory benchmark.
 
-| Subject | Result | Thumb | Index | Middle | Ring | Little | Macro-5 |
-|---|---|---:|---:|---:|---:|---:|---:|
-| S1 | 2018 paper | 0.750 | 0.790 | 0.170 | 0.600 | 0.470 | 0.556 |
-| S1 | 2026 diagnostic routing | 0.752 | 0.821 | 0.498 | 0.636 | 0.554 | **0.652** |
-| S2 | 2018 paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
-| S2 | 2026 diagnostic routing | 0.622 | 0.556 | 0.395 | 0.579 | 0.407 | **0.512** |
-| S3 | 2018 paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
-| S3 | 2026 diagnostic routing | 0.757 | 0.630 | 0.648 | 0.702 | 0.759 | **0.699** |
-
-All fifteen retrospective per-finger scores exceed the rounded paper values.
-For S1 thumb, this requires a 9.6% blend of the raw-target 80-unit ensemble into
-the previous 0.740 route; its weight was selected on released-test PCC and it
-reaches 0.752. Because released-test labels determine this diagnostic routing,
-these numbers must not be reported as confirmatory performance. The
-machine-readable routing explicitly records this fact in
+The per-finger values and the provenance of every route are recorded in
 [`docs/results/retrospective-extension.json`](docs/results/retrospective-extension.json).
 
-![Paper and retrospective per-finger PCC](docs/figures/retrospective-extension-pcc.png)
+![Paper values and retrospective per-finger PCC](docs/figures/retrospective-extension-pcc.png)
 
-PCC alone can reward a correctly timed but nearly invisible trace. The report
-figures therefore use a separate display-domain mapping: a label-free
-20th-percentile baseline, smooth nonnegative projection, and a
-99.5th-percentile gain matched to the development target distribution. It
-changes amplitude and morphology metrics, not Pearson correlation, and never
-fits gain to released-test labels.
+## PCC and trajectory quality
 
-![Subject 1 retrospective movement windows](docs/figures/retrospective-extension-s1-events.png)
+PCC is invariant to affine scaling. A prediction can therefore correlate well
+with the glove while having almost no visible amplitude, or it can follow the
+main events while producing unacceptable motion during rest. PCC is retained
+for comparison with the paper, but model diagnosis also includes derivative
+PCC, rest RMS, movement-state F1, peak amplitude, and event-aligned plots.
 
-### Main experimental findings
+The visualization uses a label-free display transform: a development-derived
+baseline is removed, a smooth nonnegative projection is applied, and gain is
+matched to the development target distribution. This makes amplitude failures
+visible without altering the raw-coordinate PCC or fitting a scale to the test
+labels.
 
-- A LARS-initialized nonlinear LSTM is useful, but the output should train in a
-  linear regime; Softplus during optimization reduced S1-thumb OOF PCC.
-- Initializing coefficients that should be zero with random magnitude near
-  `1e-3` preserves nonlinear capacity without destroying the sparse linear
-  starting function.
-- Equal-weight seed ensembles help when collapsed seeds are excluded using
-  training-only evidence. They reduce variance but do not remove the
-  chronological regime shift.
-- Direct raw-target training raises the first frozen S1-thumb refit from 0.647
-  to 0.714. A training-only seed-1/2 ensemble selected at OOF PCC 0.614 fell to
-  0.694 terminally. An 80-unit three-seed ensemble held OOF PCC at 0.629 and
-  improved its best terminal member from 0.692 to 0.698, with stronger visual
-  amplitude and velocity behavior. The remaining S1-thumb gain is retrospective
-  blending, not a confirmatory training result.
-- A redundant overcomplete bior dictionary lost on 11 of 15 fingers and did not
-  justify its extra atoms. The original eight-band three-level tree remains the
-  default.
-- Latent movement-state gating and state-aware residuals improve retrospective
-  morphology, especially for cross-finger interference. Direct winner-take-all
-  target correction fabricates movement on the wrong finger and is rejected.
-- The initialized filter responses cover the intended eight spectral bands;
-  the measured cascade response is shown below and audited numerically.
+![Subject 1 event-aligned diagnostic trajectories](docs/figures/retrospective-extension-s1-events.png)
 
-![S1 thumb LARS-initialized LSTM sweep](docs/figures/s1-thumb-lars-sweep.png)
+The plots reveal errors that the aggregate score obscures. S1 middle remains
+strongly confounded with index movement. S2 often recovers onset while missing
+individual peaks. S3 has the strongest overall event timing, but some dense
+movement sequences are merged or truncated. These observations motivate the
+cross-finger latent-assignment and velocity-prediction experiments described in
+the report.
 
-![Initialized wavelet filter responses](docs/figures/wavelet-initialization-frequency-response.png)
+## Main experimental conclusions
+
+- Direct raw-target training improved the first frozen S1-thumb refit from
+  0.647 to 0.714. An 80-unit, three-seed LSTM ensemble reached 0.698 and had
+  better velocity and amplitude behavior, but did not improve on the best
+  single-model PCC.
+- Seed ensembles can reduce variance, provided collapsed seeds are excluded
+  using training-only evidence. They did not eliminate the chronological
+  distribution shift.
+- A redundant overcomplete biorthogonal dictionary lost PCC on 11 of 15
+  subject/finger combinations. Extra atoms did not compensate for the added
+  estimation burden on this dataset, so the original eight-band tree remains
+  the default.
+- Latent movement-state gating improved some retrospective morphologies but did
+  not consistently improve the frozen result.
+- Hard winner-take-all target correction is rejected because it can transfer
+  movement between fingers.
+
+These are conclusions from this reconstruction, not claims about what was or
+was not tried in the original unpublished code. Full tables, unsuccessful
+experiments, and visual diagnoses are retained in the
+[project report](docs/project-report.md).
 
 ## Data
 
-Use [BCI Competition IV, Data Set 4](https://www.bbci.de/competition/iv/), whose
-data remain governed by the competition's terms. Download the competition files
-and true labels from the official site, then arrange them as:
+Download [BCI Competition IV, Data Set 4](https://www.bbci.de/competition/iv/)
+and arrange the competition files and released labels as follows:
 
 ```text
 data/raw/bci_competition_iv_ds4/
@@ -142,33 +216,8 @@ data/raw/bci_competition_iv_ds4/
     └── sub3_testlabels.mat
 ```
 
-No competition data are distributed in this repository. The loader validates
-the expected shapes before any experiment runs.
-
-## Method in brief
-
-ECoG is processed at 1 kHz with documented bad-channel removal, zero-phase
-notches at 60/120/180 Hz, and training-partition-only standardization. Glove
-targets are downsampled to 25 Hz. Local lower-envelope baselines are refit within
-each split; no future segment informs a training target.
-
-The spectral front end is a three-level undecimated wavelet-packet tree
-initialized from the 17-tap `bior6.8` analysis filters. Dilations 1, 2, and 4
-yield eight terminal bands. The zero coefficient is omitted as in the paper
-reconstruction, and band energy is accumulated in non-overlapping 40 ms bins.
-FastICA fitted on training data initializes the spatial 1x1 convolution.
-
-The decoder is fit separately for every subject and finger. Fixed-feature LARS,
-ridge, LSTM, GRU, diagonal SSM, linear-attention, Mamba, TCN, CSP, and trainable
-wavelet variants remain available. The frozen reproduction path uses a
-LARS-initialized LSTM and a two-stage schedule: train the recurrent head with the
-stem frozen, then fine-tune the differentiable spatial and wavelet stem at a
-smaller learning rate.
-
-The 2018 four-second training blocks were a Theano static-graph limitation, not
-a physiological assumption. Modern paths cache window reconstruction, use
-strided views where safe, keep small datasets resident on the GPU, and request
-`torch.compile(mode="reduce-overhead")` when supported.
+The competition data are not redistributed here. The loader validates the
+expected shapes before an experiment begins.
 
 ## Installation
 
@@ -181,7 +230,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Native Mamba is optional and is not required by the selected reproduction path
+Native Mamba support is optional and is not needed for the selected LSTM path
 or the test suite.
 
 ## Reproduce the core pipeline
@@ -194,13 +243,13 @@ python scripts/preprocess_dataset.py --subjects 1 2 3
 python scripts/prepare_split_safe_targets.py --subjects 1 2 3
 python scripts/audit_wavelet_frequency_response.py
 
-# Build split-safe complete-event folds with a 3.8 s purge for the 4 s input.
+# Build complete-event folds and purge one input history at every boundary.
 python scripts/build_event_stratified_folds.py --subjects 1 2 3 \
   --fingers thumb index middle ring little --purge-bins 95 \
   --target-map configs/targetsafe_conservative_targets.yaml \
   --output-root outputs/event_stratified_folds_targetsafe_conservative_v1
 
-# Run the per-finger nested LARS-initialized trainable-wavelet models.
+# Train the per-subject/per-finger LARS-initialized models.
 python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
   --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 1 \
   --target-map configs/targetsafe_conservative_targets.yaml \
@@ -210,57 +259,33 @@ python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
   --spatial-learning-rate 3e-6 --wavelet-learning-rate 3e-6 \
   --output-activation softplus
 
-# Repeat selected fingers with --sequence-steps 100 and the output root named
-# in configs/final_event_ensemble.yaml before freezing the per-finger map.
-
-# Refit the frozen configuration on all development rows and evaluate once.
+# Refit the frozen selections and render the recorded diagnostics.
 python scripts/run_frozen_event_refits.py
 python scripts/summarize_frozen_full_refit.py
-
-# Recreate the explicitly retrospective diagnostic figures.
 python scripts/render_extension_report.py \
   --routing configs/retrospective_diagnostic_routing.yaml
 
 python -m pytest -q
 ```
 
-Exact targeted commands and the negative/ablation experiments are documented
-in the [project report](docs/project-report.md#reproduction-recipes).
-
-## Evaluation policy
-
-- Fit preprocessing, ICA, target baselines, feature selection, model parameters,
-  ensemble membership, and epoch count without released-test labels.
-- Keep complete movement/rest events together and purge every held-out boundary
-  by at least the receptive-field history.
-- Report the original released glove PCC for paper comparison.
-- Keep raw-coordinate scoring separate from cleaned-flexion visualization.
-- Report all five fingers and `Macro-5`; `Hist-4` is supplementary only and is
-  never compared with the paper's five-finger aggregate.
-- Inspect event timing, rest false positives, derivative PCC, movement-state F1,
-  and peak amplitude. PCC is a proxy, not the scientific endpoint.
-- Label every test-inspected routing or ablation as retrospective.
+Some selected fingers use a 100-step input history. Exact configurations and
+the negative/ablation recipes are listed in the
+[reproduction recipes](docs/project-report.md#reproduction-recipes).
 
 ## Repository layout
 
 ```text
 configs/                 versioned preprocessing and model settings
-docs/                    detailed report, figures, compact result summaries
-scripts/                 audits, benchmarks, training, selection, visualization
+docs/                    report, figures, and compact result summaries
+scripts/                 audits, training, selection, and visualization
 src/ecog_decoding/       reusable loading, preprocessing, features, and models
 tests/                   synthetic unit and regression tests
 data/                    local competition files (ignored)
-outputs/                 generated arrays, checkpoints, logs, figures (ignored)
+outputs/                 predictions, checkpoints, and logs (ignored)
 ```
 
 ## Citation
 
-If this reimplementation is useful, cite the 2018 paper above. A
-[`CITATION.cff`](CITATION.cff) file is included for citation managers and makes
-the distinction between this software reimplementation and the original paper.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Do not commit competition data, true
-labels, checkpoints, prediction arrays, credentials, `.remote`, or
-machine-specific paths.
+If this reimplementation is useful, please cite the 2018 paper above. The
+included [`CITATION.cff`](CITATION.cff) distinguishes this software repository
+from the original publication and from the lost historical source code.
