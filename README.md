@@ -121,9 +121,9 @@ paper's rounded aggregate.
 
 | Subject | 2018 paper | Final train+validation refit | Test-informed best of runs* |
 |---|---:|---:|---:|
-| S1 | 0.556 | 0.512 | **0.652** |
+| S1 | 0.556 | 0.540 | **0.652** |
 | S2 | 0.408 | **0.423** | **0.512** |
-| S3 | 0.582 | 0.488 | **0.699** |
+| S3 | 0.582 | 0.552 | **0.699** |
 
 ### How the final refit is produced
 
@@ -144,6 +144,9 @@ competition training file; it never includes the released test recording.
 
 This final-refit result is the one to use when evaluating the reproducible
 pipeline. It exceeds the rounded paper mean for S2, but not yet for S1 or S3.
+For S1 middle and S3 thumb, middle, and ring, cross-validation selected a joint
+ICA-wavelet and designed-band CSP representation; the other fingers retain the
+paper-derived ICA-wavelet route.
 The largest gaps are not explained by a global finger permutation or a simple
 temporal lag. They are concentrated in particular fingers and recording
 periods, consistent with target-regime and ECoG nonstationarity.

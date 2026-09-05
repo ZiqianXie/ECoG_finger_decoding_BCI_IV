@@ -1,0 +1,53 @@
+{
+  "protocol": "OOF-routed joint ICA-wavelet/CSP fixed-feature LSTM; six-seed full-development refit",
+  "released_test_used_for_routing": false,
+  "released_test_role": "retrospective paper-comparison evaluation",
+  "seeds": [0, 1, 2, 3, 4, 5],
+  "collapsed_seeds": [],
+  "promoted_pairs": {
+    "S1_middle": {
+      "baseline_raw_pcc": 0.128041,
+      "joint_six_seed_raw_pcc": 0.267959,
+      "delta": 0.139918,
+      "mean_pairwise_seed_prediction_pcc": 0.921343
+    },
+    "S3_thumb": {
+      "baseline_raw_pcc": 0.723840,
+      "joint_six_seed_raw_pcc": 0.771930,
+      "delta": 0.048091,
+      "mean_pairwise_seed_prediction_pcc": 0.969556
+    },
+    "S3_middle": {
+      "baseline_raw_pcc": 0.441024,
+      "joint_six_seed_raw_pcc": 0.566000,
+      "delta": 0.124976,
+      "mean_pairwise_seed_prediction_pcc": 0.935226
+    },
+    "S3_ring": {
+      "baseline_raw_pcc": 0.513048,
+      "joint_six_seed_raw_pcc": 0.656986,
+      "delta": 0.143938,
+      "mean_pairwise_seed_prediction_pcc": 0.998834
+    }
+  },
+  "hybrid_subject_results": {
+    "S1": {
+      "per_finger_raw_pcc": [0.677657, 0.793155, 0.267959, 0.588723, 0.373863],
+      "macro5_raw_pcc": 0.540271
+    },
+    "S2": {
+      "per_finger_raw_pcc": [0.586561, 0.398876, 0.336751, 0.544393, 0.249769],
+      "macro5_raw_pcc": 0.423270
+    },
+    "S3": {
+      "per_finger_raw_pcc": [0.771930, 0.340398, 0.566000, 0.656986, 0.423066],
+      "macro5_raw_pcc": 0.551676
+    }
+  },
+  "visual_diagnosis": {
+    "S1_middle": "More movement timing is recovered and several large false bursts are suppressed, but strong trains remain under-amplitude and movement-state precision is low.",
+    "S3_thumb": "Major single and repeated events remain well aligned, with improved amplitude matching overall.",
+    "S3_middle": "Repeated-event timing is clearer, though several long events remain amplitude-compressed.",
+    "S3_ring": "Timing and peak scale improve substantially, while some rest leakage remains."
+  }
+}

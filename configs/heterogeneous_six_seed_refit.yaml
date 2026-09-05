@@ -1,0 +1,16 @@
+experiment: heterogeneous_six_seed_refit_v1
+selection_basis: >-
+  Promote only subject-finger pairs where the fold-safe joint ICA-wavelet plus
+  designed-band CSP dictionary exceeded the better individual family in OOF PCC.
+baseline_ensemble_map: configs/full_development_event_refit.yaml
+seeds: [0, 1, 2, 3, 4, 5]
+targets:
+  1: [middle]
+  3: [thumb, middle, ring]
+training:
+  hidden_size: 10
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  max_features: 1024
+  output_activation: softplus
+  sequence_stride: 25

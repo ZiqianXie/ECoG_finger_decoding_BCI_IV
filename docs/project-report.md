@@ -48,6 +48,13 @@ In the earlier protocol, the S1 and S3 changes from development selection to
 the released test recording were too large to explain by seed variation alone,
 pointing instead to temporal nonstationarity and a change in the target regime.
 
+A later fold-safe feature-family screen selected a joint ICA-wavelet and
+designed-band CSP dictionary for S1 middle and S3 thumb, middle, and ring.
+Six LARS-initialized LSTM members were refitted for each selected pair without
+using released-test labels for routing. Replacing only those four predictions
+raises released-test `Macro-5` from 0.512/0.423/0.488 to
+0.540/0.423/0.552 for S1--S3.
+
 A separate test-informed oracle analysis selects the saved prediction with the
 highest released-test PCC for each subject/finger pair. It reaches `Macro-5`
 0.652, 0.512, and 0.699. All fifteen per-finger PCC values are above the rounded
@@ -275,6 +282,15 @@ and S3 was already largely explained by CSP. Thus the experiment confirms
 subject- and finger-specific complementarity without supporting a larger
 universal feature set for the current refit.
 
+The six-seed follow-up promoted only the four joint-dictionary wins over the
+better individual family. Released-test PCC changed from 0.128 to 0.268 for S1
+middle and from 0.724/0.441/0.513 to 0.772/0.566/0.657 for S3
+thumb/middle/ring. The LSTM duration was inherited from each pair's matched
+OOF-selected ICA-wavelet model rather than retuned on the released test. This
+keeps the routing label-free, but a dedicated nonlinear outer-fold comparison
+would still be required to isolate how much of the gain comes from the joint
+dictionary versus the fixed-feature head.
+
 The beta-gated/high-gamma head was initially evaluated only for S3. A completed
 transfer ablation confirms that this was not an overlooked S1/S2 improvement.
 For S1, gamma-only and beta-gated variants reached Macro-5 0.470 and 0.410; for
@@ -369,13 +385,15 @@ inside each split; this closes the target-support leakage found in the first
 event-fold implementation.
 
 The selected final model is a separate decoder for each of the 15
-subject/finger pairs.
-Its stem uses the paper-derived FastICA initialization and eight-terminal-band
-bior6.8 tree. LARS selects a sparse fixed-feature starting function. The LSTM is
-then optimized in two stages: first with the stem frozen, then with the spatial
-and wavelet filters unfrozen at a smaller learning rate. Six random-initialization
-members are retained unless an integrity audit finds numerical or near-constant
-collapse.
+subject/finger pairs. Eleven pairs use the paper-derived FastICA initialization
+and eight-terminal-band bior6.8 tree. Their LSTM is optimized first with the
+stem frozen and then with the spatial and wavelet filters unfrozen at a smaller
+learning rate. For the four pairs named below, full-development event-fold
+validation instead selected a fixed joint dictionary containing those
+ICA-wavelet atoms plus decoded-finger and any-movement CSP atoms from seven
+designed frequency bands. LARS selects the sparse starting function in either
+case. Six random-initialization members are retained unless an integrity audit
+finds numerical or near-constant collapse.
 
 | Evaluation | S1 Macro-5 | S2 Macro-5 | S3 Macro-5 |
 |---|---:|---:|---:|
@@ -384,17 +402,21 @@ collapse.
 | Descriptive per-finger history choice on the same OOF data | 0.485 | 0.416 | 0.400 |
 | Older model-fitting-only event-fold OOF selection | 0.488 | 0.444 | 0.373 |
 | Older one-time chronological validation | 0.496 | 0.388 | 0.452 |
-| **Current full-development-selected six-seed refit, released test** | **0.512** | **0.423** | **0.488** |
+| **Current OOF-routed six-seed refit, released test** | **0.540** | **0.423** | **0.552** |
+| ICA-wavelet-only six-seed refit, released test | 0.512 | 0.423 | 0.488 |
 | Previous train+validation refit, released test | 0.506 | 0.415 | 0.486 |
 | 2018 paper, released test | 0.556 | 0.408 | 0.582 |
 
 The full-development pipeline was selected for the repository headline before
 its new released-test predictions were inspected. The decision is recorded in
-`docs/results/full-development-headline-decision.json`. This prevents the older
-and newer validation protocols from being chosen according to which happens to
-score better on the released test. The comparison is nevertheless retrospective
-because those test labels had already been inspected during earlier
-reconstruction work.
+`docs/results/full-development-headline-decision.json`. The later heterogeneous
+routes were promoted only where the joint dictionary exceeded the better
+individual feature family in the same full-development event-fold screen; test
+labels were not used for that routing. This prevents the older and newer
+validation protocols or feature families from being chosen according to which
+happens to score better on the released test. The comparison is nevertheless
+retrospective because those test labels had already been inspected during
+earlier reconstruction work.
 
 The same-OOF per-finger history-choice row is useful for selecting a candidate,
 but it is not an unbiased performance estimate because history selection and
@@ -407,25 +429,29 @@ chronological-validation scores by finger were:
 | S2 | 0.652 | 0.301 | 0.468 | 0.365 | 0.154 | **0.388** |
 | S3 | 0.643 | 0.340 | 0.474 | 0.451 | 0.349 | **0.452** |
 
-The newly selected full-development models were refitted on all 400,000
-development samples. Six members were averaged for each subject/finger pair.
-All 90 training reports had finite losses and full-training PCC from 0.425 to
-0.869; the smallest member prediction standard deviation was 0.052, so no
-member showed numerical or near-constant collapse. The released-test result was:
+The full-development models were refitted on all 400,000 development samples.
+Six members were averaged for each subject/finger pair. The original 90
+ICA-wavelet training reports had finite losses and full-training PCC from 0.425
+to 0.869. The 24 additional heterogeneous members were also finite and none was
+constant; all six seeds were retained for every promoted pair. The OOF-routed
+released-test result was:
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Paper Macro-5 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| S1 | 0.678 | 0.793 | 0.128 | 0.589 | 0.374 | **0.512** | 0.556 |
+| S1 | 0.678 | 0.793 | 0.268 | 0.589 | 0.374 | **0.540** | 0.556 |
 | S2 | 0.587 | 0.399 | 0.337 | 0.544 | 0.250 | **0.423** | 0.408 |
-| S3 | 0.724 | 0.340 | 0.441 | 0.513 | 0.423 | **0.488** | 0.582 |
+| S3 | 0.772 | 0.340 | 0.566 | 0.657 | 0.423 | **0.552** | 0.582 |
 
-Relative to the previous refit, Macro-5 increases by 0.006, 0.008, and 0.002
-for S1--S3. Visual inspection agrees that the ensemble contains meaningful
-movement timing, but it also preserves important failure modes: S1 middle has
-substantial false activity and misses true events; S2 middle and little remain
-noisy or weak; and S3 index through little show appreciable rest activity and
-amplitude mismatch. These observations diagnose the selected pipeline; they do
-not alter the precommitted headline choice.
+Relative to the ICA-wavelet-only six-seed refit, the heterogeneous routing adds
+0.028 and 0.063 Macro-5 for S1 and S3; S2 is unchanged. S1 middle improves by
+0.140 PCC and suppresses several large false bursts, but it remains visibly
+under-amplitude on strong movement trains and has low movement-state precision.
+S3 thumb, middle, and ring improve by 0.048, 0.125, and 0.144. Their event plots
+show better timing and amplitude, although middle remains compressed in some
+long events and ring retains rest leakage. S2 middle/little and S3 index/little
+remain the principal unresolved fingers. These visual findings support the
+four OOF-routed replacements without implying that the remaining morphology is
+fully solved.
 
 For provenance, the previous selection procedure added the chronological
 validation segment to the model-fitting data after its choices were fixed. Each

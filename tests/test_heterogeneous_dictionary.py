@@ -4,6 +4,10 @@ from scripts.benchmark_event_heterogeneous_dictionary import (
     csp_selection_audit,
     selected_csp_filters,
 )
+from scripts.prepare_heterogeneous_full_refit import (
+    correlations_by_column,
+    selected_matrix,
+)
 
 
 def test_csp_filter_fit_uses_requested_active_and_rest_rows() -> None:
@@ -40,3 +44,28 @@ def test_joint_selection_audit_separates_wavelet_and_csp_families() -> None:
         "any_movement": 2,
     }
     assert audit["csp_selected_by_band_hz"]["155-195"] == 1
+
+
+def test_joint_feature_gather_preserves_global_index_order() -> None:
+    wavelet = np.arange(30, dtype=np.float32).reshape(5, 6)
+    csp = 100 + np.arange(20, dtype=np.float32).reshape(5, 4)
+
+    observed = selected_matrix(wavelet, csp, np.array([0, 7, 5, 9]))
+
+    np.testing.assert_array_equal(
+        observed,
+        np.column_stack((wavelet[:, 0], csp[:, 1], wavelet[:, 5], csp[:, 3])),
+    )
+
+
+def test_blockwise_correlations_match_numpy() -> None:
+    rng = np.random.default_rng(9)
+    features = rng.normal(size=(31, 7)).astype(np.float32)
+    target = (0.7 * features[:, 2] - 0.3 * features[:, 5] + rng.normal(size=31)).astype(
+        np.float32
+    )
+
+    observed = correlations_by_column(features, target, block_columns=3)
+    expected = np.corrcoef(np.column_stack((features, target)), rowvar=False)[:-1, -1]
+
+    np.testing.assert_allclose(observed, expected, atol=1.0e-12)
