@@ -340,7 +340,9 @@ def main() -> None:
     report = {
         **training_report,
         "released_test_touched": True,
-        "released_test_role": "single terminal evaluation; never used for selection or tuning",
+        "released_test_role": "retrospective paper-comparison evaluation",
+        "released_test_used_for_current_configuration_selection": False,
+        "released_test_previously_inspected_during_reconstruction": True,
         "released_test_metrics": metrics,
         "runtime_seconds": time.perf_counter() - started,
     }

@@ -1,0 +1,42 @@
+# Candidate families, seeds, and epoch counts were selected from the
+# full-development event-grouped OOF grids. Released-test labels were not used
+# for these choices. Both non-collapsed seeds are retained for every model.
+default:
+  input_root: outputs/event_lars_e2e_fulldev_seq50_v1
+  seeds: [0, 1]
+  sequence_steps: 50
+  sequence_stride: 25
+  batch_size: 32
+  unfrozen_batch_size: 6
+  warmup_epochs: 8
+  learning_rate: 1.0e-4
+  spatial_learning_rate: 3.0e-6
+  wavelet_learning_rate: 3.0e-6
+  weight_decay: 1.0e-4
+  output_activation: softplus
+  loss: mse
+
+subjects:
+  1:
+    ring:
+      input_root: outputs/event_lars_e2e_fulldev_seq100_v1
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
+    little:
+      input_root: outputs/event_lars_e2e_fulldev_seq100_v1
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
+  2:
+    middle:
+      input_root: outputs/event_lars_e2e_fulldev_seq100_v1
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
+  3:
+    middle:
+      input_root: outputs/event_lars_e2e_fulldev_seq100_v1
+      sequence_steps: 100
+      batch_size: 24
+      unfrozen_batch_size: 4
