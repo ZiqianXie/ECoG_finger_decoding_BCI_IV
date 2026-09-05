@@ -83,9 +83,13 @@ def purge_near_validation(
     return training[safe[training]]
 
 
-def target_path(prepared: Path, method: str) -> Path:
+def target_path(
+    prepared: Path, method: str, *, split_safe: bool = False
+) -> Path:
     if method == "raw_25hz":
         return prepared / "train_glove_25hz_raw.npy"
+    if split_safe and LOCAL_METHOD.match(method):
+        return prepared / f"train_glove_{method}_split_safe.npy"
     return prepared / f"train_glove_{method}.npy"
 
 
@@ -122,14 +126,30 @@ def main() -> None:
     parser.add_argument("--sampling-rate", type=float, default=25.0)
     parser.add_argument("--target-smoothing-seconds", type=float, default=0.16)
     parser.add_argument("--gaussian-safety-sigmas", type=float, default=5.0)
+    parser.add_argument(
+        "--split-safe-targets",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     args = parser.parse_args()
 
     for subject in args.subjects:
         prepared = args.prepared_root / f"sub{subject}"
-        methods = [method for method in args.methods if target_path(prepared, method).exists()]
+        methods = [
+            method
+            for method in args.methods
+            if target_path(
+                prepared, method, split_safe=args.split_safe_targets
+            ).exists()
+        ]
         raw_full = np.load(prepared / "train_glove_25hz_raw.npy")
         target_arrays = {
-            method: np.load(target_path(prepared, method)) for method in methods
+            method: np.load(
+                target_path(
+                    prepared, method, split_safe=args.split_safe_targets
+                )
+            )
+            for method in methods
         }
         finite_supports = [
             support
@@ -161,6 +181,7 @@ def main() -> None:
             ),
             "official_final_validation_touched": False,
             "released_test_touched": False,
+            "split_safe_targets": bool(args.split_safe_targets),
             "uniform_target_support_purge_bins": int(maximum_support),
             "methods": {},
             "per_finger_selection": {},

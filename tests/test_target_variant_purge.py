@@ -13,6 +13,9 @@ def test_target_paths_include_raw_glove_special_case() -> None:
     root = Path("prepared")
     assert target_path(root, "raw_25hz") == root / "train_glove_25hz_raw.npy"
     assert target_path(root, "local_w2_q10") == root / "train_glove_local_w2_q10.npy"
+    assert target_path(root, "local_w2_q10", split_safe=True) == (
+        root / "train_glove_local_w2_q10_split_safe.npy"
+    )
 
 
 def test_target_support_includes_percentile_and_gaussian_radius() -> None:
