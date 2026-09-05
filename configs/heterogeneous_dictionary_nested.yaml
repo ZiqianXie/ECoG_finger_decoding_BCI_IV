@@ -1,0 +1,43 @@
+experiment: heterogeneous_dictionary_nested_v1
+purpose: >-
+  Test the S3-selected movement-versus-rest CSP/seven-band representation and
+  the ICA/bior6.8 wavelet representation as one joint overcomplete dictionary.
+dictionary:
+  ica_wavelet:
+    feature_root: outputs/windowed_ica_wavelet_asymmetric_v1
+    contents:
+      - ICA spatial projections
+      - bior6.8 wavelet-packet log energy
+      - signed low-frequency potential
+  csp_designed_bands:
+    bands_hz:
+      - [4, 8]
+      - [8, 12]
+      - [12, 30]
+      - [30, 55]
+      - [65, 95]
+      - [105, 145]
+      - [155, 195]
+    spatial_atoms:
+      - decoded-finger movement versus rest CSP
+      - any-finger movement versus rest CSP
+    components_per_covariance_tail: 2
+selection:
+  method: LassoLarsCV
+  maximum_prescreened_features: 1024
+  candidates:
+    - ica_wavelet_only
+    - csp_designed_bands_only
+    - joint_dictionary
+  scope: full-development
+  folds: outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
+  target_map: configs/targetsafe_conservative_targets.yaml
+evaluation:
+  primary: per-finger event-grouped out-of-fold PCC
+  report_selected_family_counts: true
+  report_csp_band_counts: true
+  released_test_touched: false
+next_stage: >-
+  If joint selection is complementary, initialize a two-stem nonlinear decoder
+  from the joint LARS coefficients, fine-tune both stems, and compare static,
+  bottom-up, top-down, and idle-capable Sinkhorn atom gates.
