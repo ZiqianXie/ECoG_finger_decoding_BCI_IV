@@ -136,26 +136,42 @@ def predict_contiguous(
 
 def plot_validation(
     path: Path,
-    target: np.ndarray,
+    raw_target: np.ndarray,
+    cleaned_target: np.ndarray,
     prediction: np.ndarray,
     title: str,
 ) -> None:
-    groups = movement_groups(target, 0.08)
+    groups = movement_groups(cleaned_target, 0.08)
     selected = sorted(
         groups,
-        key=lambda group: float(np.max(target[group["start"]:group["stop"]])),
+        key=lambda group: float(
+            np.max(cleaned_target[group["start"]:group["stop"]])
+        ),
         reverse=True,
     )[:12]
     figure, axes = plt.subplots(4, 3, figsize=(14, 10))
     for axis, group in zip(axes.flat, selected):
         start, stop = group["start"], group["stop"]
         time = np.arange(start, stop) / 25.0
-        axis.plot(time, target[start:stop], color="black", linewidth=0.9, label="raw glove")
+        axis.plot(
+            time,
+            raw_target[start:stop],
+            color="#94a3b8",
+            linewidth=0.7,
+            label="raw glove",
+        )
+        axis.plot(
+            time,
+            cleaned_target[start:stop],
+            color="black",
+            linewidth=0.9,
+            label="cleaned target",
+        )
         axis.plot(time, prediction[start:stop], color="#2563eb", linewidth=0.9, label="CV ensemble")
         axis.set_title(f"{start / 25:.1f}-{stop / 25:.1f} s", fontsize=9)
     for axis in axes.flat[len(selected):]:
         axis.set_visible(False)
-    axes.flat[0].legend(frameon=False, ncol=2, fontsize=8)
+    axes.flat[0].legend(frameon=False, ncol=3, fontsize=8)
     figure.suptitle(title)
     figure.tight_layout()
     figure.savefig(path, dpi=160)
@@ -244,7 +260,7 @@ def main() -> None:
             np.save(subject_output / f"{finger_name}_validation_prediction.npy", ensemble)
             plot_validation(
                 subject_output / f"{finger_name}_validation_events.png",
-                raw_target, ensemble,
+                raw_target, cleaned, ensemble,
                 f"Subject {subject} {finger_name}: official final validation",
             )
             subject_report["per_finger"][finger_name] = {

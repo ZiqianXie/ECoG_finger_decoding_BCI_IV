@@ -240,12 +240,30 @@ def main() -> None:
             ensemble_score = pearson(ensemble, raw)
             ensemble_cleaned_score = pearson(ensemble, cleaned)
             seed_sd = float(np.std(list(seed_scores.values()), ddof=1)) if len(seed_scores) > 1 else 0.0
+            seed_prediction_pcc = {
+                f"{left}_vs_{right}": pearson(
+                    seed_predictions[left], seed_predictions[right]
+                )
+                for position, left in enumerate(included_seeds)
+                for right in included_seeds[position + 1 :]
+            }
+            best_included_seed_score = max(seed_scores[str(seed)] for seed in included_seeds)
+            mean_included_seed_score = float(
+                np.mean([seed_scores[str(seed)] for seed in included_seeds])
+            )
             subject_report["per_finger"][finger] = {
                 "seed_oof_pcc": seed_scores,
                 "seed_sd": seed_sd,
+                "seed_prediction_pcc": seed_prediction_pcc,
                 "included_seeds": included_seeds,
                 "collapsed_seeds": collapsed_seeds,
                 "ensemble_oof_pcc": ensemble_score,
+                "ensemble_gain_vs_best_included_seed": (
+                    ensemble_score - best_included_seed_score
+                ),
+                "ensemble_gain_vs_mean_included_seed": (
+                    ensemble_score - mean_included_seed_score
+                ),
                 "ensemble_cleaned_target_oof_pcc": ensemble_cleaned_score,
                 "morphology": morphology_metrics(
                     ensemble, cleaned, definition["groups"]
