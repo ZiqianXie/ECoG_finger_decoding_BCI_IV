@@ -172,6 +172,9 @@ def main() -> None:
             seed_predictions = {
                 seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds
             }
+            seed_initialized_predictions = {
+                seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds
+            }
             reference_root = (
                 args.input_root / f"sub{subject}" / finger / "fold0"
                 / f"seed{args.seeds[0]}"
@@ -202,6 +205,9 @@ def main() -> None:
                     root = args.input_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{seed}"
                     prediction = np.load(root / "validation_prediction.npy")
                     seed_predictions[seed][indices] = prediction
+                    seed_initialized_predictions[seed][indices] = np.load(
+                        root / "validation_initialized_prediction.npy"
+                    )
                     if has_hurdle:
                         seed_probabilities[seed][indices] = np.load(
                             root / "validation_movement_probability.npy"
@@ -216,11 +222,18 @@ def main() -> None:
                     )
             if not np.isfinite(raw).all() or not np.isfinite(cleaned).all() or any(
                 not np.isfinite(values).all() for values in seed_predictions.values()
+            ) or any(
+                not np.isfinite(values).all()
+                for values in seed_initialized_predictions.values()
             ):
                 raise RuntimeError(f"incomplete OOF coverage for S{subject} {finger}")
             seed_scores = {
                 str(seed): pearson(values, raw)
                 for seed, values in seed_predictions.items()
+            }
+            initialized_seed_scores = {
+                str(seed): pearson(values, raw)
+                for seed, values in seed_initialized_predictions.items()
             }
             target_std = max(float(np.std(cleaned)), 1.0e-8)
             collapsed_seeds = [
@@ -239,6 +252,13 @@ def main() -> None:
             )
             ensemble_score = pearson(ensemble, raw)
             ensemble_cleaned_score = pearson(ensemble, cleaned)
+            initialized_ensemble = np.mean(
+                np.stack(
+                    [seed_initialized_predictions[seed] for seed in included_seeds]
+                ),
+                axis=0,
+            )
+            initialized_ensemble_score = pearson(initialized_ensemble, raw)
             seed_sd = float(np.std(list(seed_scores.values()), ddof=1)) if len(seed_scores) > 1 else 0.0
             seed_prediction_pcc = {
                 f"{left}_vs_{right}": pearson(
@@ -253,11 +273,16 @@ def main() -> None:
             )
             subject_report["per_finger"][finger] = {
                 "seed_oof_pcc": seed_scores,
+                "initialized_seed_oof_pcc": initialized_seed_scores,
                 "seed_sd": seed_sd,
                 "seed_prediction_pcc": seed_prediction_pcc,
                 "included_seeds": included_seeds,
                 "collapsed_seeds": collapsed_seeds,
                 "ensemble_oof_pcc": ensemble_score,
+                "initialized_ensemble_oof_pcc": initialized_ensemble_score,
+                "fine_tuning_gain_vs_initialized": (
+                    ensemble_score - initialized_ensemble_score
+                ),
                 "ensemble_gain_vs_best_included_seed": (
                     ensemble_score - best_included_seed_score
                 ),
