@@ -1,0 +1,20 @@
+# Preserve the subject default unless the strict ridge audit improved raw-glove
+# OOF PCC by more than 0.01. This limits target-selection multiplicity.
+1:
+  thumb: local_w2_q10_split_safe
+  index: local_w2_q10_split_safe
+  middle: local_w2_q10_split_safe
+  ring: local_w6_q10_split_safe
+  little: local_w2_q10_split_safe
+2:
+  thumb: local_w1_q10_split_safe
+  index: local_w1_q10_split_safe
+  middle: local_w1_q10_split_safe
+  ring: local_w1_q10_split_safe
+  little: local_w1_q10_split_safe
+3:
+  thumb: local_w4_q20_split_safe
+  index: local_w4_q20_split_safe
+  middle: local_w6_q20_split_safe
+  ring: local_w4_q20_split_safe
+  little: local_w4_q20_split_safe
