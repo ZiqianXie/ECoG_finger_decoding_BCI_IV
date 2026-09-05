@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import yaml
 from scipy import ndimage
 
 from ecog_decoding.training import FINGER_NAMES
@@ -165,21 +166,40 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=False,
     )
+    parser.add_argument(
+        "--target-map",
+        type=Path,
+        default=None,
+        help="YAML mapping from subject and finger to target file stem",
+    )
     args = parser.parse_args()
+    if args.split_safe_targets and args.target_map is not None:
+        parser.error("--split-safe-targets and --target-map are mutually exclusive")
+    target_map = yaml.safe_load(args.target_map.read_text()) if args.target_map else {}
 
     for subject in args.subjects:
         prepared = args.prepared_root / f"sub{subject}"
         metadata = json.loads((prepared / "metadata.json").read_text())
         split = int(metadata["target_fit_samples_25hz"])
         offset = args.history - 1
-        target_name = TARGETS[subject] + (
-            "_split_safe" if args.split_safe_targets else ""
-        )
-        target = np.asarray(
-            np.load(prepared / f"train_glove_{target_name}.npy")[offset:split],
-            dtype=np.float32,
-        )
         for finger_name in args.fingers:
+            if args.target_map is not None:
+                subject_targets = target_map.get(
+                    subject, target_map.get(str(subject), {})
+                )
+                target_name = subject_targets.get(finger_name)
+                if target_name is None:
+                    raise KeyError(
+                        f"target map has no entry for S{subject} {finger_name}"
+                    )
+            else:
+                target_name = TARGETS[subject] + (
+                    "_split_safe" if args.split_safe_targets else ""
+                )
+            target = np.asarray(
+                np.load(prepared / f"train_glove_{target_name}.npy")[offset:split],
+                dtype=np.float32,
+            )
             trigger_finger = list(FINGER_NAMES).index(finger_name)
             groups, smooth, active = event_groups(
                 target,
