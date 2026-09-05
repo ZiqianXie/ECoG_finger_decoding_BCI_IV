@@ -167,7 +167,7 @@ The paper values below are calculated from its rounded per-finger CNN-LSTM
 numbers, so they should not be interpreted as more precise versions of the
 paper's rounded aggregate.
 
-| Subject | 2018 paper | OOF-routed six-seed refit | Test-informed best of runs* |
+| Subject | 2018 paper | Cross-fold-validated six-seed refit | Test-informed best of runs* |
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.540 | **0.652** |
 | S2 | 0.408 | **0.423** | **0.512** |
@@ -243,7 +243,7 @@ compared with the paper as a fair held-out result.
 We retain the analysis because it answers a narrower diagnostic question: *did
 any model we trained recover the signal for this finger?* All fifteen pairs have
 at least one test prediction above the corresponding rounded paper value. The
-gap between this oracle result and the OOF-routed refit shows how much
+gap between this oracle result and the cross-fold-validated refit shows how much
 performance may be available in the trained candidate set but cannot be claimed
 without a selection rule that generalizes across recording periods.
 
