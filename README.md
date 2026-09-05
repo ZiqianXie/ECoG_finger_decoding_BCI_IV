@@ -127,22 +127,20 @@ paper's rounded aggregate.
 
 ### How the final refit is produced
 
-Before the final refit, the preprocessing, architecture, seed membership, and
-epoch count are fixed from model-fitting cross-validation. The network weights
-are then initialized anew and trained on the combined model-fitting and
-chronological validation partitions.
+Before the final refit, the preprocessing, architecture, history length, and
+epoch rule are fixed using separate event-grouped cross-validation for every
+subject and finger. The folds cover the complete competition training file.
+The network weights are then initialized anew and trained on that complete
+development recording.
 
 | Phase | Data used | Purpose |
 |---|---|---|
-| Model selection | First two-thirds of the 400,000-sample competition training file | Three event-grouped folds choose preprocessing, architecture, seeds, and epoch count. |
-| Chronological validation | Last third of the same competition training file | Evaluate the already selected configuration once on a later recording period. No choice is changed from this result. |
-| Final refit | All 400,000 samples: model-fitting partition **plus** chronological validation partition | Reinitialize and train the selected model for the fixed epoch count. |
+| Model selection | All 400,000 samples, held out by fold | Three event-grouped folds choose the configuration separately for every subject and finger. |
+| Final refit | All 400,000 development samples | Reinitialize six members and train the selected configuration. |
 | Final test | Separate 200,000-sample released test file | Compute the reported test PCC; test labels are not used for fitting or selection. |
 
-Thus, the final refit does **not** use only the first training partition. It uses
-all labeled data in the competition training file after the choices have been
-fixed. In this repository, “complete development recording” means that combined
-train-plus-validation file; it never includes the released test recording.
+Here, “complete development recording” means the full 400,000-sample labeled
+competition training file; it never includes the released test recording.
 
 This final-refit result is the one to use when evaluating the reproducible
 pipeline. It exceeds the rounded paper mean for S2, but not yet for S1 or S3.
