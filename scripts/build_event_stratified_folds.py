@@ -160,6 +160,11 @@ def main() -> None:
     parser.add_argument("--purge-bins", type=int, default=25)
     parser.add_argument("--assignment-trials", type=int, default=500)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--split-safe-targets",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     args = parser.parse_args()
 
     for subject in args.subjects:
@@ -167,8 +172,11 @@ def main() -> None:
         metadata = json.loads((prepared / "metadata.json").read_text())
         split = int(metadata["target_fit_samples_25hz"])
         offset = args.history - 1
+        target_name = TARGETS[subject] + (
+            "_split_safe" if args.split_safe_targets else ""
+        )
         target = np.asarray(
-            np.load(prepared / f"train_glove_{TARGETS[subject]}.npy")[offset:split],
+            np.load(prepared / f"train_glove_{target_name}.npy")[offset:split],
             dtype=np.float32,
         )
         for finger_name in args.fingers:
@@ -228,7 +236,7 @@ def main() -> None:
             report = {
                 "subject": subject,
                 "finger": finger_name,
-                "target": TARGETS[subject],
+                "target": target_name,
                 "protocol": "per-finger event-grouped stratification with multi-finger balance and fold-specific temporal purge",
                 "official_final_validation_touched": False,
                 "released_test_touched": False,
