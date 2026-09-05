@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--fold-root", type=Path, default=Path("outputs/event_stratified_folds_v1"))
     parser.add_argument("--seeds", type=int, nargs="+", default=(0, 1))
     parser.add_argument("--subjects", type=int, nargs="+", default=(1, 2, 3))
+    parser.add_argument("--fingers", nargs="+", choices=tuple(FINGER_NAMES), default=tuple(FINGER_NAMES))
     parser.add_argument("--output", type=Path, default=Path("outputs/event_lars_lstm_wavelet_v1/summary.json"))
     args = parser.parse_args()
 
@@ -37,8 +38,9 @@ def main() -> None:
     }
     for subject in args.subjects:
         subject_report: dict[str, object] = {"per_finger": {}}
-        figure, axes = plt.subplots(5, 1, figsize=(16, 13), sharex=True)
-        for finger_index, finger in enumerate(FINGER_NAMES):
+        figure, axes = plt.subplots(len(args.fingers), 1, figsize=(16, 2.5 * len(args.fingers) + 1), sharex=True)
+        axes = np.atleast_1d(axes)
+        for finger_index, finger in enumerate(args.fingers):
             definition = json.loads(
                 (args.fold_root / f"sub{subject}" / finger / "folds.json").read_text()
             )

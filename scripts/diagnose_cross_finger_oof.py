@@ -224,7 +224,19 @@ def main() -> None:
             "events": event_records,
         }
         (destination / "diagnosis.json").write_text(json.dumps(report, indent=2) + "\n")
-        print(json.dumps({"saved": str(destination), **report}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "saved": str(destination),
+                    "subject": subject,
+                    "raw_glove_pcc_decoder_by_observed": raw_pcc.tolist(),
+                    "cleaned_target_pcc_decoder_by_observed": cleaned_pcc.tolist(),
+                    "event_winner_fraction_decoder_by_dominant_glove": confusion.tolist(),
+                    "event_count_by_dominant_glove": confusion_counts.sum(axis=0).tolist(),
+                },
+                indent=2,
+            )
+        )
 
 
 if __name__ == "__main__":

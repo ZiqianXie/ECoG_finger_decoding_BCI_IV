@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--output-root", type=Path, default=Path("outputs/event_lars_lstm_wavelet_nested_v1"))
     parser.add_argument("--max-epochs", type=int, default=40)
     parser.add_argument("--loss", choices=("mse", "joint"), default="mse")
+    parser.add_argument("--architecture", choices=("position", "kinematic"), default="position")
     args = parser.parse_args()
 
     tasks: list[tuple[str, list[str], Path]] = []
@@ -51,6 +52,7 @@ def main() -> None:
                         "--seed", str(seed),
                         "--max-epochs", str(args.max_epochs),
                         "--loss", args.loss,
+                        "--architecture", args.architecture,
                         "--output-root", str(args.output_root),
                     ]
                     tasks.append((name, command, destination))
