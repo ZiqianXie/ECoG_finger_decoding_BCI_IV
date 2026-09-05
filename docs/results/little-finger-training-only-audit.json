@@ -1,0 +1,993 @@
+{
+  "protocol": "development-only little-finger audit with purged event OOF predictions",
+  "scope": "little-finger target only; the other four targets are untouched",
+  "released_test_loaded": false,
+  "interpretation_guardrail": "The residual sweep is diagnostic because the same OOF predictions are compared with several target transforms. A cleaned-target decoder must be retrained and selected in nested development folds before promotion.",
+  "threshold": 0.08,
+  "subjects": {
+    "1": {
+      "subject": 1,
+      "rows": 9976,
+      "target": "local_w2_q10_split_safe",
+      "oof_seed_audit": {
+        "included_seed_count_by_fold": {
+          "0": 2,
+          "1": 2,
+          "2": 2
+        }
+      },
+      "little_oof_pcc_original_target": 0.4864554464131996,
+      "little_target_active_fraction": 0.13923416198877306,
+      "little_active_overlap_any_other_fraction": 0.761699064074874,
+      "little_active_other_dominant_fraction": 0.06911447084233262,
+      "little_energy_in_other_dominant_bins_fraction": 0.009363838387890181,
+      "little_target_correlations": {
+        "thumb": -0.07775929889461161,
+        "index": -0.0067644502881466315,
+        "middle": -0.07942332994665971,
+        "ring": 0.18634307966532956
+      },
+      "little_decoder_correlations_with_all_targets": {
+        "thumb": -0.14905657453979274,
+        "index": -0.11196458547958184,
+        "middle": -0.004831823441214996,
+        "ring": 0.42149905061455745,
+        "little": 0.4864554464131996
+      },
+      "regimes": {
+        "rest": {
+          "bins": 4159,
+          "fraction": 0.41690056134723336,
+          "target_mean": 0.00863304396579122,
+          "prediction_mean": 0.06318584744064902,
+          "pcc": 0.10706289384466784,
+          "rmse": 0.08920378538629767
+        },
+        "little_isolated": {
+          "bins": 331,
+          "fraction": 0.03317963111467522,
+          "target_mean": 0.2598237452010014,
+          "prediction_mean": 0.1664441443224975,
+          "pcc": 0.6984207953589807,
+          "rmse": 0.1971502857039958
+        },
+        "little_dominant_coupled": {
+          "bins": 962,
+          "fraction": 0.09643143544506816,
+          "target_mean": 0.5322930961769856,
+          "prediction_mean": 0.214071398413667,
+          "pcc": 0.4308698607897983,
+          "rmse": 0.38659832387045834
+        },
+        "other_dominant_little_active": {
+          "bins": 96,
+          "fraction": 0.009623095429029671,
+          "target_mean": 0.1049627816149344,
+          "prediction_mean": 0.1278228304363438,
+          "pcc": 0.12889427879582083,
+          "rmse": 0.10555818294107626
+        },
+        "other_active_little_weak": {
+          "bins": 4428,
+          "fraction": 0.44386527666399356,
+          "target_mean": 0.015214121984250335,
+          "prediction_mean": 0.08459616080351744,
+          "pcc": 0.13743169542747327,
+          "rmse": 0.11918118779336304
+        }
+      },
+      "crossfit_soft_residual": {
+        "folds": [
+          {
+            "fold": 0,
+            "passive_fit_bins": 2480,
+            "coefficients": {
+              "thumb": 0.02407486102828294,
+              "index": 0.02570351480450253,
+              "middle": 0.005381416697478555,
+              "ring": 0.05247489672620283
+            }
+          },
+          {
+            "fold": 1,
+            "passive_fit_bins": 2436,
+            "coefficients": {
+              "thumb": 0.01629803505156115,
+              "index": 0.028378582606923723,
+              "middle": 0.00884288880448163,
+              "ring": 0.04261582030275371
+            }
+          },
+          {
+            "fold": 2,
+            "passive_fit_bins": 2326,
+            "coefficients": {
+              "thumb": 0.014915828274467488,
+              "index": 0.026168542715501997,
+              "middle": 0.010527229694472007,
+              "ring": 0.03870677881088709
+            }
+          }
+        ],
+        "candidates": {
+          "0.0": {
+            "oof_prediction_pcc": 0.4864554464131996,
+            "target_mass_removed_fraction": 0.0,
+            "active_fraction": 0.13923416198877306
+          },
+          "0.25": {
+            "oof_prediction_pcc": 0.48412019964257563,
+            "target_mass_removed_fraction": 0.026247342565196452,
+            "active_fraction": 0.13773055332798717
+          },
+          "0.5": {
+            "oof_prediction_pcc": 0.4818239955489028,
+            "target_mass_removed_fraction": 0.04948050885291888,
+            "active_fraction": 0.13652766639935845
+          },
+          "0.75": {
+            "oof_prediction_pcc": 0.48020736617928117,
+            "target_mass_removed_fraction": 0.06836440201124361,
+            "active_fraction": 0.13562550120288694
+          },
+          "1.0": {
+            "oof_prediction_pcc": 0.47935702815725967,
+            "target_mass_removed_fraction": 0.08342407525445883,
+            "active_fraction": 0.13482357658380112
+          }
+        }
+      },
+      "selected_feature_ridge_probe": {
+        "folds": [
+          {
+            "fold": 0,
+            "selected_feature_count": 162,
+            "passive_fit_bins": 2480,
+            "passive_coefficients": {
+              "thumb": 0.02407486102828294,
+              "index": 0.02570351480450253,
+              "middle": 0.005381416697478555,
+              "ring": 0.05247489672620283
+            }
+          },
+          {
+            "fold": 1,
+            "selected_feature_count": 66,
+            "passive_fit_bins": 2436,
+            "passive_coefficients": {
+              "thumb": 0.01629803505156115,
+              "index": 0.028378582606923723,
+              "middle": 0.00884288880448163,
+              "ring": 0.04261582030275371
+            }
+          },
+          {
+            "fold": 2,
+            "selected_feature_count": 85,
+            "passive_fit_bins": 2326,
+            "passive_coefficients": {
+              "thumb": 0.014915828274467488,
+              "index": 0.026168542715501997,
+              "middle": 0.010527229694472007,
+              "ring": 0.03870677881088709
+            }
+          }
+        ],
+        "dominance_temperature": 0.1,
+        "variants": {
+          "residual_0.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.5225328957201121,
+                "pcc_transformed_target": 0.5225328957201121,
+                "pcc_raw_glove_target": 0.44461821201465457
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4891729783810435,
+                "pcc_transformed_target": 0.4891729783810435,
+                "pcc_raw_glove_target": 0.36531170491601783
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.48558241432696814,
+                "pcc_transformed_target": 0.48558241432696814,
+                "pcc_raw_glove_target": 0.36094513198076567
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.49909609614270795,
+            "mean_fold_pcc_transformed_target": 0.49909609614270795,
+            "mean_fold_pcc_raw_glove_target": 0.3902916829704794,
+            "stitched_pcc_original_cleaned_target": 0.49324391775312154,
+            "stitched_pcc_transformed_target": 0.49324391775312154,
+            "stitched_pcc_raw_glove_target": 0.38109960216662875
+          },
+          "residual_0.5": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.5228000668436095,
+                "pcc_transformed_target": 0.5173871524230688,
+                "pcc_raw_glove_target": 0.44468014242530146
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.48880015488697887,
+                "pcc_transformed_target": 0.48292760434978693,
+                "pcc_raw_glove_target": 0.36470507245988487
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4852888454205046,
+                "pcc_transformed_target": 0.48035029692592407,
+                "pcc_raw_glove_target": 0.3604987430797447
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.49896302238369766,
+            "mean_fold_pcc_transformed_target": 0.4935550178995933,
+            "mean_fold_pcc_raw_glove_target": 0.38996131932164363,
+            "stitched_pcc_original_cleaned_target": 0.4930497390817429,
+            "stitched_pcc_transformed_target": 0.48775701885106143,
+            "stitched_pcc_raw_glove_target": 0.3808406906252733
+          },
+          "residual_1.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.522988680927924,
+                "pcc_transformed_target": 0.5150624083574811,
+                "pcc_raw_glove_target": 0.4447601729894679
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4885513950437864,
+                "pcc_transformed_target": 0.4793805466901443,
+                "pcc_raw_glove_target": 0.3643114183734096
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4850621591846992,
+                "pcc_transformed_target": 0.4762171703713437,
+                "pcc_raw_glove_target": 0.36017221591240883
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.4988674117188032,
+            "mean_fold_pcc_transformed_target": 0.490220041806323,
+            "mean_fold_pcc_raw_glove_target": 0.38974793575842875,
+            "stitched_pcc_original_cleaned_target": 0.4929319484855686,
+            "stitched_pcc_transformed_target": 0.484516808737624,
+            "stitched_pcc_raw_glove_target": 0.38068927013844156
+          },
+          "dominance_0.5": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.522820449366288,
+                "pcc_transformed_target": 0.5185403111143712,
+                "pcc_raw_glove_target": 0.44466111179057427
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.48870322685055007,
+                "pcc_transformed_target": 0.4830861868310606,
+                "pcc_raw_glove_target": 0.3644822924131232
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4853123026404325,
+                "pcc_transformed_target": 0.4795242296944472,
+                "pcc_raw_glove_target": 0.36044773776902617
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.49894532628575683,
+            "mean_fold_pcc_transformed_target": 0.493716909213293,
+            "mean_fold_pcc_raw_glove_target": 0.38986371399090786,
+            "stitched_pcc_original_cleaned_target": 0.49306572685018796,
+            "stitched_pcc_transformed_target": 0.4880702904054517,
+            "stitched_pcc_raw_glove_target": 0.3807782019682301
+          },
+          "dominance_1.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.5229668124395934,
+                "pcc_transformed_target": 0.5142501365392725,
+                "pcc_raw_glove_target": 0.4445817460956659
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4881408584653543,
+                "pcc_transformed_target": 0.4765618317097455,
+                "pcc_raw_glove_target": 0.36357637227877615
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4849964188257371,
+                "pcc_transformed_target": 0.47291719332999477,
+                "pcc_raw_glove_target": 0.3599144879812132
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.4987013632435617,
+            "mean_fold_pcc_transformed_target": 0.4879097205263376,
+            "mean_fold_pcc_raw_glove_target": 0.38935753545188506,
+            "stitched_pcc_original_cleaned_target": 0.49279761526783344,
+            "stitched_pcc_transformed_target": 0.48247129049244325,
+            "stitched_pcc_raw_glove_target": 0.38038544998881024
+          }
+        }
+      }
+    },
+    "2": {
+      "subject": 2,
+      "rows": 9976,
+      "target": "local_w1_q10_split_safe",
+      "oof_seed_audit": {
+        "included_seed_count_by_fold": {
+          "0": 2,
+          "1": 2,
+          "2": 2
+        }
+      },
+      "little_oof_pcc_original_target": 0.4366550376621212,
+      "little_target_active_fraction": 0.06265036086607859,
+      "little_active_overlap_any_other_fraction": 0.7952,
+      "little_active_other_dominant_fraction": 0.1232,
+      "little_energy_in_other_dominant_bins_fraction": 0.01530891078463101,
+      "little_target_correlations": {
+        "thumb": -0.03396348934942857,
+        "index": -0.004408133185812252,
+        "middle": 0.0075103596640716695,
+        "ring": 0.26987142299389416
+      },
+      "little_decoder_correlations_with_all_targets": {
+        "thumb": -0.011782801307760046,
+        "index": 0.06126179418798493,
+        "middle": 0.14938795589748077,
+        "ring": 0.36963158657964806,
+        "little": 0.4366550376621212
+      },
+      "regimes": {
+        "rest": {
+          "bins": 6371,
+          "fraction": 0.6386327185244587,
+          "target_mean": 0.009274045069515499,
+          "prediction_mean": 0.013668542139956377,
+          "pcc": 0.058411875346885724,
+          "rmse": 0.03491395120385814
+        },
+        "little_isolated": {
+          "bins": 128,
+          "fraction": 0.012830793905372895,
+          "target_mean": 0.16542652901262045,
+          "prediction_mean": 0.058041298368436856,
+          "pcc": 0.09876747678015958,
+          "rmse": 0.1659913856031133
+        },
+        "little_dominant_coupled": {
+          "bins": 420,
+          "fraction": 0.04210104250200481,
+          "target_mean": 0.6584383510230553,
+          "prediction_mean": 0.15580295348038253,
+          "pcc": 0.21705564470859537,
+          "rmse": 0.5745296260090632
+        },
+        "other_dominant_little_active": {
+          "bins": 77,
+          "fraction": 0.007718524458700882,
+          "target_mean": 0.10191810653581247,
+          "prediction_mean": 0.08385288253724299,
+          "pcc": -0.014267918182206171,
+          "rmse": 0.12122379631910564
+        },
+        "other_active_little_weak": {
+          "bins": 2980,
+          "fraction": 0.2987169206094627,
+          "target_mean": 0.018548865568214064,
+          "prediction_mean": 0.0406221964638964,
+          "pcc": 0.2518711280913773,
+          "rmse": 0.06629019729347162
+        }
+      },
+      "crossfit_soft_residual": {
+        "folds": [
+          {
+            "fold": 0,
+            "passive_fit_bins": 1778,
+            "coefficients": {
+              "thumb": 0.005775729795698474,
+              "index": 0.019366709160891036,
+              "middle": 0.03417169599443865,
+              "ring": 0.06048393854578719
+            }
+          },
+          {
+            "fold": 1,
+            "passive_fit_bins": 1641,
+            "coefficients": {
+              "thumb": 0.009442701640074038,
+              "index": 0.010379201598176376,
+              "middle": 0.03644775966906444,
+              "ring": 0.06185962782188906
+            }
+          },
+          {
+            "fold": 2,
+            "passive_fit_bins": 1746,
+            "coefficients": {
+              "thumb": 0.0072714899832338285,
+              "index": 0.015826470893990873,
+              "middle": 0.024996764367749585,
+              "ring": 0.05635362369750356
+            }
+          }
+        ],
+        "candidates": {
+          "0.0": {
+            "oof_prediction_pcc": 0.4366550376621212,
+            "target_mass_removed_fraction": 0.0,
+            "active_fraction": 0.06265036086607859
+          },
+          "0.25": {
+            "oof_prediction_pcc": 0.43118510921405195,
+            "target_mass_removed_fraction": 0.03654908347268193,
+            "active_fraction": 0.05914194065757819
+          },
+          "0.5": {
+            "oof_prediction_pcc": 0.4259258957125334,
+            "target_mass_removed_fraction": 0.06953234406935982,
+            "active_fraction": 0.05813953488372093
+          },
+          "0.75": {
+            "oof_prediction_pcc": 0.4213333121416095,
+            "target_mass_removed_fraction": 0.09797139965277601,
+            "active_fraction": 0.0568364073777065
+          },
+          "1.0": {
+            "oof_prediction_pcc": 0.4177357792114511,
+            "target_mass_removed_fraction": 0.12159937067966431,
+            "active_fraction": 0.05633520449077787
+          }
+        }
+      },
+      "selected_feature_ridge_probe": {
+        "folds": [
+          {
+            "fold": 0,
+            "selected_feature_count": 260,
+            "passive_fit_bins": 1778,
+            "passive_coefficients": {
+              "thumb": 0.005775729795698474,
+              "index": 0.019366709160891036,
+              "middle": 0.03417169599443865,
+              "ring": 0.06048393854578719
+            }
+          },
+          {
+            "fold": 1,
+            "selected_feature_count": 248,
+            "passive_fit_bins": 1641,
+            "passive_coefficients": {
+              "thumb": 0.009442701640074038,
+              "index": 0.010379201598176376,
+              "middle": 0.03644775966906444,
+              "ring": 0.06185962782188906
+            }
+          },
+          {
+            "fold": 2,
+            "selected_feature_count": 99,
+            "passive_fit_bins": 1746,
+            "passive_coefficients": {
+              "thumb": 0.0072714899832338285,
+              "index": 0.015826470893990873,
+              "middle": 0.024996764367749585,
+              "ring": 0.05635362369750356
+            }
+          }
+        ],
+        "dominance_temperature": 0.1,
+        "variants": {
+          "residual_0.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.37228506658002136,
+                "pcc_transformed_target": 0.37228506658002136,
+                "pcc_raw_glove_target": 0.254064467630131
+              },
+              {
+                "fold": 1,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.38979572927148104,
+                "pcc_transformed_target": 0.38979572927148104,
+                "pcc_raw_glove_target": 0.2694413301095004
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4150798121102184,
+                "pcc_transformed_target": 0.4150798121102184,
+                "pcc_raw_glove_target": 0.27783294031220657
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.3923868693205736,
+            "mean_fold_pcc_transformed_target": 0.3923868693205736,
+            "mean_fold_pcc_raw_glove_target": 0.267112912683946,
+            "stitched_pcc_original_cleaned_target": 0.38780836043668565,
+            "stitched_pcc_transformed_target": 0.38780836043668565,
+            "stitched_pcc_raw_glove_target": 0.2616387379317579
+          },
+          "residual_0.5": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.3674102116204633,
+                "pcc_transformed_target": 0.3533103399100014,
+                "pcc_raw_glove_target": 0.25341748239754397
+              },
+              {
+                "fold": 1,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.38666837429420636,
+                "pcc_transformed_target": 0.3707916340948551,
+                "pcc_raw_glove_target": 0.2672678285125352
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.41279733503762406,
+                "pcc_transformed_target": 0.3981987258512868,
+                "pcc_raw_glove_target": 0.2764986415542624
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.3889586403174312,
+            "mean_fold_pcc_transformed_target": 0.3741002332853811,
+            "mean_fold_pcc_raw_glove_target": 0.26572798415478055,
+            "stitched_pcc_original_cleaned_target": 0.3842145919825488,
+            "stitched_pcc_transformed_target": 0.3694736219834111,
+            "stitched_pcc_raw_glove_target": 0.2598303276352066
+          },
+          "residual_1.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.3640079822689956,
+                "pcc_transformed_target": 0.34122727374564954,
+                "pcc_raw_glove_target": 0.2531413950971199
+              },
+              {
+                "fold": 1,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.3842481429542761,
+                "pcc_transformed_target": 0.358822280576884,
+                "pcc_raw_glove_target": 0.2656421895049165
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.4106143174711828,
+                "pcc_transformed_target": 0.3845008751550807,
+                "pcc_raw_glove_target": 0.27526753899901607
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.3862901475648182,
+            "mean_fold_pcc_transformed_target": 0.3615168098258714,
+            "mean_fold_pcc_raw_glove_target": 0.2646837078670175,
+            "stitched_pcc_original_cleaned_target": 0.38152780369484945,
+            "stitched_pcc_transformed_target": 0.3569746151327272,
+            "stitched_pcc_raw_glove_target": 0.2585578194798518
+          },
+          "dominance_0.5": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.3681492565953858,
+                "pcc_transformed_target": 0.35503627796529424,
+                "pcc_raw_glove_target": 0.2532643104357722
+              },
+              {
+                "fold": 1,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.38711445546216006,
+                "pcc_transformed_target": 0.372743149516749,
+                "pcc_raw_glove_target": 0.26796231179016916
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.41180686531593885,
+                "pcc_transformed_target": 0.3950258690368618,
+                "pcc_raw_glove_target": 0.27567178528803715
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.38902352579116156,
+            "mean_fold_pcc_transformed_target": 0.37426843217296835,
+            "mean_fold_pcc_raw_glove_target": 0.26563280250465954,
+            "stitched_pcc_original_cleaned_target": 0.38431932870220514,
+            "stitched_pcc_transformed_target": 0.36965135877132976,
+            "stitched_pcc_raw_glove_target": 0.25997483682546557
+          },
+          "dominance_1.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.3627130864172212,
+                "pcc_transformed_target": 0.3375007339250741,
+                "pcc_raw_glove_target": 0.25173007537315567
+              },
+              {
+                "fold": 1,
+                "alpha": 1000.0,
+                "pcc_original_cleaned_target": 0.38374026028928554,
+                "pcc_transformed_target": 0.35519604243436825,
+                "pcc_raw_glove_target": 0.26601940323030143
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.40794208625605427,
+                "pcc_transformed_target": 0.3742902824737377,
+                "pcc_raw_glove_target": 0.2731159922623819
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.384798477654187,
+            "mean_fold_pcc_transformed_target": 0.35566235294439336,
+            "mean_fold_pcc_raw_glove_target": 0.26362182362194636,
+            "stitched_pcc_original_cleaned_target": 0.3799828675700296,
+            "stitched_pcc_transformed_target": 0.3509848079222238,
+            "stitched_pcc_raw_glove_target": 0.2577750871444892
+          }
+        }
+      }
+    },
+    "3": {
+      "subject": 3,
+      "rows": 9976,
+      "target": "local_w4_q20_split_safe",
+      "oof_seed_audit": {
+        "included_seed_count_by_fold": {
+          "0": 2,
+          "1": 2,
+          "2": 2
+        }
+      },
+      "little_oof_pcc_original_target": 0.26873157948093723,
+      "little_target_active_fraction": 0.26082598235765836,
+      "little_active_overlap_any_other_fraction": 0.9811683320522675,
+      "little_active_other_dominant_fraction": 0.5272867025365103,
+      "little_energy_in_other_dominant_bins_fraction": 0.1002168976566394,
+      "little_target_correlations": {
+        "thumb": -0.1479802682291311,
+        "index": 0.09324429867443616,
+        "middle": 0.15502311187604634,
+        "ring": 0.6485465403195504
+      },
+      "little_decoder_correlations_with_all_targets": {
+        "thumb": 0.05981345461569804,
+        "index": 0.16592028295892625,
+        "middle": 0.17051536623673613,
+        "ring": 0.32664610839858854,
+        "little": 0.26873157948093723
+      },
+      "regimes": {
+        "rest": {
+          "bins": 3005,
+          "fraction": 0.30122293504410586,
+          "target_mean": 0.005503983557781744,
+          "prediction_mean": 0.09243353293389671,
+          "pcc": 0.13117684453479728,
+          "rmse": 0.11710978200394943
+        },
+        "little_isolated": {
+          "bins": 49,
+          "fraction": 0.004911788291900561,
+          "target_mean": 0.24013327381440572,
+          "prediction_mean": 0.14211535937513928,
+          "pcc": -0.030934988750829114,
+          "rmse": 0.217201461296497
+        },
+        "little_dominant_coupled": {
+          "bins": 1181,
+          "fraction": 0.1183841218925421,
+          "target_mean": 0.7543049779334985,
+          "prediction_mean": 0.1849463101806455,
+          "pcc": 0.14086075789865635,
+          "rmse": 0.6221049748430895
+        },
+        "other_dominant_little_active": {
+          "bins": 1372,
+          "fraction": 0.13753007217321572,
+          "target_mean": 0.21227244301305395,
+          "prediction_mean": 0.17137345325555747,
+          "pcc": 0.01861068299373116,
+          "rmse": 0.15144985856621476
+        },
+        "other_active_little_weak": {
+          "bins": 4369,
+          "fraction": 0.4379510825982358,
+          "target_mean": 0.02269370500663801,
+          "prediction_mean": 0.133924290977729,
+          "pcc": 0.1507048055230909,
+          "rmse": 0.13910385253799135
+        }
+      },
+      "crossfit_soft_residual": {
+        "folds": [
+          {
+            "fold": 0,
+            "passive_fit_bins": 2603,
+            "coefficients": {
+              "thumb": 0.003133204700480046,
+              "index": 0.0,
+              "middle": 0.047364462265273966,
+              "ring": 0.28219695814484813
+            }
+          },
+          {
+            "fold": 1,
+            "passive_fit_bins": 2619,
+            "coefficients": {
+              "thumb": 0.00029817377762834734,
+              "index": 0.02377203093261828,
+              "middle": 0.00797082084170781,
+              "ring": 0.272645614912312
+            }
+          },
+          {
+            "fold": 2,
+            "passive_fit_bins": 2136,
+            "coefficients": {
+              "thumb": 0.008242134474620593,
+              "index": 0.012316803095781675,
+              "middle": 0.012370202081396504,
+              "ring": 0.27215436973555285
+            }
+          }
+        ],
+        "candidates": {
+          "0.0": {
+            "oof_prediction_pcc": 0.26873157948093723,
+            "target_mass_removed_fraction": 0.0,
+            "active_fraction": 0.26082598235765836
+          },
+          "0.25": {
+            "oof_prediction_pcc": 0.25490525232256167,
+            "target_mass_removed_fraction": 0.10805978208720068,
+            "active_fraction": 0.22253408179631115
+          },
+          "0.5": {
+            "oof_prediction_pcc": 0.2409315456393664,
+            "target_mass_removed_fraction": 0.20801962789898565,
+            "active_fraction": 0.2005813953488372
+          },
+          "0.75": {
+            "oof_prediction_pcc": 0.2293934323407397,
+            "target_mass_removed_fraction": 0.29350266268973924,
+            "active_fraction": 0.18113472333600641
+          },
+          "1.0": {
+            "oof_prediction_pcc": 0.2198378593098473,
+            "target_mass_removed_fraction": 0.36351562245058766,
+            "active_fraction": 0.15587409783480352
+          }
+        }
+      },
+      "selected_feature_ridge_probe": {
+        "folds": [
+          {
+            "fold": 0,
+            "selected_feature_count": 167,
+            "passive_fit_bins": 2603,
+            "passive_coefficients": {
+              "thumb": 0.003133204700480046,
+              "index": 0.0,
+              "middle": 0.047364462265273966,
+              "ring": 0.28219695814484813
+            }
+          },
+          {
+            "fold": 1,
+            "selected_feature_count": 193,
+            "passive_fit_bins": 2619,
+            "passive_coefficients": {
+              "thumb": 0.00029817377762834734,
+              "index": 0.02377203093261828,
+              "middle": 0.00797082084170781,
+              "ring": 0.272645614912312
+            }
+          },
+          {
+            "fold": 2,
+            "selected_feature_count": 26,
+            "passive_fit_bins": 2136,
+            "passive_coefficients": {
+              "thumb": 0.008242134474620593,
+              "index": 0.012316803095781675,
+              "middle": 0.012370202081396504,
+              "ring": 0.27215436973555285
+            }
+          }
+        ],
+        "dominance_temperature": 0.1,
+        "variants": {
+          "residual_0.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.3898145941172525,
+                "pcc_transformed_target": 0.3898145941172525,
+                "pcc_raw_glove_target": 0.3781286961698662
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.40476026161320106,
+                "pcc_transformed_target": 0.40476026161320106,
+                "pcc_raw_glove_target": 0.40023242731565817
+              },
+              {
+                "fold": 2,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.018865787870040333,
+                "pcc_transformed_target": 0.018865787870040333,
+                "pcc_raw_glove_target": 0.044496126131916
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.2711468812001646,
+            "mean_fold_pcc_transformed_target": 0.2711468812001646,
+            "mean_fold_pcc_raw_glove_target": 0.2742857498724801,
+            "stitched_pcc_original_cleaned_target": 0.2585878980636376,
+            "stitched_pcc_transformed_target": 0.2585878980636376,
+            "stitched_pcc_raw_glove_target": 0.261841999119663
+          },
+          "residual_0.5": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.38691173875597284,
+                "pcc_transformed_target": 0.3371564255573914,
+                "pcc_raw_glove_target": 0.3771349782729297
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.3991034781279533,
+                "pcc_transformed_target": 0.37104321837740006,
+                "pcc_raw_glove_target": 0.39477263377706795
+              },
+              {
+                "fold": 2,
+                "alpha": 10000.0,
+                "pcc_original_cleaned_target": 0.016671395657773598,
+                "pcc_transformed_target": 0.009855364858885827,
+                "pcc_raw_glove_target": 0.041916911308787455
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.2675622041805666,
+            "mean_fold_pcc_transformed_target": 0.23935166959789245,
+            "mean_fold_pcc_raw_glove_target": 0.27127484111959504,
+            "stitched_pcc_original_cleaned_target": 0.2533176685550231,
+            "stitched_pcc_transformed_target": 0.22724034761152026,
+            "stitched_pcc_raw_glove_target": 0.25736267836901233
+          },
+          "residual_1.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.383626826518782,
+                "pcc_transformed_target": 0.2999669206761477,
+                "pcc_raw_glove_target": 0.37432782680439813
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.39316804856541965,
+                "pcc_transformed_target": 0.3434955384334674,
+                "pcc_raw_glove_target": 0.3890396157325611
+              },
+              {
+                "fold": 2,
+                "alpha": 10000.0,
+                "pcc_original_cleaned_target": 0.016595247434893226,
+                "pcc_transformed_target": 0.005876944424441137,
+                "pcc_raw_glove_target": 0.041767760912843434
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.2644633741730316,
+            "mean_fold_pcc_transformed_target": 0.21644646784468544,
+            "mean_fold_pcc_raw_glove_target": 0.2683784011499342,
+            "stitched_pcc_original_cleaned_target": 0.24345369171060763,
+            "stitched_pcc_transformed_target": 0.20084572614587246,
+            "stitched_pcc_raw_glove_target": 0.24826267817919692
+          },
+          "dominance_0.5": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.387604064695161,
+                "pcc_transformed_target": 0.3411472830894748,
+                "pcc_raw_glove_target": 0.37636778874883847
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.39993348265434625,
+                "pcc_transformed_target": 0.37256508080352624,
+                "pcc_raw_glove_target": 0.39557235984552774
+              },
+              {
+                "fold": 2,
+                "alpha": 10000.0,
+                "pcc_original_cleaned_target": 0.016674505615183244,
+                "pcc_transformed_target": 0.014844864048499171,
+                "pcc_raw_glove_target": 0.041900422805614373
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.2680706843215635,
+            "mean_fold_pcc_transformed_target": 0.24285240931383337,
+            "mean_fold_pcc_raw_glove_target": 0.2712801904666602,
+            "stitched_pcc_original_cleaned_target": 0.25334715808012886,
+            "stitched_pcc_transformed_target": 0.22927931578335353,
+            "stitched_pcc_raw_glove_target": 0.2569718621677236
+          },
+          "dominance_1.0": {
+            "fold_metrics": [
+              {
+                "fold": 0,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.38181928742001947,
+                "pcc_transformed_target": 0.2853780347020943,
+                "pcc_raw_glove_target": 0.3712286480869602
+              },
+              {
+                "fold": 1,
+                "alpha": 3162.2776601683795,
+                "pcc_original_cleaned_target": 0.38822865988258065,
+                "pcc_transformed_target": 0.32961533757883366,
+                "pcc_raw_glove_target": 0.38415064137373667
+              },
+              {
+                "fold": 2,
+                "alpha": 10000.0,
+                "pcc_original_cleaned_target": 0.016505473716506555,
+                "pcc_transformed_target": 0.012632899464805208,
+                "pcc_raw_glove_target": 0.04162148714266465
+              }
+            ],
+            "mean_fold_pcc_original_cleaned_target": 0.26218447367303555,
+            "mean_fold_pcc_transformed_target": 0.2092087572485777,
+            "mean_fold_pcc_raw_glove_target": 0.26566692553445387,
+            "stitched_pcc_original_cleaned_target": 0.23918020228294354,
+            "stitched_pcc_transformed_target": 0.19028624704093064,
+            "stitched_pcc_raw_glove_target": 0.2439513762030677
+          }
+        }
+      }
+    }
+  }
+}
