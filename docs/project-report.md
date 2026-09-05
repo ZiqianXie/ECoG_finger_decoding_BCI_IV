@@ -738,6 +738,89 @@ another. This improves the retrospective ceiling, especially on S3, but direct
 ECoG state classification did not transfer from validation to test and is not
 promoted into the frozen path.
 
+### Development-only little-finger target audit
+
+The final per-finger table makes S3 little an outlier. The paper reported 0.64
+for LARS, 0.68 for the conventional linear decoder, and 0.75 for LSTM; the
+current OOF-routed six-seed refit reaches 0.423. Figure 8 of the paper shows
+decoded trajectories for S1 only, so it does not supply an S3 trace for visual
+comparison. A retrospectively routed model in this repository reaches 0.759 on
+S3 little and visually follows the three strongest released-test events. This
+is diagnostic rather than confirmatory, but it proves that the available ECoG
+and the reconstructed feature families can recover the S3 little signal.
+
+That large gap raised a narrower hypothesis: retaining every baseline-corrected
+glove displacement may preserve useful middle/ring motion but make the little
+target less specific. Because that observation came from the released-test
+plots, it was used only to formulate the question. All evidence below was then
+obtained from the 400 s development recording and its purged, event-grouped OOF
+predictions; the audit code refuses to load test targets or test predictions.
+
+| Subject | Little active bins overlapping another finger | Little active bins dominated by another finger | Little energy in other-dominant bins | Little-ring target PCC | OOF little decoder vs little | OOF little decoder vs ring |
+|---|---:|---:|---:|---:|---:|---:|
+| S1 | 76.2% | 6.9% | 0.9% | 0.186 | 0.486 | 0.421 |
+| S2 | 79.5% | 12.3% | 1.5% | 0.270 | 0.437 | 0.370 |
+| S3 | 98.1% | 52.7% | 10.0% | 0.649 | 0.269 | 0.327 |
+
+The first column alone is not evidence of bad labels: physiological co-movement
+is common. The dominance and energy columns show that S1 and S2 still contain a
+mostly specific little-finger trajectory, whereas S3 has a much stronger
+little/ring ambiguity. The S3 OOF decoder is correspondingly more correlated
+with the ring target than with its own little target. Representative development
+events also show a different failure mode: S1/S2 little timing is present but
+under-amplitude, while the S3 decoder is nearly flat through several large
+little-finger events.
+
+Two little-only corrections were then screened without changing the other four
+targets. The first fitted a nonnegative passive-coupling estimate separately in
+each purged training fold and subtracted it from held-out little motion. The
+second left little-dominant bins unchanged and smoothly attenuated only bins in
+which another finger was stronger. Neither rule transfers motion to another
+finger. To distinguish a model trained on the old target from a genuine
+learnability result, a new ridge head was fitted on the fold-specific features
+selected without the outer validation events.
+
+| Subject | Unmodified raw-glove PCC | Half residual subtraction | Half dominance attenuation | Best cleaning delta |
+|---|---:|---:|---:|---:|
+| S1 | 0.390 | 0.390 | 0.390 | -0.000 |
+| S2 | 0.267 | 0.266 | 0.266 | -0.001 |
+| S3 | 0.274 | 0.271 | 0.271 | -0.003 |
+
+Thus the development data supports the diagnosis of little-finger ambiguity,
+especially for S3, but not promotion of either fixed cleaning rule. The current
+headline targets remain unchanged. A future little-only experiment should infer
+event attribution jointly from ECoG and glove evidence in nested development
+folds, allow genuine co-movement, and compare against the unmodified target
+before the released test is opened. Exact metrics and coefficients are in
+`docs/results/little-finger-training-only-audit.json`.
+
+The paper's actual target construction was then tested more directly. It used a
+global fitted baseline, removed small fluctuations, and retained only the
+largest finger position at each time point. The following screen changes only
+the little-finger training target; thumb through ring remain untouched. All
+models use the same purged development folds and are scored against the original
+held-out glove trajectory.
+
+| Subject | Current local target | Paper baseline, no WTA | Best paper-baseline little WTA | Best WTA threshold |
+|---|---:|---:|---:|---:|
+| S1 | 0.390 | 0.385 | 0.389 | 0.20 |
+| S2 | 0.267 | 0.258 | 0.259 | 0.25 |
+| S3 | 0.274 | **0.290** | 0.280 | 0.20/0.25 |
+
+This changes the diagnosis. For S3, the paper baseline itself is useful, but
+winner-take-all removes some decodable signal and cannot by itself explain the
+paper's 0.75. For S1 and S2, neither paper-style change helps. The appropriate
+next experiment is therefore S3-little only: compare current local baseline,
+paper baseline without WTA, and paper baseline with little-only WTA using the
+stronger multibase/state-aware decoder under nested full-development folds.
+The linear screen is stored in `docs/results/little-paper-target-oof.json`.
+
+![Little-finger coupling and cleaning audit](figures/little-finger-training-only-audit.png)
+
+![Representative development-only little-finger events](figures/little-finger-training-only-examples.png)
+
+![Paper-style little-target screen](figures/little-paper-target-oof.png)
+
 ### Measured filter initialization
 
 The initialized three-layer PyTorch cascade was driven with a small impulse and

@@ -277,6 +277,49 @@ rest leakage. S2 often recovers onset while missing individual peaks, and its
 weak middle and little-finger routes remain an open problem. These observations,
 not PCC alone, motivate the cross-finger and velocity experiments in the report.
 
+### Little-finger target audit
+
+The S3 discrepancy is exceptional: the paper reported 0.64 for LARS, 0.68 for
+linear regression, and 0.75 for LSTM, whereas the present OOF-routed final refit
+reaches only 0.423. The paper plots example trajectories only for S1, so its S3
+trajectory cannot be visually compared. This repository does contain a
+retrospectively selected S3 model at 0.759 whose event plots track little-finger
+movement well. The signal is therefore recoverable; the present gap cannot be
+explained as an intrinsically undecodable S3 little finger.
+
+I tested the target-cleaning hypothesis using the development recording alone.
+In S1 and S2, only 0.9% and 1.5% of little-finger target energy occurs while
+another finger has the larger trajectory. S3 is different: another finger
+dominates 52.7% of little-active bins, the little and ring targets correlate
+0.649, and the OOF little decoder correlates more strongly with ring (0.327)
+than with little (0.269).
+
+That is training-only evidence for genuine S3 little/ring ambiguity, but it is
+not evidence for blindly deleting coupled motion. Two conservative probes were
+cross-fitted within the purged event folds: nonnegative subtraction of estimated
+passive coupling, and soft attenuation only when another finger was stronger.
+Neither improved a newly fitted held-out linear decoder for any subject. The
+unmodified/half-strength raw-glove PCC pairs were 0.390/0.390 for S1,
+0.267/0.266 for S2, and 0.274/0.271 for S3. The headline targets therefore stay
+unchanged. Little-finger-only cleaning remains a justified experimental
+direction, especially for S3, but the next version needs learned event-level
+attribution rather than a winner-take-all or linear subtraction rule.
+
+The paper used a different target family: a global fitted baseline, removal of
+small fluctuations, and winner-take-all cleaning. On the same development
+folds, changing only the S3 little target to the paper baseline improved the
+fast held-out linear probe from 0.274 to 0.290. Adding a little-only winner mask
+reached 0.280, so the baseline helped but winner-take-all did not explain the
+old 0.75. The next S3-little experiment must therefore compare these target
+families with the stronger multibase/state-aware decoder, not infer the answer
+from a weak linear probe.
+
+![Little-finger training-only audit](docs/figures/little-finger-training-only-audit.png)
+
+![Representative little-finger development events](docs/figures/little-finger-training-only-examples.png)
+
+![Paper-style little-target screen](docs/figures/little-paper-target-oof.png)
+
 ## Main experimental conclusions
 
 - Direct raw-target training improved the first final S1-thumb refit from
@@ -296,6 +339,11 @@ not PCC alone, motivate the cross-finger and velocity experiments in the report.
   not consistently improve the final refit.
 - Hard winner-take-all target correction is rejected because it can transfer
   movement between fingers.
+- Training-only evidence isolates substantial little/ring ambiguity in S3, but
+  fixed little-only subtraction and dominance attenuation both reduce held-out
+  decoding. The paper baseline gives a small S3 gain without winner-take-all;
+  this motivates a nested, learned event-attribution model and a strong-decoder
+  target comparison without changing the present headline results.
 
 These are conclusions from this reconstruction, not claims about what was or
 was not tried in the original unpublished code. Full tables, unsuccessful
