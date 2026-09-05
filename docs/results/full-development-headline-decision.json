@@ -1,0 +1,21 @@
+{
+  "decision_date": "2026-09-05",
+  "decision_status": "frozen before inspecting the current refit results",
+  "selected_pipeline": {
+    "configuration": "configs/full_development_event_refit.yaml",
+    "selection_data": "complete 400000-sample competition development recording",
+    "selection_protocol": "separate per-subject, per-finger three-fold event-grouped selection with a 95-bin purge around every held-out interval",
+    "final_training_data": "all 400000 development samples",
+    "ensemble": "six random seeds per subject and finger",
+    "result_root": "outputs/full_development_event_refit_v1"
+  },
+  "headline_policy": "After integrity checks, replace the previous train-plus-validation headline with this pipeline's six-seed released-test result regardless of whether PCC increases or decreases.",
+  "acceptance_checks": [
+    "all requested models completed without numerical failure",
+    "no member meets the predeclared training-only collapse criterion",
+    "predictions align with the intended subject and finger files",
+    "reported scores are computed from raw released glove trajectories"
+  ],
+  "visual_review_role": "Trajectory plots are used for diagnosis and reporting, not to choose whether to promote the result.",
+  "released_test_context": "The current pipeline decision did not use its new released-test predictions, but released-test labels had already been inspected during earlier reconstruction experiments; the final comparison is therefore retrospective."
+}
