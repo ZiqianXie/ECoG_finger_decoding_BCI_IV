@@ -1,0 +1,18 @@
+1:
+  thumb: local_w1_q10_split_safe
+  index: local_w5_q10_split_safe
+  middle: local_w3_q30_split_safe
+  ring: local_w6_q10_split_safe
+  little: local_w3_q20_split_safe
+2:
+  thumb: local_w1_q10_split_safe
+  index: local_w1_q10_split_safe
+  middle: local_w1_q10_split_safe
+  ring: local_w5_q20_split_safe
+  little: local_w1_q10_split_safe
+3:
+  thumb: local_w4_q30_split_safe
+  index: local_w6_q10_split_safe
+  middle: local_w6_q20_split_safe
+  ring: local_w5_q30_split_safe
+  little: local_w5_q30_split_safe

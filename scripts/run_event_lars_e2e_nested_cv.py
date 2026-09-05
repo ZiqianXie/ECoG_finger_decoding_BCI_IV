@@ -10,6 +10,8 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 from ecog_decoding.training import FINGER_NAMES
 
 
@@ -42,6 +44,12 @@ def main() -> None:
     parser.add_argument("--selection-cache-root", type=Path, default=Path("outputs/event_lars_selection_v1"))
     parser.add_argument("--inner-selection-cache-root", type=Path, default=Path("outputs/event_lars_inner_selection_v1"))
     parser.add_argument("--target", default=None)
+    parser.add_argument(
+        "--target-map",
+        type=Path,
+        default=None,
+        help="YAML mapping from subject and finger to target file stem",
+    )
     parser.add_argument("--warmup-epochs", type=int, default=6)
     parser.add_argument("--max-epochs", type=int, default=24)
     parser.add_argument("--learning-rate", type=float, default=3.0e-5)
@@ -53,12 +61,25 @@ def main() -> None:
     parser.add_argument("--output-activation", choices=("linear", "softplus"), default="linear")
     parser.add_argument("--claim-timeout-hours", type=float, default=6.0)
     args = parser.parse_args()
+    if args.target is not None and args.target_map is not None:
+        parser.error("--target and --target-map are mutually exclusive")
+    target_map = yaml.safe_load(args.target_map.read_text()) if args.target_map else {}
 
     tasks: list[tuple[str, list[str], Path]] = []
     for subject in args.subjects:
         for finger in args.fingers:
             for fold in args.folds:
                 for seed in args.seeds:
+                    task_target = args.target
+                    if args.target_map is not None:
+                        subject_targets = target_map.get(
+                            subject, target_map.get(str(subject), {})
+                        )
+                        task_target = subject_targets.get(finger)
+                        if task_target is None:
+                            raise KeyError(
+                                f"target map has no entry for S{subject} {finger}"
+                            )
                     destination = (
                         args.output_root / f"sub{subject}" / finger
                         / f"fold{fold}" / f"seed{seed}" / "summary.json"
@@ -87,8 +108,8 @@ def main() -> None:
                         "--selection-cache-root", str(args.selection_cache_root),
                         "--inner-selection-cache-root", str(args.inner_selection_cache_root),
                     ]
-                    if args.target is not None:
-                        command.extend(("--target", args.target))
+                    if task_target is not None:
+                        command.extend(("--target", task_target))
                     tasks.append((name, command, destination))
 
     log_root = args.output_root / "logs"
