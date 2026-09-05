@@ -122,6 +122,9 @@ class ExactWindowFingerDecoder(nn.Module):
         nn.init.zeros_(self.temporal.weight)
         nn.init.zeros_(self.temporal.bias)
         if output_activation == "hurdle":
+            self.movement_gru = nn.GRU(
+                selected_indices.size, hidden_size, batch_first=True
+            )
             self.movement_head = nn.Linear(hidden_size, 1)
             nn.init.normal_(self.movement_head.weight, mean=0.0, std=1.0e-3)
             # Start close to the LARS trajectory; the gate is then free to learn
@@ -211,7 +214,8 @@ class ExactWindowFingerDecoder(nn.Module):
         amplitude = F.softplus(
             direct + self.temporal(recurrent), beta=self.softplus_beta
         ).squeeze(-1)
-        state_logit = self.movement_head(recurrent).squeeze(-1)
+        movement_recurrent, _ = self.movement_gru(standardized)
+        state_logit = self.movement_head(movement_recurrent).squeeze(-1)
         prediction = torch.sigmoid(state_logit) * amplitude
         return prediction, state_logit, amplitude
 

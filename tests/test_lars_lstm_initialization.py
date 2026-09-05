@@ -84,6 +84,23 @@ def test_hurdle_gate_accepts_training_fold_prior() -> None:
     )
 
 
+def test_hurdle_state_gradient_does_not_perturb_lars_lstm() -> None:
+    model = ExactWindowFingerDecoder(
+        input_channels=2,
+        component_count=2,
+        selected_indices=np.arange(3),
+        feature_mean=np.zeros(3, dtype=np.float32),
+        feature_scale=np.ones(3, dtype=np.float32),
+        hidden_size=4,
+        output_activation="hurdle",
+    )
+    _, state_logit, _ = model.decode_with_hurdle(torch.randn(2, 5, 3))
+    state_logit.sum().backward()
+
+    assert model.movement_gru.weight_ih_l0.grad is not None
+    assert model.lstm.weight_ih_l0.grad is None
+
+
 def test_gpu_unfold_matches_numpy_stride_windows() -> None:
     recording = np.arange(40, dtype=np.float32).reshape(20, 2)
     expected = make_windows(recording, window_samples=5, stride_samples=2)

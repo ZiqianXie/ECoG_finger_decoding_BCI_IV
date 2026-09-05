@@ -200,7 +200,13 @@ def make_optimizer(
             },
         ]
     if model.output_activation == "hurdle":
-        groups.append({"params": model.movement_head.parameters(), "lr": gate_learning_rate})
+        groups.append(
+            {
+                "params": list(model.movement_gru.parameters())
+                + list(model.movement_head.parameters()),
+                "lr": gate_learning_rate,
+            }
+        )
     return torch.optim.AdamW(
         groups,
         weight_decay=weight_decay,
