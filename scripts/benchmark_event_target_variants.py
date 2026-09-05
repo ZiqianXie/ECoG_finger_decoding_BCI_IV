@@ -179,19 +179,20 @@ def main() -> None:
                 "raw and finite-support local targets only; the globally fitted paper rope "
                 "baseline is reported for context but cannot be made leakage-safe by a finite purge"
             ),
-            "official_final_validation_touched": False,
             "released_test_touched": False,
             "split_safe_targets": bool(args.split_safe_targets),
             "uniform_target_support_purge_bins": int(maximum_support),
             "methods": {},
             "per_finger_selection": {},
         }
+        selection_scopes: set[str] = set()
         score_matrix = np.empty((len(methods), 5), dtype=np.float64)
         best_method_indices: list[int] = []
         for finger_index, finger in enumerate(FINGER_NAMES):
             definition = json.loads(
                 (args.fold_root / f"sub{subject}" / finger / "folds.json").read_text()
             )
+            selection_scopes.add(str(definition.get("selection_scope", "model-fit")))
             rows = int(definition["training_rows"])
             raw = raw_full[24 : 24 + rows, finger_index]
             target_matrix = np.column_stack(
@@ -300,6 +301,13 @@ def main() -> None:
         report["selected_macro_five"] = float(
             np.mean(score_matrix[selected, np.arange(5)])
         )
+        report["selection_scopes"] = sorted(selection_scopes)
+        report["chronological_validation_included_in_selection"] = (
+            "full-development" in selection_scopes
+        )
+        report["official_final_validation_touched"] = report[
+            "chronological_validation_included_in_selection"
+        ]
         output = args.output_root / f"sub{subject}"
         output.mkdir(parents=True, exist_ok=True)
         render_heatmap(

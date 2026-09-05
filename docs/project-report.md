@@ -263,6 +263,13 @@ for S2, versus 0.578 and 0.429 for the selected systems. S1's validation stack
 gave the raw CSP candidate zero weight for both stacked fingers, although a
 calibrated CSP trace contributed as a complementary component.
 
+This is a comparison between separately trained decoder families. It does not
+mean that LARS rejected CSP features after they were appended to the main
+wavelet feature matrix; that joint overcomplete-dictionary experiment has not
+yet been performed. Some CSP routes used LARS internally, but the negative
+S1/S2 result above is based on their decoded-trajectory performance and, where
+applicable, their ensemble weights.
+
 The beta-gated/high-gamma head was initially evaluated only for S3. A completed
 transfer ablation confirms that this was not an overlooked S1/S2 improvement.
 For S1, gamma-only and beta-gated variants reached Macro-5 0.470 and 0.410; for
