@@ -34,7 +34,7 @@ The task is BCI Competition IV, Data Set 4: continuous reconstruction of five
 glove trajectories from ECoG in three subjects. The model is trained separately
 for each subject and finger.
 
-Eleven of the fifteen current subject/finger models follow the main signal path
+Ten of the fifteen current subject/finger models follow the main signal path
 of the 2018 model:
 
 1. FastICA initializes a trainable spatial convolution.
@@ -56,8 +56,11 @@ Four subject/finger pairs selected a broader fixed dictionary during the same
 out-of-fold comparison: S1 middle and S3 thumb, middle, and ring. These models
 concatenate the ICA-wavelet energies with seven conventional frequency bands and
 movement-versus-rest CSP features. LARS chooses useful atoms from both families
-before initializing the same nonlinear LSTM. The exact bands and their purpose
-are described below.
+before initializing the same nonlinear LSTM. S3 little uses a focused
+state-aware reconstruction: the paper-style baseline without winner-take-all,
+the seven-band CSP representation, a beta/high-gamma head blended with a
+temporal state model, and a soft rest-versus-finger gate that preserves learned
+co-movement. The exact bands and their purpose are described below.
 
 The original four-second minibatches were largely a Theano static-graph
 constraint, not a physiological assumption. The current implementation can use
@@ -171,7 +174,7 @@ paper's rounded aggregate.
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.540 | **0.652** |
 | S2 | 0.408 | **0.423** | **0.512** |
-| S3 | 0.582 | 0.552 | **0.699** |
+| S3 | 0.582 | **0.601** | **0.699** |
 
 | Subject | Finger | 2018 paper | Selected final refit | Difference |
 |---|---|---:|---:|---:|
@@ -189,7 +192,7 @@ paper's rounded aggregate.
 | S3 | Index | 0.55 | 0.340 | -0.210 |
 | S3 | Middle | 0.46 | 0.566 | +0.106 |
 | S3 | Ring | 0.41 | 0.657 | +0.247 |
-| S3 | Little | 0.75 | 0.423 | -0.327 |
+| S3 | Little | 0.75 | 0.669 | -0.081 |
 
 This label describes how I selected the current result. It does not mean I had
 never seen the released labels. Before I fixed this protocol, I used them to
@@ -217,10 +220,11 @@ Here, “complete development recording” means the full 400,000-sample labeled
 competition training file; it never includes the released test recording.
 
 This final-refit result is the one to use when evaluating the reproducible
-pipeline. It exceeds the rounded paper mean for S2, but not yet for S1 or S3.
+pipeline. It exceeds the rounded paper mean for S2 and S3, but not yet for S1.
 For S1 middle and S3 thumb, middle, and ring, cross-validation selected a joint
 ICA-wavelet and designed-band CSP representation; the other fingers retain the
-paper-derived ICA-wavelet route.
+paper-derived ICA-wavelet route except for the state-aware S3-little model
+described above.
 The largest gaps are not explained by a global finger permutation or a simple
 temporal lag. They are concentrated in particular fingers and recording
 periods, consistent with target-regime and ECoG nonstationarity.
@@ -279,13 +283,11 @@ not PCC alone, motivate the cross-finger and velocity experiments in the report.
 
 ### Little-finger target audit
 
-The S3 discrepancy is exceptional: the paper reported 0.64 for LARS, 0.68 for
-linear regression, and 0.75 for LSTM, whereas the present OOF-routed final refit
-reaches only 0.423. The paper plots example trajectories only for S1, so its S3
-trajectory cannot be visually compared. This repository does contain a
-retrospectively selected S3 model at 0.759 whose event plots track little-finger
-movement well. The signal is therefore recoverable; the present gap cannot be
-explained as an intrinsically undecodable S3 little finger.
+The S3 discrepancy was exceptional: the paper reported 0.64 for LARS, 0.68 for
+linear regression, and 0.75 for LSTM, whereas the initial OOF-routed final
+refit reached only 0.423. The paper plots example trajectories only for S1, so
+its S3 trajectory cannot be visually compared. A retrospectively selected S3
+model at 0.759 nevertheless showed that the signal was recoverable.
 
 I tested the target-cleaning hypothesis using the development recording alone.
 In S1 and S2, only 0.9% and 1.5% of little-finger target energy occurs while
@@ -301,24 +303,34 @@ passive coupling, and soft attenuation only when another finger was stronger.
 Neither improved a newly fitted held-out linear decoder for any subject. The
 unmodified/half-strength raw-glove PCC pairs were 0.390/0.390 for S1,
 0.267/0.266 for S2, and 0.274/0.271 for S3. The headline targets therefore stay
-unchanged. Little-finger-only cleaning remains a justified experimental
-direction, especially for S3, but the next version needs learned event-level
-attribution rather than a winner-take-all or linear subtraction rule.
+unchanged at that stage. This ruled out fixed target deletion and motivated
+learned event-level attribution.
 
 The paper used a different target family: a global fitted baseline, removal of
 small fluctuations, and winner-take-all cleaning. On the same development
 folds, changing only the S3 little target to the paper baseline improved the
 fast held-out linear probe from 0.274 to 0.290. Adding a little-only winner mask
 reached 0.280, so the baseline helped but winner-take-all did not explain the
-old 0.75. The next S3-little experiment must therefore compare these target
-families with the stronger multibase/state-aware decoder, not infer the answer
-from a weak linear probe.
+old 0.75. A nested comparison with the stronger multibase/state-aware decoder
+then confirmed that result: the paper baseline without winner-take-all reached
+mean fold PCC 0.620, versus 0.590 for the current local target and 0.539 with
+winner-take-all.
+
+A soft six-state gate—rest or one dominant finger—uses all five decoded
+trajectories while retaining training-estimated co-movement. It improved the
+three held-out folds from 0.630/0.610/0.641 to 0.696/0.633/0.697; every fold
+selected strength 0.5. The frozen six-seed refit then reached 0.669 on S3
+little and raised S3 Macro-5 to 0.601. The cleaned trajectory captures the main
+movement trains and has no negative values, but individual cycles remain
+smoothed, amplitude is conservative, and some rest activity persists.
 
 ![Little-finger training-only audit](docs/figures/little-finger-training-only-audit.png)
 
 ![Representative little-finger development events](docs/figures/little-finger-training-only-examples.png)
 
 ![Paper-style little-target screen](docs/figures/little-paper-target-oof.png)
+
+![S3 little state-aware strongest events](docs/figures/s3-little-paper-latent-events.png)
 
 ## Main experimental conclusions
 
@@ -335,15 +347,16 @@ from a weak linear probe.
   the development-fold comparison for four pairs and raised the final S1 and S3
   means. Overcompleteness alone was not useful; complementary atoms sometimes
   were.
-- Latent movement-state gating improved some retrospective morphologies but did
-  not consistently improve the final refit.
+- Latent movement-state gating did not help uniformly, but a soft co-movement
+  gate selected independently in all three S3-little folds raised its final
+  six-seed PCC from 0.423 to 0.669.
 - Hard winner-take-all target correction is rejected because it can transfer
   movement between fingers.
 - Training-only evidence isolates substantial little/ring ambiguity in S3, but
   fixed little-only subtraction and dominance attenuation both reduce held-out
-  decoding. The paper baseline gives a small S3 gain without winner-take-all;
-  this motivates a nested, learned event-attribution model and a strong-decoder
-  target comparison without changing the present headline results.
+  decoding. The paper baseline helps without winner-take-all, and the nested
+  learned event-attribution model turns that diagnosis into a reproducible S3
+  improvement while retaining genuine co-movement.
 
 These are conclusions from this reconstruction, not claims about what was or
 was not tried in the original unpublished code. Full tables, unsuccessful
