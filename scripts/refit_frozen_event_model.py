@@ -47,17 +47,33 @@ def resolve_options(
     options.update(finger_map)
     options["input_root"] = Path(str(options["input_root"]))
     options["seeds"] = tuple(int(value) for value in options["seeds"])
+    options["epoch_reference_seeds"] = tuple(
+        int(value) for value in options.get("epoch_reference_seeds", options["seeds"])
+    )
     return options
 
 
 def frozen_epoch(
-    source_root: Path, subject: int, finger: str, seed: int
-) -> tuple[int, list[int]]:
-    epochs = []
-    for fold in range(3):
-        path = source_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{seed}" / "summary.json"
-        epochs.append(int(json.loads(path.read_text())["selected_epoch"]))
-    return int(np.rint(np.median(epochs))), epochs
+    source_root: Path, subject: int, finger: str, reference_seeds: tuple[int, ...]
+) -> tuple[int, dict[str, list[int]]]:
+    """Choose one epoch count shared by every random-initialization member."""
+    epochs_by_seed: dict[str, list[int]] = {}
+    pooled_epochs: list[int] = []
+    for seed in reference_seeds:
+        seed_epochs = []
+        for fold in range(3):
+            path = (
+                source_root
+                / f"sub{subject}"
+                / finger
+                / f"fold{fold}"
+                / f"seed{seed}"
+                / "summary.json"
+            )
+            seed_epochs.append(int(json.loads(path.read_text())["selected_epoch"]))
+        epochs_by_seed[str(seed)] = seed_epochs
+        pooled_epochs.extend(seed_epochs)
+    return int(np.rint(np.median(pooled_epochs))), epochs_by_seed
 
 
 def lars_chunks(row_count: int, count: int = 12) -> list[list[int]]:
@@ -161,7 +177,10 @@ def main() -> None:
     if args.seed not in options["seeds"]:
         raise ValueError(f"seed {args.seed} is not frozen for S{args.subject} {args.finger}")
     selected_epoch, outer_epochs = frozen_epoch(
-        options["input_root"], args.subject, args.finger, args.seed
+        options["input_root"],
+        args.subject,
+        args.finger,
+        options["epoch_reference_seeds"],
     )
     if args.epoch_override is not None:
         if args.epoch_override < 0:
@@ -262,7 +281,7 @@ def main() -> None:
             "model_state_dict": {key: value.detach().cpu() for key, value in model.state_dict().items()},
             "feature_indices": selected,
             "selected_epoch": selected_epoch,
-            "outer_fold_selected_epochs": outer_epochs,
+            "outer_fold_selected_epochs_by_reference_seed": outer_epochs,
         },
         output / "model.pt",
     )
@@ -274,12 +293,13 @@ def main() -> None:
         "official_final_validation_incorporated_into_training": True,
         "released_test_touched_during_model_selection": False,
         "source_cv_root": str(options["input_root"]),
-        "outer_fold_selected_epochs": outer_epochs,
+        "outer_fold_selected_epochs_by_reference_seed": outer_epochs,
+        "epoch_reference_seeds": list(options["epoch_reference_seeds"]),
         "selected_epoch": selected_epoch,
         "epoch_rule": (
             "explicit diagnostic override"
             if args.epoch_override is not None
-            else "rounded median of three outer-fold selected epochs"
+            else "rounded pooled median across outer folds and reference seeds"
         ),
         "target_policy_selected_in_oof": target_policy,
         "full_refit_target_policy": full_target_policy,
@@ -295,7 +315,7 @@ def main() -> None:
         "configuration": {
             key: (str(value) if isinstance(value, Path) else value)
             for key, value in options.items()
-            if key != "seeds"
+            if key not in {"seeds", "epoch_reference_seeds"}
         },
     }
     (output / "training_summary.json").write_text(json.dumps(training_report, indent=2) + "\n")

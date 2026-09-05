@@ -1,9 +1,10 @@
-# Candidate families, seeds, and epoch counts were selected from the
+# Candidate families and the common epoch count were selected from the
 # full-development event-grouped OOF grids. Released-test labels were not used
-# for these choices. Both non-collapsed seeds are retained for every model.
+# for these choices. The six ensemble members differ only in random seed.
 default:
   input_root: outputs/event_lars_e2e_fulldev_seq50_v1
-  seeds: [0, 1]
+  seeds: [0, 1, 2, 3, 4, 5]
+  epoch_reference_seeds: [0, 1]
   sequence_steps: 50
   sequence_stride: 25
   batch_size: 32
