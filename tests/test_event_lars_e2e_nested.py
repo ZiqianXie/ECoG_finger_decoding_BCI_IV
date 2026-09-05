@@ -10,7 +10,11 @@ from scripts.train_event_grouped_lars_e2e_nested import (
 )
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
 from scripts.summarize_event_lars_lstm_cv import morphology_metrics
-from scripts.evaluate_cv_ensemble_final_validation import movement_groups, restore_model
+from scripts.evaluate_cv_ensemble_final_validation import (
+    frozen_oof_seed_inclusion,
+    movement_groups,
+    restore_model,
+)
 from scripts.train_exact_window_end_to_end import ExactWindowFingerDecoder
 
 
@@ -129,3 +133,29 @@ def test_final_validation_restores_crossfold_checkpoint(tmp_path) -> None:
 
     for name, value in model.state_dict().items():
         torch.testing.assert_close(restored.state_dict()[name], value)
+
+
+def test_final_validation_freezes_seed_inclusion_from_oof(tmp_path) -> None:
+    input_root = tmp_path / "models"
+    fold_root = tmp_path / "folds"
+    definition_root = fold_root / "sub1" / "thumb"
+    definition_root.mkdir(parents=True)
+    (definition_root / "folds.json").write_text('{"training_rows": 6}')
+    cleaned = np.array([0.0, 0.2, 0.7, 0.1, 0.5, 0.0], dtype=np.float32)
+    active = np.array([0.01, 0.18, 0.60, 0.08, 0.45, 0.02], dtype=np.float32)
+    for fold, indices in enumerate((np.array([0, 1]), np.array([2, 3]), np.array([4, 5]))):
+        for seed, prediction in ((0, active), (1, np.zeros_like(active))):
+            root = input_root / "sub1" / "thumb" / f"fold{fold}" / f"seed{seed}"
+            root.mkdir(parents=True)
+            np.save(root / "validation_prediction.npy", prediction[indices])
+            if seed == 0:
+                np.save(root / "validation_indices.npy", indices)
+                np.save(root / "validation_cleaned_target.npy", cleaned[indices])
+
+    included, report = frozen_oof_seed_inclusion(
+        input_root, fold_root, subject=1, finger_name="thumb", seeds=(0, 1)
+    )
+
+    assert included == [0]
+    assert report["collapsed_seeds"] == [1]
+    assert report["selection_partition"] == "training-partition out-of-fold predictions only"

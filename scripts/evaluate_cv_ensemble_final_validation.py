@@ -43,6 +43,53 @@ def movement_groups(target: np.ndarray, threshold: float, padding: int = 25) -> 
     return [{"start": start, "stop": stop} for start, stop in merged]
 
 
+def frozen_oof_seed_inclusion(
+    input_root: Path,
+    fold_root: Path,
+    subject: int,
+    finger_name: str,
+    seeds: list[int] | tuple[int, ...],
+) -> tuple[list[int], dict[str, object]]:
+    """Freeze seed membership using only training-partition OOF predictions."""
+    definition = json.loads(
+        (fold_root / f"sub{subject}" / finger_name / "folds.json").read_text()
+    )
+    rows = int(definition["training_rows"])
+    cleaned = np.full(rows, np.nan, dtype=np.float32)
+    predictions = {
+        seed: np.full(rows, np.nan, dtype=np.float32) for seed in seeds
+    }
+    for fold in range(3):
+        reference = input_root / f"sub{subject}" / finger_name / f"fold{fold}" / f"seed{seeds[0]}"
+        indices = np.load(reference / "validation_indices.npy")
+        fold_cleaned = np.load(reference / "validation_cleaned_target.npy")
+        if np.any(np.isfinite(cleaned[indices])):
+            raise RuntimeError(f"overlapping OOF rows for S{subject} {finger_name}")
+        cleaned[indices] = fold_cleaned
+        for seed in seeds:
+            root = input_root / f"sub{subject}" / finger_name / f"fold{fold}" / f"seed{seed}"
+            predictions[seed][indices] = np.load(root / "validation_prediction.npy")
+
+    if not np.isfinite(cleaned).all() or any(
+        not np.isfinite(values).all() for values in predictions.values()
+    ):
+        raise RuntimeError(f"incomplete OOF coverage for S{subject} {finger_name}")
+    target_sd = max(float(np.std(cleaned)), 1.0e-8)
+    collapse_threshold = max(1.0e-4, 0.05 * target_sd)
+    seed_sd = {str(seed): float(np.std(values)) for seed, values in predictions.items()}
+    collapsed = [seed for seed in seeds if seed_sd[str(seed)] < collapse_threshold]
+    included = [seed for seed in seeds if seed not in collapsed]
+    if not included:
+        raise RuntimeError(f"all requested seeds collapsed for S{subject} {finger_name}")
+    return included, {
+        "selection_partition": "training-partition out-of-fold predictions only",
+        "collapse_threshold": collapse_threshold,
+        "seed_oof_prediction_sd": seed_sd,
+        "included_seeds": included,
+        "collapsed_seeds": collapsed,
+    }
+
+
 def restore_model(
     checkpoint_path: Path,
     summary_path: Path,
@@ -160,9 +207,16 @@ def main() -> None:
                 24 + validation_start : 24 + validation_stop, finger
             ]
             raw_target = raw[validation_start:validation_stop, finger]
+            included_seeds, inclusion_report = frozen_oof_seed_inclusion(
+                args.input_root,
+                args.fold_root,
+                subject,
+                finger_name,
+                tuple(args.seeds),
+            )
             predictions: list[np.ndarray] = []
             member_reports: list[dict[str, object]] = []
-            for seed in args.seeds:
+            for seed in included_seeds:
                 for fold in range(3):
                     root = args.input_root / f"sub{subject}" / finger_name / f"fold{fold}" / f"seed{seed}"
                     model = restore_model(
@@ -183,15 +237,7 @@ def main() -> None:
                     )
                     del model
                     torch.cuda.empty_cache()
-            target_sd = max(float(np.std(cleaned)), 1.0e-8)
-            included = [
-                index for index, prediction in enumerate(predictions)
-                if np.isfinite(prediction).all()
-                and float(np.std(prediction)) >= max(1.0e-4, 0.05 * target_sd)
-            ]
-            if not included:
-                included = list(range(len(predictions)))
-            ensemble = np.mean(np.stack([predictions[index] for index in included]), axis=0)
+            ensemble = np.mean(np.stack(predictions), axis=0)
             groups = movement_groups(cleaned, 0.08)
             metrics = morphology_metrics(ensemble, cleaned, groups)
             metrics["raw_pcc"] = pearson(ensemble, raw_target)
@@ -204,7 +250,7 @@ def main() -> None:
             subject_report["per_finger"][finger_name] = {
                 "target": target_name,
                 "metrics": metrics,
-                "included_member_indices": included,
+                "seed_inclusion": inclusion_report,
                 "members": member_reports,
             }
         report["subjects"][str(subject)] = subject_report
