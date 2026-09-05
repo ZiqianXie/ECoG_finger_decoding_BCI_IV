@@ -167,13 +167,6 @@ The paper values below are calculated from its rounded per-finger CNN-LSTM
 numbers, so they should not be interpreted as more precise versions of the
 paper's rounded aggregate.
 
-“No test peek” has a precise meaning here: within the declared final comparison,
-target processing, candidate choice, history, routing, seed count, and epoch
-policy were selected from the 400,000-sample development recording only. The
-released test trajectories were scored after those choices were fixed, and no
-weak test result was swapped out. This is the selected final result—the number
-we report whether it wins or loses.
-
 | Subject | 2018 paper | OOF-routed six-seed refit | Test-informed best of runs* |
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.540 | **0.652** |
