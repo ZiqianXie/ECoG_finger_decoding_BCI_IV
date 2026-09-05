@@ -159,7 +159,7 @@ atoms survive. CSP, normalization, and LARS are all refitted without the held-ou
 event, and the selected carrier/CSP filters remain fixed during the final LSTM
 training.
 
-## Clean-conscience result: no test peek, no cheat
+## Current results
 
 The primary comparison remains Pearson correlation with the released,
 unmodified test glove trajectory. `Macro-5` is the mean across all five fingers.
@@ -167,12 +167,11 @@ The paper values below are calculated from its rounded per-finger CNN-LSTM
 numbers, so they should not be interpreted as more precise versions of the
 paper's rounded aggregate.
 
-“No test peek” has a precise meaning here: within the declared final comparison,
-target processing, candidate choice, history, routing, seed count, and epoch
-policy were selected from the 400,000-sample development recording only. The
-released test trajectories were scored after those choices were fixed, and no
-weak test result was swapped out. This is the clean-conscience result—the number
-we report whether it wins or loses.
+For the declared final comparison, target processing, candidate choice, history,
+routing, seed count, and epoch policy were selected from the 400,000-sample
+development recording. The released test trajectories were scored after those
+choices were fixed, and the reported result was not replaced according to its
+test performance.
 
 | Subject | 2018 paper | OOF-routed six-seed refit | Test-informed best of runs* |
 |---|---:|---:|---:|
@@ -180,7 +179,7 @@ we report whether it wins or loses.
 | S2 | 0.408 | **0.423** | **0.512** |
 | S3 | 0.582 | 0.552 | **0.699** |
 
-| Subject | Finger | 2018 paper | Clean-conscience refit | Difference |
+| Subject | Finger | 2018 paper | Selected final refit | Difference |
 |---|---|---:|---:|---:|
 | S1 | Thumb | 0.75 | 0.678 | -0.072 |
 | S1 | Index | 0.79 | 0.793 | +0.003 |
@@ -198,8 +197,8 @@ we report whether it wins or loses.
 | S3 | Ring | 0.41 | 0.657 | +0.247 |
 | S3 | Little | 0.75 | 0.423 | -0.327 |
 
-This label describes how I selected the current result. It does not mean I had
-never seen the released labels. Before I fixed this protocol, I used them to
+This protocol describes how I selected the current result. It does not mean I
+had never seen the released labels. Before I fixed this protocol, I used them to
 diagnose earlier models and compare saved runs. Looking back, I also think the
 exploratory workflow behind my 2018 result was probably influenced by repeated
 test feedback. Because the old code and logs were lost, I cannot quantify that
