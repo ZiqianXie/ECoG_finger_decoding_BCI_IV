@@ -7,6 +7,10 @@ import argparse
 import json
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
@@ -17,6 +21,51 @@ from summarize_event_lars_lstm_cv import morphology_metrics, pearson
 from summarize_frozen_full_refit import plot_subject_overview
 
 
+COMPARISON_WINDOWS_SECONDS = {
+    (1, "middle"): (163.0, 172.5),
+    (3, "thumb"): (128.5, 133.5),
+    (3, "middle"): (100.5, 129.5),
+    (3, "ring"): (100.5, 131.0),
+}
+
+
+def render_comparison_figure(
+    path: Path,
+    records: list[dict[str, object]],
+) -> None:
+    figure, axes = plt.subplots(len(records), 1, figsize=(15, 10))
+    axes = np.atleast_1d(axes)
+    for axis, record in zip(axes, records, strict=True):
+        subject = int(record["subject"])
+        finger = str(record["finger"])
+        start_seconds, stop_seconds = COMPARISON_WINDOWS_SECONDS[(subject, finger)]
+        start = int(round(start_seconds * 25))
+        stop = int(round(stop_seconds * 25))
+        time_axis = np.arange(start, stop) / 25.0
+        axis.plot(
+            time_axis, np.asarray(record["target"])[start:stop],
+            color="black", linewidth=1.1, label="cleaned target",
+        )
+        axis.plot(
+            time_axis, np.asarray(record["baseline"])[start:stop],
+            color="#94a3b8", linewidth=0.9, linestyle="--",
+            label="ICA-wavelet-only ensemble",
+        )
+        axis.plot(
+            time_axis, np.asarray(record["joint"])[start:stop],
+            color="#2563eb", linewidth=1.0, label="OOF-routed joint ensemble",
+        )
+        axis.set_title(f"S{subject} {finger}: {start_seconds:g}-{stop_seconds:g} s")
+        axis.set_ylabel("normalized flexion")
+    axes[0].legend(frameon=False, ncol=3)
+    axes[-1].set_xlabel("released-test time (s)")
+    figure.suptitle("Six-seed heterogeneous replacements: representative movement windows")
+    figure.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path, dpi=180)
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=Path("configs/heterogeneous_six_seed_refit.yaml"))
@@ -25,6 +74,11 @@ def main() -> None:
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
     parser.add_argument("--target-map", type=Path, default=Path("configs/targetsafe_conservative_targets.yaml"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/heterogeneous_six_seed_refit_v1/ensemble"))
+    parser.add_argument(
+        "--comparison-figure",
+        type=Path,
+        default=Path("docs/figures/heterogeneous-six-seed-comparison.png"),
+    )
     args = parser.parse_args()
     config = yaml.safe_load(args.config.read_text())
     target_map = yaml.safe_load(args.target_map.read_text())
@@ -44,6 +98,7 @@ def main() -> None:
         "seeds": seeds,
         "subjects": {},
     }
+    comparison_records: list[dict[str, object]] = []
     for subject in (1, 2, 3):
         prepared = args.prepared_root / f"sub{subject}"
         raw = np.load(prepared / "test_glove_25hz_raw.npy")[24:]
@@ -103,6 +158,16 @@ def main() -> None:
                 "delta_vs_baseline": metrics["raw_pcc"] - baseline_scores[finger_index],
                 "mean_pairwise_seed_prediction_pcc": float(np.mean(diversity)),
             }
+            comparison_records.append({
+                "subject": subject,
+                "finger": finger,
+                "target": cleaned,
+                "baseline": np.load(
+                    args.baseline_root / f"sub{subject}"
+                    / f"{finger}_released_test_prediction.npy"
+                ),
+                "joint": prediction,
+            })
             np.save(subject_output / f"{finger}_released_test_prediction.npy", prediction)
             plot_full_trajectory(
                 subject_output / f"{finger}_full_trajectory.png",
@@ -127,6 +192,7 @@ def main() -> None:
             "hybrid_macro5_raw_pcc": float(np.mean(hybrid_scores)),
             "macro5_gain": float(np.mean(hybrid_scores) - np.mean(baseline_scores)),
         }
+    render_comparison_figure(args.comparison_figure, comparison_records)
     (args.output_root / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({
         subject: values["hybrid_macro5_raw_pcc"]

@@ -1,46 +1,76 @@
 {
+  "result_role": "current clean-conscience headline result",
   "protocol": "OOF-routed joint ICA-wavelet/CSP fixed-feature LSTM; six-seed full-development refit",
+  "configuration": "configs/heterogeneous_six_seed_refit.yaml",
+  "output_root": "outputs/heterogeneous_six_seed_refit_v1",
+  "clean_conscience_definition": "within the declared final comparison, no released-test outcome selected among candidate configurations, histories, routes, seeds, epoch policies, or retained members; all completed noncollapsed seeds are included",
   "released_test_used_for_routing": false,
   "released_test_role": "retrospective paper-comparison evaluation",
+  "finger_order": ["thumb", "index", "middle", "ring", "little"],
   "seeds": [0, 1, 2, 3, 4, 5],
   "collapsed_seeds": [],
+  "integrity": {
+    "completed_models": 24,
+    "expected_models": 24,
+    "all_training_losses_finite": true,
+    "all_seeds_retained": true,
+    "runtime_seconds_per_model_range": [4.6, 7.8]
+  },
+  "routes": {
+    "baseline": "six-seed trainable FastICA-initialized ICA-wavelet LSTM",
+    "joint": "six-seed fixed ICA-wavelet plus seven designed-band own-finger/any-movement CSP dictionary, fold-local LARS selection, nonlinear LSTM"
+  },
   "promoted_pairs": {
     "S1_middle": {
       "baseline_raw_pcc": 0.128041,
       "joint_six_seed_raw_pcc": 0.267959,
       "delta": 0.139918,
-      "mean_pairwise_seed_prediction_pcc": 0.921343
+      "mean_pairwise_seed_prediction_pcc": 0.921343,
+      "selected_features": {"total": 444, "ica_wavelet": 178, "csp_band": 266},
+      "morphology": {"cleaned_pcc": 0.2870179439, "rest_rms": 0.1083793640, "state_f1": 0.2606013878, "velocity_pcc": 0.3829647803, "prediction_to_target_sd_ratio": 0.7893274076, "median_movement_peak_ratio": 2.6747113391}
     },
     "S3_thumb": {
       "baseline_raw_pcc": 0.723840,
       "joint_six_seed_raw_pcc": 0.771930,
       "delta": 0.048091,
-      "mean_pairwise_seed_prediction_pcc": 0.969556
+      "mean_pairwise_seed_prediction_pcc": 0.969556,
+      "selected_features": {"total": 445, "ica_wavelet": 119, "csp_band": 326},
+      "morphology": {"cleaned_pcc": 0.8032867319, "rest_rms": 0.0809653327, "state_f1": 0.5143394452, "velocity_pcc": 0.4881836795, "prediction_to_target_sd_ratio": 0.8475352946, "median_movement_peak_ratio": 1.0227021373}
     },
     "S3_middle": {
       "baseline_raw_pcc": 0.441024,
       "joint_six_seed_raw_pcc": 0.566000,
       "delta": 0.124976,
-      "mean_pairwise_seed_prediction_pcc": 0.935226
+      "mean_pairwise_seed_prediction_pcc": 0.935226,
+      "selected_features": {"total": 436, "ica_wavelet": 232, "csp_band": 204},
+      "morphology": {"cleaned_pcc": 0.6682276819, "rest_rms": 0.0934117585, "state_f1": 0.7436489607, "velocity_pcc": 0.3497497082, "prediction_to_target_sd_ratio": 0.6979160499, "median_movement_peak_ratio": 0.9105591332}
     },
     "S3_ring": {
       "baseline_raw_pcc": 0.513048,
       "joint_six_seed_raw_pcc": 0.656986,
       "delta": 0.143938,
-      "mean_pairwise_seed_prediction_pcc": 0.998834
+      "mean_pairwise_seed_prediction_pcc": 0.998834,
+      "selected_features": {"total": 394, "ica_wavelet": 133, "csp_band": 261},
+      "morphology": {"cleaned_pcc": 0.6813539675, "rest_rms": 0.1605002284, "state_f1": 0.6952035161, "velocity_pcc": 0.2592134151, "prediction_to_target_sd_ratio": 0.9170840204, "median_movement_peak_ratio": 1.0054704676}
     }
   },
   "hybrid_subject_results": {
     "S1": {
       "per_finger_raw_pcc": [0.677657, 0.793155, 0.267959, 0.588723, 0.373863],
+      "paper_per_finger_raw_pcc": [0.75, 0.79, 0.17, 0.60, 0.47],
+      "per_finger_difference_vs_paper": [-0.072343, 0.003155, 0.097959, -0.011277, -0.096137],
       "macro5_raw_pcc": 0.540271
     },
     "S2": {
       "per_finger_raw_pcc": [0.586561, 0.398876, 0.336751, 0.544393, 0.249769],
+      "paper_per_finger_raw_pcc": [0.62, 0.38, 0.27, 0.47, 0.30],
+      "per_finger_difference_vs_paper": [-0.033439, 0.018876, 0.066751, 0.074393, -0.050231],
       "macro5_raw_pcc": 0.423270
     },
     "S3": {
       "per_finger_raw_pcc": [0.771930, 0.340398, 0.566000, 0.656986, 0.423066],
+      "paper_per_finger_raw_pcc": [0.74, 0.55, 0.46, 0.41, 0.75],
+      "per_finger_difference_vs_paper": [0.031930, -0.209602, 0.106000, 0.246986, -0.326934],
       "macro5_raw_pcc": 0.551676
     }
   },

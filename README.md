@@ -18,6 +18,12 @@ original experiments. I also used the opportunity to revisit decisions that
 were constrained by the software and compute available at the time. The result
 is both a late reimplementation and a continuation of the original work.
 
+This reconstruction was developed with substantial assistance from
+[OpenAI Codex](https://openai.com/codex/) using **GPT-5.6 Sol** for code
+reconstruction, experiment orchestration, quantitative and visual diagnostics,
+and documentation. The scientific decisions and interpretation remain the
+author's responsibility.
+
 The [project report](docs/project-report.md) contains the complete experimental
 record. This README is meant to explain what the current pipeline does, why its
 less obvious choices were made, and how to reproduce it.
@@ -28,7 +34,8 @@ The task is BCI Competition IV, Data Set 4: continuous reconstruction of five
 glove trajectories from ECoG in three subjects. The model is trained separately
 for each subject and finger.
 
-The signal path follows the main structure of the 2018 model:
+Eleven of the fifteen current subject/finger models follow the main signal path
+of the 2018 model:
 
 1. FastICA initializes a trainable spatial convolution.
 2. A three-level, dilated `bior6.8` wavelet-packet tree produces eight spectral
@@ -44,6 +51,14 @@ that should initially contribute little are randomized at approximately
 without losing nonlinear capacity. Training first fits the recurrent head with
 the spatial and spectral stem frozen, then fine-tunes the complete differentiable
 model at a smaller learning rate.
+
+Four subject/finger pairs selected a broader fixed dictionary during the same
+out-of-fold comparison: S1 middle and S3 thumb, middle, and ring. These models
+concatenate the ICA-wavelet energies with seven designed frequency bands passed
+through movement-versus-rest CSP filters, then apply LARS and the same nonlinear
+LSTM. The fixed route is used only where it improved the predeclared
+development-fold score; it is not a universal replacement for the trainable
+wavelet stem.
 
 The original four-second minibatches were largely a Theano static-graph
 constraint, not a physiological assumption. The current implementation can use
@@ -87,16 +102,17 @@ sides of the split and give an optimistic validation score. The cross-validation
 code instead keeps complete movement/rest events together and removes 95 bins
 (3.8 s) around each held-out boundary.
 
-The competition training file contains 400,000 labeled samples per subject. We
-use its first two-thirds as the **model-fitting partition** and reserve its last
-third as a **chronological validation partition**. The three event folds are
-built only inside the model-fitting partition. They are built separately for
-each subject and finger because their event distributions differ.
+The competition training file contains 400,000 labeled samples per subject. The
+current selection protocol uses all of it as development data and builds three
+folds separately for every subject and finger, because their movement-event
+distributions differ. Each fold holds out complete events from across the
+recording rather than one contiguous time block. Target baselines, CSP filters,
+and LARS selection are refitted inside each fold.
 
-After the model family, target pipeline, seeds, and epoch count have been chosen
-from these folds, the configuration is evaluated once on the untouched
-chronological validation partition. This extra check tests whether a choice made
-on earlier events transfers to a later recording period.
+Earlier reconstruction experiments used the first two-thirds for fitting and a
+final-third chronological validation segment. Those experiments remain in the
+project report as historical diagnostics, but they are not the source of the
+current headline configuration.
 
 ### Notch filtering and trainable filters
 
@@ -104,14 +120,16 @@ The ECoG is notch-filtered at 60, 120, and 180 Hz before the learned filter bank
 This explicitly removes narrow power-line components instead of asking the
 network to suppress them from limited data.
 
-The spatial and wavelet filters are initialized from FastICA and the
-biorthogonal tree, but they remain trainable during the second stage. Their
-initial frequency responses are measured directly; the intended eight-band
-coverage is shown below.
+For the eleven ICA-wavelet routes, the spatial and wavelet filters are
+initialized from FastICA and the biorthogonal tree, then trained during the
+second stage. The four joint-dictionary routes keep both their ICA-wavelet and
+CSP/designed-band atoms fixed and train only the selected nonlinear temporal
+head. The initial wavelet frequency responses are measured directly; the
+intended eight-band coverage is shown below.
 
 ![Measured frequency responses of the initialized wavelet tree](docs/figures/wavelet-initialization-frequency-response.png)
 
-## Current results
+## Clean-conscience result: no test peek, no cheat
 
 The primary comparison remains Pearson correlation with the released,
 unmodified test glove trajectory. `Macro-5` is the mean across all five fingers.
@@ -119,11 +137,45 @@ The paper values below are calculated from its rounded per-finger CNN-LSTM
 numbers, so they should not be interpreted as more precise versions of the
 paper's rounded aggregate.
 
-| Subject | 2018 paper | Final train+validation refit | Test-informed best of runs* |
+“No test peek” has a precise meaning here: within the declared final comparison,
+target processing, candidate choice, history, routing, seed count, and epoch
+policy were selected from the 400,000-sample development recording only. The
+released test trajectories were scored after those choices were fixed, and no
+weak test result was swapped out. This is the clean-conscience result—the number
+we report whether it wins or loses.
+
+| Subject | 2018 paper | OOF-routed six-seed refit | Test-informed best of runs* |
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.540 | **0.652** |
 | S2 | 0.408 | **0.423** | **0.512** |
 | S3 | 0.582 | 0.552 | **0.699** |
+
+| Subject | Finger | 2018 paper | Clean-conscience refit | Difference |
+|---|---|---:|---:|---:|
+| S1 | Thumb | 0.75 | 0.678 | -0.072 |
+| S1 | Index | 0.79 | 0.793 | +0.003 |
+| S1 | Middle | 0.17 | 0.268 | +0.098 |
+| S1 | Ring | 0.60 | 0.589 | -0.011 |
+| S1 | Little | 0.47 | 0.374 | -0.096 |
+| S2 | Thumb | 0.62 | 0.587 | -0.033 |
+| S2 | Index | 0.38 | 0.399 | +0.019 |
+| S2 | Middle | 0.27 | 0.337 | +0.067 |
+| S2 | Ring | 0.47 | 0.544 | +0.074 |
+| S2 | Little | 0.30 | 0.250 | -0.050 |
+| S3 | Thumb | 0.74 | 0.772 | +0.032 |
+| S3 | Index | 0.55 | 0.340 | -0.210 |
+| S3 | Middle | 0.46 | 0.566 | +0.106 |
+| S3 | Ring | 0.41 | 0.657 | +0.247 |
+| S3 | Little | 0.75 | 0.423 | -0.327 |
+
+This label describes the current decision path. It does not mean that nobody
+working on this 2026 repository had previously seen the released labels: before
+this protocol was fixed, they were used to diagnose earlier models and compare
+saved runs. The author's present recollection is also that the original
+exploratory workflow behind the 2018 result may have been influenced by repeated
+test feedback; the lost code and logs make that impossible to quantify. The
+paper numbers are therefore a historical reference, not a prospectively sealed
+benchmark.
 
 ### How the final refit is produced
 
@@ -169,9 +221,9 @@ compared with the paper as a fair held-out result.
 We retain the analysis because it answers a narrower diagnostic question: *did
 any model we trained recover the signal for this finger?* All fifteen pairs have
 at least one test prediction above the corresponding rounded paper value. The
-gap between this oracle result and the final train+validation refit shows how
-much performance is currently lost because training-only validation does not
-reliably identify the best model across recording periods.
+gap between this oracle result and the OOF-routed refit shows how much
+performance may be available in the trained candidate set but cannot be claimed
+without a selection rule that generalizes across recording periods.
 
 The per-finger values and the provenance of every route are recorded in
 [`docs/results/retrospective-extension.json`](docs/results/retrospective-extension.json).
@@ -192,14 +244,16 @@ matched to the development target distribution. This makes amplitude failures
 visible without altering the raw-coordinate PCC or fitting a scale to the test
 labels.
 
-![Subject 1 event-aligned diagnostic trajectories](docs/figures/retrospective-extension-s1-events.png)
+![Representative current-model movement windows](docs/figures/heterogeneous-six-seed-comparison.png)
 
-The plots reveal errors that the aggregate score obscures. S1 middle remains
-strongly confounded with index movement. S2 often recovers onset while missing
-individual peaks. S3 has the strongest overall event timing, but some dense
-movement sequences are merged or truncated. These observations motivate the
-cross-finger latent-assignment and velocity-prediction experiments described in
-the report.
+The current comparison shows why the four fixed-dictionary replacements were
+accepted. S1 middle recovers more movement timing and suppresses several large
+false bursts, although strong trains remain under-amplitude and movement-state
+precision is still poor. S3 thumb, middle, and ring show clearer timing and
+better scale; middle still compresses some long events and ring retains some
+rest leakage. S2 often recovers onset while missing individual peaks, and its
+weak middle and little-finger routes remain an open problem. These observations,
+not PCC alone, motivate the cross-finger and velocity experiments in the report.
 
 ## Main experimental conclusions
 
@@ -210,10 +264,12 @@ the report.
 - Seed ensembles can reduce variance, provided collapsed seeds are excluded
   using training-only evidence. They did not eliminate the chronological
   distribution shift.
-- A redundant overcomplete biorthogonal dictionary lost PCC on 11 of 15
-  subject/finger combinations. Extra atoms did not compensate for the added
-  estimation burden on this dataset, so the original eight-band tree remains
-  the default.
+- Simply duplicating and perturbing biorthogonal atoms lost PCC on 11 of 15
+  subject/finger combinations. In contrast, a heterogeneous dictionary with
+  genuinely different inductive biases—ICA-wavelet plus designed-band CSP—won
+  the development-fold comparison for four pairs and raised the final S1 and S3
+  means. Overcompleteness alone was not useful; complementary atoms sometimes
+  were.
 - Latent movement-state gating improved some retrospective morphologies but did
   not consistently improve the final refit.
 - Hard winner-take-all target correction is rejected because it can transfer
@@ -268,33 +324,54 @@ python scripts/preprocess_dataset.py --subjects 1 2 3
 python scripts/prepare_split_safe_targets.py --subjects 1 2 3
 python scripts/audit_wavelet_frequency_response.py
 
-# Build complete-event folds and purge one input history at every boundary.
+# Build per-subject/per-finger folds over the complete development recording.
 python scripts/build_event_stratified_folds.py --subjects 1 2 3 \
   --fingers thumb index middle ring little --purge-bins 95 \
+  --selection-scope full-development \
   --target-map configs/targetsafe_conservative_targets.yaml \
-  --output-root outputs/event_stratified_folds_targetsafe_conservative_v1
+  --output-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
 
-# Train the per-subject/per-finger LARS-initialized models.
+# Evaluate the 50-step ICA-wavelet candidates inside those folds. Repeat with
+# --sequence-steps 100 and the seq100 output root for the longer-history family.
 python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
   --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 1 \
   --target-map configs/targetsafe_conservative_targets.yaml \
-  --fold-root outputs/event_stratified_folds_targetsafe_conservative_v1 \
-  --output-root outputs/event_lars_e2e_softplus_targetsafe_lr1e4_v1 \
+  --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
+  --output-root outputs/event_lars_e2e_fulldev_seq50_v1 \
   --warmup-epochs 8 --max-epochs 48 --learning-rate 1e-4 \
   --spatial-learning-rate 3e-6 --wavelet-learning-rate 3e-6 \
-  --output-activation softplus
+  --output-activation softplus --sequence-steps 50
 
-# Refit the fixed selections on train+validation and render the diagnostics.
-python scripts/run_frozen_event_refits.py
-python scripts/summarize_frozen_full_refit.py
-python scripts/render_extension_report.py \
-  --routing configs/retrospective_diagnostic_routing.yaml
+# Refit the OOF-selected ICA-wavelet configurations with six random seeds.
+python scripts/run_frozen_event_refits.py \
+  --ensemble-map configs/full_development_event_refit.yaml \
+  --output-root outputs/full_development_event_refit_v1 \
+  --selection-cache-root outputs/full_development_event_refit_lars_v1
+python scripts/summarize_frozen_full_refit.py \
+  --input-root outputs/full_development_event_refit_v1 \
+  --ensemble-map configs/full_development_event_refit.yaml \
+  --output-root outputs/full_development_event_refit_v1/ensemble
+
+# Screen the heterogeneous fixed dictionary, then prepare and refit only the
+# four OOF winners recorded in configs/heterogeneous_six_seed_refit.yaml.
+python scripts/benchmark_event_heterogeneous_dictionary.py --subject 1
+python scripts/benchmark_event_heterogeneous_dictionary.py --subject 2
+python scripts/benchmark_event_heterogeneous_dictionary.py --subject 3
+python scripts/cache_csp_band_signals.py --subject 1
+python scripts/prepare_heterogeneous_full_refit.py --subject 1 --fingers middle
+python scripts/cache_csp_band_signals.py --subject 3
+python scripts/prepare_heterogeneous_full_refit.py --subject 3 \
+  --fingers thumb middle ring
+python scripts/run_heterogeneous_six_seed_refits.py
+python scripts/summarize_heterogeneous_six_seed_refits.py
 
 python -m pytest -q
 ```
 
-Some selected fingers use a 100-step input history. Exact configurations and
-the negative/ablation recipes are listed in the
+The CSP-band cache defaults to `/dev/shm`; cache creation and heterogeneous
+feature preparation must therefore run in the same execution environment.
+Some selected fingers use a 100-step input history. Exact selection, refit, and
+negative/ablation recipes are listed in the
 [reproduction recipes](docs/project-report.md#reproduction-recipes).
 
 ## Repository layout

@@ -14,14 +14,21 @@ was therefore rebuilt in 2026 from the paper, the public BCI Competition IV
 Data Set 4 recordings, and methodological recollection. It is not the original
 code, and the results should not be described as a bit-for-bit reproduction.
 
+The 2026 reconstruction was developed by the first author with substantial
+assistance from OpenAI Codex using **GPT-5.6 Sol** for code reconstruction,
+remote experiment orchestration, quantitative and visual diagnostics, and
+documentation. Codex is credited as a research and software assistant, not as a
+scientific author; the author remains responsible for the decisions and
+interpretation in this report.
+
 The reconstruction recovered the main modeling ideas: a trainable spatial
 filter initialized by FastICA; a three-level, dilated, biorthogonal wavelet tree;
 40 ms band-energy bins; and temporal decoding. It also made three important
-modeling and evaluation changes. First, every data-derived choice is fit on a
-chronological training or validation partition. Second, each subject and finger
-may use a different validated decoder, avoiding competition between five output
-heads. Third, model quality is judged from held-out trajectory shape as well as
-Pearson correlation.
+modeling and evaluation changes. First, every data-derived choice is refit
+inside complete-event development folds. Second, each subject and finger may use
+a different validated decoder, avoiding competition between five output heads.
+Third, model quality is judged from held-out trajectory shape as well as Pearson
+correlation.
 The rebuilt preprocessing also explicitly applies zero-phase notch filters at
 60 Hz and its 120/180 Hz harmonics to suppress power-line contamination.
 
@@ -54,6 +61,16 @@ Six LARS-initialized LSTM members were refitted for each selected pair without
 using released-test labels for routing. Replacing only those four predictions
 raises released-test `Macro-5` from 0.512/0.423/0.488 to
 0.540/0.423/0.552 for S1--S3.
+
+This is the report's **clean-conscience result: no test peek, no cheat**. The
+phrase means that the declared final comparison and routing rule were fixed from
+development folds and the released-test scores were accepted without post-test
+substitution.
+Before this protocol was fixed, the public test labels had been used in this
+2026 repository to diagnose earlier models and compare saved runs. The author
+also recalls that the original 2018 exploration may have received repeated test
+feedback. The latter cannot be audited because the historical code and logs
+were lost.
 
 A separate test-informed oracle analysis selects the saved prediction with the
 highest released-test PCC for each subject/finger pair. It reaches `Macro-5`
@@ -240,7 +257,7 @@ are frozen. A fixed-bandpass+CSP route instead uses conventional frozen
 frequency bands with CSP spatial filters estimated on training data and then
 frozen. A learned temporal head alone does not make either front end trainable.
 
-| Final route | Subject/fingers | Spectral front end | Spatial front end |
+| Historical route | Subject/fingers | Spectral front end | Spatial front end |
 |---|---|---|---|
 | Trainable wavelet | S1 index; S2 index, middle | Gradient-trained bior6.8 taps | Gradient-trained, FastICA-initialized projection |
 | Fixed wavelet | S1 ring; S2 thumb, ring, little | Frozen bior6.8 taps | Frozen FastICA projection |
@@ -248,14 +265,13 @@ frozen. A learned temporal head alone does not make either front end trainable.
 | Fixed-only ensemble | S1 thumb | Fixed wavelet and fixed bandpass candidates | Fixed FastICA/CSP/SPoC candidates |
 | Mixed ensemble | S1 little | Fixed candidates plus a trainable-wavelet candidate | Mixed fixed and gradient-trained candidates |
 
-S1 little is the sole mixed case: its validation stack includes the
+In that historical routing, S1 little was the sole mixed case: its validation stack includes the
 trainable-wavelet little-finger candidate with standardized coefficient 0.0465.
 S1 thumb also considered a trainable-wavelet candidate, but its selected
-coefficient was exactly zero. S1 index and S2 index/middle are the only final
-outputs driven directly by a gradient-trained ICA/wavelet front end. The
-machine-readable audit is `docs/results/learned-filter-map.json`.
+coefficient was exactly zero. These statements describe the earlier
+chronological-validation system, not the current OOF-routed refit.
 
-The table describes the frozen final routing rather than claiming that only
+The table describes that historical frozen routing rather than claiming that only
 those fingers benefited during development. A later S2-thumb end-to-end run
 reached validation PCC 0.630 versus 0.600 for the fixed-feature LSTM, but its
 held-out test PCC was 0.579 versus 0.599. Selecting the fixed result after seeing
@@ -266,11 +282,27 @@ the first five validation checks, this single conservative rate does not rule
 out early overfitting; a smaller-rate and frozen-front-end warm-up audit remains
 appropriate future work.
 
-CSP is useful for S3 but did not replace the S1/S2 fixed-window models. The
-strongest tested CSP-family checkpoints reached Macro-5 0.471 for S1 and 0.286
-for S2, versus 0.578 and 0.429 for the selected systems. S1's validation stack
-gave the raw CSP candidate zero weight for both stacked fingers, although a
-calibrated CSP trace contributed as a complementary component.
+The current system uses the complete 400,000-sample development recording for
+three event-grouped folds and has a simpler two-route taxonomy:
+
+| Current route | Subject/fingers | Spectral front end | Spatial front end |
+|---|---|---|---|
+| Trainable ICA-wavelet | S1 thumb, index, ring, little; all S2 fingers; S3 index, little | bior6.8 tree, updated after frozen-head warm-up | FastICA initialization, updated with the wavelet tree |
+| Fixed joint dictionary | S1 middle; S3 thumb, middle, ring | bior6.8 energies plus seven designed beta-to-high-gamma bands | FastICA features plus training-fitted own-finger/any-movement CSP |
+
+Each current model is still finger-specific and uses a nonlinear LSTM after
+LARS selection. The joint route was admitted only for the four pairs where its
+OOF score exceeded the ICA-wavelet candidate before the released-test refit.
+The current per-pair map and learning-rate policy are recorded in
+`docs/results/learned-filter-map.json`.
+
+In the earlier single-family comparisons, CSP was useful for S3 but did not
+replace the S1/S2 fixed-window systems. The strongest standalone CSP-family
+checkpoints reached Macro-5 0.471 for S1 and 0.286 for S2, versus 0.578 and
+0.429 for the selected historical systems. The later heterogeneous experiment
+changed the conclusion for S1 middle: CSP-band atoms were useful when LARS could
+select them jointly with ICA-wavelet atoms, even though a standalone S1 CSP
+family was weak at the subject level.
 
 This is a comparison between separately trained decoder families. A later
 fold-safe heterogeneous dictionary did append decoded-finger and any-movement
@@ -374,7 +406,7 @@ nearly invisible waveform if its timing happens to align with the target.
 
 ## Results
 
-### Split-safe event-fold reconstruction
+### Clean-conscience event-fold reconstruction: no test peek, no cheat
 
 The current confirmatory-style path supersedes the earlier expanding-window
 audit below. Its three folds are assigned as complete target-finger movement
@@ -383,6 +415,14 @@ events plus surrounding rest, balanced per finger and subject. A 95-bin
 crossing a held-out boundary. The lower-envelope glove baseline is also fitted
 inside each split; this closes the target-support leakage found in the first
 event-fold implementation.
+
+“No test peek” refers to the declared final comparison for this result: no
+released-test score chose among its candidate configurations, histories, routes,
+seeds, epoch policies, or retained members. The resulting score is reported
+without replacing weak fingers after the test is opened. It is a clean-conscience
+comparison. Candidate development itself occurred within a research project that
+had test exposure: before this protocol was fixed, this 2026 repository had used
+the public test labels to diagnose earlier models and compare saved runs.
 
 The selected final model is a separate decoder for each of the 15
 subject/finger pairs. Eleven pairs use the paper-derived FastICA initialization
@@ -415,8 +455,8 @@ individual feature family in the same full-development event-fold screen; test
 labels were not used for that routing. This prevents the older and newer
 validation protocols or feature families from being chosen according to which
 happens to score better on the released test. The comparison is nevertheless
-retrospective because those test labels had already been inspected during
-earlier reconstruction work.
+retrospective because, before this protocol was fixed, the 2026 repository had
+already used those labels to diagnose earlier models and compare saved runs.
 
 The same-OOF per-finger history-choice row is useful for selecting a candidate,
 but it is not an unbiased performance estimate because history selection and
@@ -441,6 +481,27 @@ released-test result was:
 | S1 | 0.678 | 0.793 | 0.268 | 0.589 | 0.374 | **0.540** | 0.556 |
 | S2 | 0.587 | 0.399 | 0.337 | 0.544 | 0.250 | **0.423** | 0.408 |
 | S3 | 0.772 | 0.340 | 0.566 | 0.657 | 0.423 | **0.552** | 0.582 |
+
+The rounded paper values and finger-level differences are:
+
+| Subject/series | Thumb | Index | Middle | Ring | Little | Macro-5 |
+|---|---:|---:|---:|---:|---:|---:|
+| S1 paper | 0.750 | 0.790 | 0.170 | 0.600 | 0.470 | 0.556 |
+| S1 current | 0.678 | 0.793 | 0.268 | 0.589 | 0.374 | 0.540 |
+| S1 difference | -0.072 | +0.003 | +0.098 | -0.011 | -0.096 | -0.016 |
+| S2 paper | 0.620 | 0.380 | 0.270 | 0.470 | 0.300 | 0.408 |
+| S2 current | 0.587 | 0.399 | 0.337 | 0.544 | 0.250 | 0.423 |
+| S2 difference | -0.033 | +0.019 | +0.067 | +0.074 | -0.050 | +0.015 |
+| S3 paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
+| S3 current | 0.772 | 0.340 | 0.566 | 0.657 | 0.423 | 0.552 |
+| S3 difference | +0.032 | -0.210 | +0.106 | +0.247 | -0.327 | -0.030 |
+
+The historical paper is an important target but not a pristine prospective
+control. The author's present recollection is that the original exploratory
+workflow may have received repeated feedback from the released test results.
+Because the original code, logs, and hard drive were lost, the magnitude of any
+such influence cannot be reconstructed. This report therefore avoids treating
+small paper-versus-current differences as a clean superiority test.
 
 Relative to the ICA-wavelet-only six-seed refit, the heterogeneous routing adds
 0.028 and 0.063 Macro-5 for S1 and S3; S2 is unchanged. S1 middle improves by
@@ -599,6 +660,32 @@ The overcomplete experiment duplicated and perturbed the paper's bior atoms so
 that sparse selection could activate a learned subset. It won on 4/15 fingers,
 lost on 11/15, and changed mean PCC by -0.0036. The extra dictionary capacity is
 therefore retained as an experiment, not the default.
+
+A later heterogeneous dictionary tested a different proposition: combine the
+paper-derived ICA-wavelet energies with designed-band, movement-versus-rest CSP
+energies, then let fold-local LARS choose among complementary atoms. Using the
+same full-development event folds as the primary selector, it improved four
+pairs: S1 middle and S3 thumb, middle, and ring. Six-seed refits of those four
+pairs completed without collapsed members. Replacing only those OOF winners
+raised released-test Macro-5 from 0.512 to 0.540 for S1 and from 0.488 to 0.552
+for S3; S2 remained 0.423 because none of its joint candidates won OOF.
+
+The selected full-development dictionaries contained 444 features for S1
+middle (178 ICA-wavelet and 266 CSP), 445 for S3 thumb (119 and 326), 436 for S3
+middle (232 and 204), and 394 for S3 ring (133 and 261). These counts show that
+the gain did not come from replacing the wavelet path wholesale: both feature
+families survived sparse selection. The contrast with the perturbed-wavelet
+experiment suggests that diversity of inductive bias matters more here than
+the raw number of atoms.
+
+![Current fixed-dictionary replacements in representative movement windows](figures/heterogeneous-six-seed-comparison.png)
+
+Visual review agrees with the aggregate improvement but also limits the claim.
+S1 middle suppresses several false bursts and follows more movement timing, yet
+large trains remain compressed and its state precision is low. The S3 routes
+track major events more clearly; middle still compresses some sustained
+movement and ring retains rest leakage. The exact raw and morphology metrics
+are stored in `docs/results/heterogeneous-six-seed-refit.json`.
 
 Hard winner-take-all correction was rejected because it converts weak coupled
 motion into fabricated motion on another finger. A latent intended-finger state
@@ -898,7 +985,8 @@ secondary narrative.
 
 ## Reproduction recipes
 
-The current split-safe event experiment is reproduced with:
+The current full-development event-fold selection and final refit are reproduced
+with:
 
 ```bash
 export PYTHONPATH=scripts:src
@@ -907,28 +995,71 @@ python scripts/prepare_split_safe_targets.py --subjects 1 2 3
 
 python scripts/build_event_stratified_folds.py --subjects 1 2 3 \
   --fingers thumb index middle ring little --purge-bins 95 \
+  --selection-scope full-development \
   --target-map configs/targetsafe_conservative_targets.yaml \
-  --output-root outputs/event_stratified_folds_targetsafe_conservative_v1
+  --output-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
 
+# Run the 50-step family.
 python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
   --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 1 \
   --gpus 0 1 2 3 4 5 6 7 --warmup-epochs 8 --max-epochs 48 \
   --target-map configs/targetsafe_conservative_targets.yaml \
-  --fold-root outputs/event_stratified_folds_targetsafe_conservative_v1 \
-  --output-root outputs/event_lars_e2e_softplus_targetsafe_lr1e4_v1 \
+  --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
+  --output-root outputs/event_lars_e2e_fulldev_seq50_v1 \
   --learning-rate 1e-4 --spatial-learning-rate 3e-6 \
-  --wavelet-learning-rate 3e-6 --output-activation softplus
+  --wavelet-learning-rate 3e-6 --output-activation softplus \
+  --sequence-steps 50
 
-python scripts/run_frozen_event_refits.py
-python scripts/summarize_frozen_full_refit.py
+# Run the longer-history family evaluated by the checked-in selection map.
+python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
+  --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 1 \
+  --gpus 0 1 2 3 4 5 6 7 --warmup-epochs 8 --max-epochs 48 \
+  --target-map configs/targetsafe_conservative_targets.yaml \
+  --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
+  --output-root outputs/event_lars_e2e_fulldev_seq100_v1 \
+  --learning-rate 1e-4 --spatial-learning-rate 3e-6 \
+  --wavelet-learning-rate 3e-6 --output-activation softplus \
+  --sequence-steps 100 --batch-size 24 --unfrozen-batch-size 4
 
+# Refit the selected ICA-wavelet candidate for every pair using six seeds.
+python scripts/run_frozen_event_refits.py \
+  --gpus 0 1 2 3 4 5 6 7 \
+  --ensemble-map configs/full_development_event_refit.yaml \
+  --output-root outputs/full_development_event_refit_v1 \
+  --selection-cache-root outputs/full_development_event_refit_lars_v1
+python scripts/summarize_frozen_full_refit.py \
+  --input-root outputs/full_development_event_refit_v1 \
+  --ensemble-map configs/full_development_event_refit.yaml \
+  --output-root outputs/full_development_event_refit_v1/ensemble
+
+# Compare the fixed heterogeneous dictionary inside the same folds.
+python scripts/benchmark_event_heterogeneous_dictionary.py --subject 1
+python scripts/benchmark_event_heterogeneous_dictionary.py --subject 2
+python scripts/benchmark_event_heterogeneous_dictionary.py --subject 3
+
+# Prepare the four OOF winners and fit six independent LSTM initializations.
+python scripts/cache_csp_band_signals.py --subject 1
+python scripts/prepare_heterogeneous_full_refit.py --subject 1 --fingers middle
+python scripts/cache_csp_band_signals.py --subject 3
+python scripts/prepare_heterogeneous_full_refit.py --subject 3 \
+  --fingers thumb middle ring
+python scripts/run_heterogeneous_six_seed_refits.py --gpus 0 1 2 3 4 5 6 7
+python scripts/summarize_heterogeneous_six_seed_refits.py
+
+# Optional: render the explicitly test-informed retrospective upper bound.
 python scripts/render_extension_report.py \
   --routing configs/retrospective_diagnostic_routing.yaml
 ```
 
-The rendering command consumes existing candidate predictions; its routing file
-declares that released-test inspection influenced the per-finger choices. It is
-not part of the frozen evaluation path.
+The CSP cache defaults to `/dev/shm`, so each cache command and its corresponding
+feature-preparation command must run in the same execution environment. The
+final rendering command consumes existing candidate predictions; its routing
+file declares that released-test inspection influenced the per-finger choices.
+It is not part of the OOF-routed evaluation path.
+
+The recipes below reproduce earlier chronological-split diagnostics and paper-
+faithful comparisons. They are retained for provenance, not as the current
+headline pipeline.
 
 Install the project and place the official competition files as described in
 the top-level README. Then:
@@ -1044,29 +1175,33 @@ late reconstruction:
 
 - the original code and exact legacy environment are unavailable;
 - paper values are rounded, and not every old training detail is recoverable;
-- the released test labels were examined during this research process, even
-  though each individual selector is coded to use validation only;
+- before the current protocol was fixed, the 2026 repository used released-test
+  labels to diagnose earlier models and compare saved runs, even though the
+  current selectors use development folds only;
 - the current public package excludes raw data and large trained artifacts;
 - several experiment scripts reflect research exploration rather than one
   polished end-to-end command;
 - the 0.652/0.512/0.699 diagnostic routing is selected after released-test
   inspection and is not a valid estimate of future model-selection performance;
-- the split-safe event configuration was frozen from training-only folds, but
-  the released labels had been inspected during earlier project phases and are
-  therefore not historically pristine; and
-- the event-fold to final chronological drop for S1/S3 remains unresolved.
+- the clean-conscience event configuration was frozen from development-only
+  folds, but the project is not historically equivalent to a prospectively
+  sealed benchmark; and
+- S1 middle, S2 middle/little, and S3 index/little still show important timing,
+  amplitude, or rest-leakage failures despite some high PCC values.
 
 For these reasons, the project should be cited as a reimplementation and
 extension, not as the official source code accompanying the 2018 publication.
 
 ## Recommended next work
 
-1. Treat S1 thumb as a domain-transport problem. Measure label-free changes in
-   ECoG covariance, spectral power, and decoder feature marginals across time,
-   then test training-only importance weighting or regime-balanced folds.
-2. Replace three-fold event CV with repeated event-stratified folds or
-   leave-one-movement-block-out folds. Keep a final chronological segment sealed
-   until the complete target/model protocol is fixed.
+1. Repeat the full-development event split with several group assignments and a
+   nested outer comparison of ICA-wavelet versus joint dictionaries. This tests
+   whether the four heterogeneous route choices are stable rather than fortunate
+   for one event partition.
+2. Concentrate modeling work on the visually unresolved S1 middle, S2
+   middle/little, and S3 index/little routes. Measure label-free changes in ECoG
+   covariance, spectral power, and decoder-feature marginals across recording
+   blocks before increasing model capacity.
 3. Jointly model flexion and velocity under one coherent likelihood or
    multi-output regression objective. Velocity is a plausible more immediate
    neural consequence, but it should be an auxiliary target rather than another
@@ -1074,8 +1209,11 @@ extension, not as the official source code accompanying the 2018 publication.
 4. Develop the latent cross-finger model as an explicit subject-specific
    switching/state-space model with co-movement emissions. Evaluate attribution
    with synthetic cross-talk injection before applying it to released labels.
-5. Add a manifest that maps every public table and figure to configuration,
-   source commit, environment lock, input hashes, and exact command.
+5. On a future dataset or hidden-label evaluation server, register the complete
+   selection rule before scoring. That is the only way to turn the current
+   clean-conscience procedure into a genuinely prospective benchmark. Also add
+   a manifest mapping every public table and figure to configuration, source
+   commit, environment lock, input hashes, and exact command.
 
 ## Public-release policy
 

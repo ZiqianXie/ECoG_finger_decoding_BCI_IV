@@ -17,5 +17,12 @@
     "reported scores are computed from raw released glove trajectories"
   ],
   "visual_review_role": "Trajectory plots are used for diagnosis and reporting, not to choose whether to promote the result.",
-  "released_test_context": "The current pipeline decision did not use its new released-test predictions, but released-test labels had already been inspected during earlier reconstruction experiments; the final comparison is therefore retrospective."
+  "released_test_context": "The current pipeline decision did not use its new released-test predictions. Before this protocol was fixed, however, the 2026 repository had used released-test labels to diagnose earlier models and compare saved runs; the final comparison is therefore retrospective.",
+  "subsequent_oof_routed_extension": {
+    "configuration": "configs/heterogeneous_six_seed_refit.yaml",
+    "result": "docs/results/heterogeneous-six-seed-refit.json",
+    "selection_rule": "promote a fixed joint ICA-wavelet plus CSP-band route only when it exceeds the better individual family in the same full-development event folds",
+    "promoted_pairs": ["S1_middle", "S3_thumb", "S3_middle", "S3_ring"],
+    "released_test_used_for_routing": false
+  }
 }

@@ -22,27 +22,33 @@ to compete for the same filters.
 - planned shallow Elastic Net/LARS and LightGBM representation probes before a
   recurrent head.
 
-The learnable-filter and hurdle deviations remain off `main`. The independently
-validated, parameter-free nonnegative output projection was later promoted to
-`main` in commit `bf9e876`.
+The learnable Morlet/filter-bank and hurdle-decoder deviations remain
+experimental. The parameter-free nonnegative output projection was promoted to
+`main` in commit `bf9e876`. A later, distinct fixed heterogeneous dictionary was
+promoted in commit `73c8d38`: full-development event folds selected joint
+ICA-wavelet+CSP/band features for S1 middle and S3 thumb, middle, and ring. That
+route is part of the current clean-conscience result; it should not be confused
+with the still-experimental learnable-filter branch documented here.
 
 ## Data boundaries
 
-The 400 s released training recording retains its chronological outer split:
-the first two-thirds are the fit partition and the last third is validation.
-Architecture profiles are selected from purged chronological folds entirely
-inside the fit partition. The outer validation segment may select a final lag
-and decide whether an experimental candidate beats the paper-faithful model.
-Released test labels are read only after the candidate is frozen.
+The experiments below originally retained a chronological outer split: the
+first two-thirds were the fit partition and the last third was validation.
+Architecture profiles were selected from purged chronological folds inside the
+fit partition, and the outer validation segment could select a lag or decide
+whether an experimental candidate beat the paper-faithful model. Released test
+labels were read only after a candidate was frozen. This is the historical
+protocol for this branch, not the current main-branch evaluation.
 
-The current learned-versus-fixed family choices on `main` were made from one
-chronological validation split; only the S1 stack penalty used blocked
-`TimeSeriesSplit` internally. Consequently, a later S2-thumb end-to-end run
+The current main-branch family choices instead use three per-subject/per-finger
+event folds spanning all 400,000 development samples, with a 95-bin purge and
+fold-local fitting of target baselines, CSP, and LARS. Consequently, the earlier
+S2-thumb end-to-end run
 that improved validation PCC from 0.600 to 0.630 but reduced test PCC from
 0.599 to 0.579 cannot be rejected because of the test result. Its status is
 unresolved pending purged blocked cross-validation across seeds and frontend
 learning rates. Test performance is never a model-selection criterion in this
-branch.
+historical branch.
 
 ## Paper-faithful comparison
 

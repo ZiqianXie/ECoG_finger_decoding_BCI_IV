@@ -1,6 +1,8 @@
 {
+  "result_role": "ICA-wavelet-only six-seed baseline",
+  "superseded_as_headline_by": "docs/results/heterogeneous-six-seed-refit.json",
   "protocol": "per-subject, per-finger full-development OOF selection followed by six-seed refit on all development samples",
-  "released_test_context": "retrospective paper comparison; the current pipeline was frozen before these predictions were inspected, but test labels had been inspected in earlier reconstruction work",
+  "released_test_context": "retrospective paper comparison; the current pipeline was frozen before these predictions were inspected, but before this protocol was fixed the 2026 repository had used released-test labels to diagnose earlier models and compare saved runs",
   "integrity": {
     "completed_models": 90,
     "expected_models": 90,
