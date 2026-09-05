@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build purged, multi-finger event-balanced folds inside the training partition."""
+"""Build purged, multi-finger event-balanced folds in a labeled-data scope."""
 
 from __future__ import annotations
 
@@ -15,6 +15,19 @@ from ecog_decoding.training import FINGER_NAMES
 
 
 TARGETS = {1: "local_w2_q10", 2: "local_w1_q10", 3: "local_w4_q20"}
+
+
+def selection_stop(
+    *, raw_target_rows: int, model_fit_stop: int, selection_scope: str
+) -> int:
+    """Return the exclusive raw-target row used by model-selection folds."""
+    if not 0 < model_fit_stop <= raw_target_rows:
+        raise ValueError("model-fit boundary must lie inside the target recording")
+    if selection_scope == "model-fit":
+        return model_fit_stop
+    if selection_scope == "full-development":
+        return raw_target_rows
+    raise ValueError(f"unknown selection scope: {selection_scope}")
 
 
 def runs(mask: np.ndarray) -> list[tuple[int, int]]:
@@ -162,6 +175,15 @@ def main() -> None:
     parser.add_argument("--assignment-trials", type=int, default=500)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--selection-scope",
+        choices=("model-fit", "full-development"),
+        default="model-fit",
+        help=(
+            "build folds inside the first two-thirds model-fitting partition "
+            "or across the complete labeled competition training recording"
+        ),
+    )
+    parser.add_argument(
         "--split-safe-targets",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -180,7 +202,7 @@ def main() -> None:
     for subject in args.subjects:
         prepared = args.prepared_root / f"sub{subject}"
         metadata = json.loads((prepared / "metadata.json").read_text())
-        split = int(metadata["target_fit_samples_25hz"])
+        model_fit_stop = int(metadata["target_fit_samples_25hz"])
         offset = args.history - 1
         for finger_name in args.fingers:
             if args.target_map is not None:
@@ -196,10 +218,13 @@ def main() -> None:
                 target_name = TARGETS[subject] + (
                     "_split_safe" if args.split_safe_targets else ""
                 )
-            target = np.asarray(
-                np.load(prepared / f"train_glove_{target_name}.npy")[offset:split],
-                dtype=np.float32,
+            complete_target = np.load(prepared / f"train_glove_{target_name}.npy")
+            stop = selection_stop(
+                raw_target_rows=int(complete_target.shape[0]),
+                model_fit_stop=model_fit_stop,
+                selection_scope=args.selection_scope,
             )
+            target = np.asarray(complete_target[offset:stop], dtype=np.float32)
             trigger_finger = list(FINGER_NAMES).index(finger_name)
             groups, smooth, active = event_groups(
                 target,
@@ -258,7 +283,15 @@ def main() -> None:
                 "finger": finger_name,
                 "target": target_name,
                 "protocol": "per-finger event-grouped stratification with multi-finger balance and fold-specific temporal purge",
-                "official_final_validation_touched": False,
+                "selection_scope": args.selection_scope,
+                "model_fit_stop_raw_target_row": model_fit_stop,
+                "selection_stop_raw_target_row": stop,
+                "chronological_validation_included_in_selection": (
+                    args.selection_scope == "full-development"
+                ),
+                "official_final_validation_touched": (
+                    args.selection_scope == "full-development"
+                ),
                 "released_test_touched": False,
                 "training_rows": int(target.shape[0]),
                 "history_offset": offset,

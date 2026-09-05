@@ -1,0 +1,29 @@
+protocol: full-development event-fold model selection
+selection_metric: ensemble_oof_pcc
+required_selection_scope: full-development
+fold_root: outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
+target_map: configs/targetsafe_conservative_targets.yaml
+
+refit_defaults:
+  sequence_stride: 25
+  warmup_epochs: 8
+  learning_rate: 1.0e-4
+  spatial_learning_rate: 3.0e-6
+  wavelet_learning_rate: 3.0e-6
+  weight_decay: 1.0e-4
+  output_activation: softplus
+  loss: mse
+
+candidates:
+  history50:
+    summary: outputs/full_development_selection/seq50_summary.json
+    input_root: outputs/event_lars_e2e_fulldev_seq50_v1
+    sequence_steps: 50
+    batch_size: 32
+    unfrozen_batch_size: 6
+  history100:
+    summary: outputs/full_development_selection/seq100_summary.json
+    input_root: outputs/event_lars_e2e_fulldev_seq100_v1
+    sequence_steps: 100
+    batch_size: 24
+    unfrozen_batch_size: 4

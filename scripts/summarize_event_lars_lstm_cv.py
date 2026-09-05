@@ -194,9 +194,10 @@ def main() -> None:
     report: dict[str, object] = {
         "protocol": "per-finger purged event-grouped out-of-fold seed ensemble",
         "released_test_touched": False,
-        "official_final_validation_touched": False,
+        "selection_scopes": [],
         "subjects": {},
     }
+    selection_scopes: set[str] = set()
     for subject in args.subjects:
         subject_report: dict[str, object] = {"per_finger": {}}
         figure, axes = plt.subplots(len(args.fingers), 1, figsize=(16, 2.5 * len(args.fingers) + 1), sharex=True)
@@ -212,6 +213,7 @@ def main() -> None:
             definition = json.loads(
                 (args.fold_root / f"sub{subject}" / finger / "folds.json").read_text()
             )
+            selection_scopes.add(str(definition.get("selection_scope", "model-fit")))
             rows = int(definition["training_rows"])
             raw = np.full(rows, np.nan, dtype=np.float32)
             cleaned = np.full(rows, np.nan, dtype=np.float32)
@@ -395,12 +397,19 @@ def main() -> None:
                 va="top",
             )
         axes[0].legend(frameon=False, ncol=2)
-        axes[-1].set_xlabel("training-partition time (s)")
+        axes[-1].set_xlabel("model-selection data time (s)")
         figure.suptitle(f"Subject {subject}: purged event-fold out-of-fold ensemble")
         figure.tight_layout()
         figure.savefig(destination / "oof_ensemble_trajectories.png", dpi=160)
         plt.close(figure)
         report["subjects"][str(subject)] = subject_report
+    report["selection_scopes"] = sorted(selection_scopes)
+    report["chronological_validation_included_in_selection"] = (
+        "full-development" in selection_scopes
+    )
+    report["official_final_validation_touched"] = report[
+        "chronological_validation_included_in_selection"
+    ]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2), flush=True)
