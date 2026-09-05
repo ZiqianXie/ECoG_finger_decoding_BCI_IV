@@ -12,8 +12,40 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import yaml
 
 from ecog_decoding.training import FINGER_NAMES
+
+
+def resolve_ensemble_spec(
+    default_root: Path,
+    default_seeds: list[int] | tuple[int, ...],
+    ensemble_map: dict[str, object],
+    subject: int,
+    finger_name: str,
+) -> tuple[Path, tuple[int, ...]]:
+    """Resolve a predeclared per-finger model family and seed set."""
+    defaults = ensemble_map.get("default", {})
+    if not isinstance(defaults, dict):
+        raise TypeError("ensemble map default must be a mapping")
+    root = Path(defaults.get("input_root", default_root))
+    seeds = tuple(int(seed) for seed in defaults.get("seeds", default_seeds))
+    subjects = ensemble_map.get("subjects", {})
+    if not isinstance(subjects, dict):
+        raise TypeError("ensemble map subjects must be a mapping")
+    subject_map = subjects.get(subject, subjects.get(str(subject), {}))
+    if not isinstance(subject_map, dict):
+        raise TypeError(f"ensemble map subject {subject} must be a mapping")
+    finger_map = subject_map.get(finger_name, {})
+    if not isinstance(finger_map, dict):
+        raise TypeError(f"ensemble map S{subject} {finger_name} must be a mapping")
+    if "input_root" in finger_map:
+        root = Path(finger_map["input_root"])
+    if "seeds" in finger_map:
+        seeds = tuple(int(seed) for seed in finger_map["seeds"])
+    if not seeds:
+        raise ValueError(f"ensemble map gives no seeds for S{subject} {finger_name}")
+    return root, seeds
 
 
 def pearson(x: np.ndarray, y: np.ndarray) -> float:
@@ -147,10 +179,17 @@ def main() -> None:
     parser.add_argument("--input-root", type=Path, default=Path("outputs/event_lars_lstm_wavelet_v1"))
     parser.add_argument("--fold-root", type=Path, default=Path("outputs/event_stratified_folds_v1"))
     parser.add_argument("--seeds", type=int, nargs="+", default=(0, 1))
+    parser.add_argument(
+        "--ensemble-map",
+        type=Path,
+        default=None,
+        help="optional frozen per-finger input-root and seed overrides",
+    )
     parser.add_argument("--subjects", type=int, nargs="+", default=(1, 2, 3))
     parser.add_argument("--fingers", nargs="+", choices=tuple(FINGER_NAMES), default=tuple(FINGER_NAMES))
     parser.add_argument("--output", type=Path, default=Path("outputs/event_lars_lstm_wavelet_v1/summary.json"))
     args = parser.parse_args()
+    ensemble_map = yaml.safe_load(args.ensemble_map.read_text()) if args.ensemble_map else {}
 
     report: dict[str, object] = {
         "protocol": "per-finger purged event-grouped out-of-fold seed ensemble",
@@ -163,6 +202,13 @@ def main() -> None:
         figure, axes = plt.subplots(len(args.fingers), 1, figsize=(16, 2.5 * len(args.fingers) + 1), sharex=True)
         axes = np.atleast_1d(axes)
         for finger_index, finger in enumerate(args.fingers):
+            input_root, seeds = resolve_ensemble_spec(
+                args.input_root,
+                tuple(args.seeds),
+                ensemble_map,
+                subject,
+                finger,
+            )
             definition = json.loads(
                 (args.fold_root / f"sub{subject}" / finger / "folds.json").read_text()
             )
@@ -170,29 +216,29 @@ def main() -> None:
             raw = np.full(rows, np.nan, dtype=np.float32)
             cleaned = np.full(rows, np.nan, dtype=np.float32)
             seed_predictions = {
-                seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds
+                seed: np.full(rows, np.nan, dtype=np.float32) for seed in seeds
             }
             seed_initialized_predictions = {
-                seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds
+                seed: np.full(rows, np.nan, dtype=np.float32) for seed in seeds
             }
             reference_root = (
-                args.input_root / f"sub{subject}" / finger / "fold0"
-                / f"seed{args.seeds[0]}"
+                input_root / f"sub{subject}" / finger / "fold0"
+                / f"seed{seeds[0]}"
             )
             has_hurdle = (reference_root / "validation_movement_probability.npy").exists()
             seed_probabilities = (
-                {seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds}
+                {seed: np.full(rows, np.nan, dtype=np.float32) for seed in seeds}
                 if has_hurdle else {}
             )
             seed_amplitudes = (
-                {seed: np.full(rows, np.nan, dtype=np.float32) for seed in args.seeds}
+                {seed: np.full(rows, np.nan, dtype=np.float32) for seed in seeds}
                 if has_hurdle else {}
             )
-            fold_scores: dict[str, list[float]] = {str(seed): [] for seed in args.seeds}
-            best_epochs: dict[str, list[int]] = {str(seed): [] for seed in args.seeds}
+            fold_scores: dict[str, list[float]] = {str(seed): [] for seed in seeds}
+            best_epochs: dict[str, list[int]] = {str(seed): [] for seed in seeds}
             for fold in range(3):
                 reference = (
-                    args.input_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{args.seeds[0]}"
+                    input_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{seeds[0]}"
                 )
                 indices = np.load(reference / "validation_indices.npy")
                 target = np.load(reference / "validation_raw_target.npy")
@@ -201,8 +247,8 @@ def main() -> None:
                     raise RuntimeError(f"overlapping OOF rows for S{subject} {finger}")
                 raw[indices] = target
                 cleaned[indices] = cleaned_target
-                for seed in args.seeds:
-                    root = args.input_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{seed}"
+                for seed in seeds:
+                    root = input_root / f"sub{subject}" / finger / f"fold{fold}" / f"seed{seed}"
                     prediction = np.load(root / "validation_prediction.npy")
                     seed_predictions[seed][indices] = prediction
                     seed_initialized_predictions[seed][indices] = np.load(
@@ -242,7 +288,7 @@ def main() -> None:
                 if not np.isfinite(values).all()
                 or float(np.std(values)) < max(1.0e-4, 0.05 * target_std)
             ]
-            included_seeds = [seed for seed in args.seeds if seed not in collapsed_seeds]
+            included_seeds = [seed for seed in seeds if seed not in collapsed_seeds]
             if not included_seeds:
                 raise RuntimeError(
                     f"all requested seeds collapsed for S{subject} {finger}"
@@ -272,6 +318,8 @@ def main() -> None:
                 np.mean([seed_scores[str(seed)] for seed in included_seeds])
             )
             subject_report["per_finger"][finger] = {
+                "model_root": str(input_root),
+                "requested_seeds": list(seeds),
                 "seed_oof_pcc": seed_scores,
                 "initialized_seed_oof_pcc": initialized_seed_scores,
                 "seed_sd": seed_sd,
@@ -296,7 +344,7 @@ def main() -> None:
                 "fold_pcc": fold_scores,
                 "best_epochs": best_epochs,
             }
-            destination = args.input_root / f"sub{subject}"
+            destination = args.output.parent / f"sub{subject}"
             destination.mkdir(parents=True, exist_ok=True)
             if has_hurdle:
                 if any(

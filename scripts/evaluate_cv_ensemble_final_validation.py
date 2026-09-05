@@ -20,7 +20,11 @@ import torch
 import yaml
 
 from ecog_decoding.training import FINGER_NAMES
-from summarize_event_lars_lstm_cv import morphology_metrics, pearson
+from summarize_event_lars_lstm_cv import (
+    morphology_metrics,
+    pearson,
+    resolve_ensemble_spec,
+)
 from train_exact_window_end_to_end import ExactWindowFingerDecoder
 
 
@@ -88,37 +92,6 @@ def frozen_oof_seed_inclusion(
         "included_seeds": included,
         "collapsed_seeds": collapsed,
     }
-
-
-def resolve_ensemble_spec(
-    default_root: Path,
-    default_seeds: list[int] | tuple[int, ...],
-    ensemble_map: dict[str, object],
-    subject: int,
-    finger_name: str,
-) -> tuple[Path, tuple[int, ...]]:
-    """Resolve a predeclared per-finger model family and seed set."""
-    defaults = ensemble_map.get("default", {})
-    if not isinstance(defaults, dict):
-        raise TypeError("ensemble map default must be a mapping")
-    root = Path(defaults.get("input_root", default_root))
-    seeds = tuple(int(seed) for seed in defaults.get("seeds", default_seeds))
-    subjects = ensemble_map.get("subjects", {})
-    if not isinstance(subjects, dict):
-        raise TypeError("ensemble map subjects must be a mapping")
-    subject_map = subjects.get(subject, subjects.get(str(subject), {}))
-    if not isinstance(subject_map, dict):
-        raise TypeError(f"ensemble map subject {subject} must be a mapping")
-    finger_map = subject_map.get(finger_name, {})
-    if not isinstance(finger_map, dict):
-        raise TypeError(f"ensemble map S{subject} {finger_name} must be a mapping")
-    if "input_root" in finger_map:
-        root = Path(finger_map["input_root"])
-    if "seeds" in finger_map:
-        seeds = tuple(int(seed) for seed in finger_map["seeds"])
-    if not seeds:
-        raise ValueError(f"ensemble map gives no seeds for S{subject} {finger_name}")
-    return root, seeds
 
 
 def restore_model(
