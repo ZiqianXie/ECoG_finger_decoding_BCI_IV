@@ -173,6 +173,12 @@ def main() -> None:
             )
             rows = int(definition["training_rows"])
             raw = raw_full[24 : 24 + rows, finger_index]
+            target_matrix = np.column_stack(
+                [
+                    target_arrays[method][24 : 24 + rows, finger_index]
+                    for method in methods
+                ]
+            )
             predictions = {
                 method: np.full(rows, np.nan, dtype=np.float32) for method in methods
             }
@@ -203,22 +209,29 @@ def main() -> None:
                 x_validation = scaler.transform(
                     np.asarray(feature_all[validation][:, selection], dtype=np.float64)
                 )
-                for method in methods:
+                model = RidgeCV(
+                    alphas=np.asarray(args.alphas),
+                    fit_intercept=True,
+                    alpha_per_target=True,
+                )
+                model.fit(x_train, target_matrix[safe_training])
+                estimates = np.asarray(model.predict(x_validation), dtype=np.float32)
+                selected_alphas = np.broadcast_to(
+                    np.asarray(model.alpha_, dtype=np.float64), (len(methods),)
+                )
+                for method_index, method in enumerate(methods):
                     support = target_support_bins(
                         method,
                         sampling_rate_hz=args.sampling_rate,
                         smoothing_seconds=args.target_smoothing_seconds,
                         gaussian_sigmas=args.gaussian_safety_sigmas,
                     )
-                    target = target_arrays[method][24 : 24 + rows, finger_index]
-                    model = RidgeCV(alphas=np.asarray(args.alphas), fit_intercept=True)
-                    model.fit(x_train, target[safe_training])
-                    estimate = model.predict(x_validation).astype(np.float32)
+                    estimate = estimates[:, method_index]
                     predictions[method][validation] = estimate
                     fold_records[method].append(
                         {
                             "fold": fold,
-                            "alpha": float(model.alpha_),
+                            "alpha": float(selected_alphas[method_index]),
                             "raw_pcc": pearson(estimate, raw[validation]),
                             "target_support_bins": support,
                             "uniform_purge_bins": int(maximum_support),
