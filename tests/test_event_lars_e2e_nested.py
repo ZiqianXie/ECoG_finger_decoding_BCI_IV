@@ -10,7 +10,8 @@ from scripts.train_event_grouped_lars_e2e_nested import (
 )
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
 from scripts.summarize_event_lars_lstm_cv import morphology_metrics
-from scripts.evaluate_cv_ensemble_final_validation import movement_groups
+from scripts.evaluate_cv_ensemble_final_validation import movement_groups, restore_model
+from scripts.train_exact_window_end_to_end import ExactWindowFingerDecoder
 
 
 def test_event_grouped_subfolds_are_disjoint_and_complete() -> None:
@@ -102,3 +103,29 @@ def test_final_validation_event_groups_merge_overlapping_padding() -> None:
         {"start": 2, "stop": 16},
         {"start": 17, "stop": 24},
     ]
+
+
+def test_final_validation_restores_crossfold_checkpoint(tmp_path) -> None:
+    model = ExactWindowFingerDecoder(
+        input_channels=2,
+        component_count=2,
+        selected_indices=np.arange(3),
+        feature_mean=np.zeros(3, dtype=np.float32),
+        feature_scale=np.ones(3, dtype=np.float32),
+        hidden_size=4,
+        frontend="asymmetric",
+        head_initialization="lars_linear_regime",
+        output_activation="softplus",
+    )
+    checkpoint = tmp_path / "model.pt"
+    summary = tmp_path / "summary.json"
+    torch.save(
+        {"model_state_dict": model.state_dict(), "feature_indices": np.arange(3)},
+        checkpoint,
+    )
+    summary.write_text('{"configuration":{"output_activation":"softplus"}}')
+
+    restored = restore_model(checkpoint, summary, input_channels=2, device=torch.device("cpu"))
+
+    for name, value in model.state_dict().items():
+        torch.testing.assert_close(restored.state_dict()[name], value)
