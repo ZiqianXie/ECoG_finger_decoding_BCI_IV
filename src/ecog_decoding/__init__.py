@@ -30,7 +30,7 @@ from .preprocessing import (
     local_lower_envelope_baseline,
     preprocess_ecog,
 )
-from .postprocessing import project_nonnegative
+from .postprocessing import fit_nonnegative_gain, project_nonnegative, smooth_nonnegative
 
 __all__ = [
     "BAD_CHANNELS_ONE_BASED",
@@ -57,9 +57,11 @@ __all__ = [
     "fixed_length_wavelet_taps",
     "downsample_glove",
     "fit_movement_corrector",
+    "fit_nonnegative_gain",
     "load_subject",
     "local_baseline_correct",
     "local_lower_envelope_baseline",
     "preprocess_ecog",
     "project_nonnegative",
+    "smooth_nonnegative",
 ]

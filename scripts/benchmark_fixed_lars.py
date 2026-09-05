@@ -82,8 +82,31 @@ def main() -> None:
     parser.add_argument("--output-root", type=Path, default=Path("outputs/fixed_lars_v1"))
     parser.add_argument("--target", required=True)
     parser.add_argument("--history", type=int, default=25)
+    parser.add_argument(
+        "--fit-end-index",
+        type=int,
+        default=None,
+        help="optional exclusive lagged-row end for an inner training fold",
+    )
+    parser.add_argument(
+        "--validation-end-index",
+        type=int,
+        default=None,
+        help="optional exclusive lagged-row end for the following blocked fold",
+    )
     parser.add_argument("--cv", type=int, default=3)
     parser.add_argument("--max-iter", type=int, default=500)
+    parser.add_argument("--n-jobs", type=int, default=-1)
+    parser.add_argument(
+        "--skip-test-evaluation",
+        action="store_true",
+        help="do not read released test labels or calculate test metrics",
+    )
+    parser.add_argument(
+        "--skip-validation-evaluation",
+        action="store_true",
+        help="fit coefficients without reading held-out validation labels",
+    )
     parser.add_argument("--max-features", type=int, default=0,
                         help="0 uses the complete fixed bank; positive values are a diagnostic prescreen")
     parser.add_argument("--fingers", nargs="+", choices=tuple(FINGER_NAMES))
@@ -102,15 +125,42 @@ def main() -> None:
     offset = args.history - 1
     train_x_all = train_energy if args.prewindowed else lagged(train_energy, args.history)
     test_x = test_energy if args.prewindowed else lagged(test_energy, args.history)
-    train_x = train_x_all[: split - offset]
-    validation_x = train_x_all[split - offset :]
+    official_train_count = split - offset
+    fit_count = official_train_count if args.fit_end_index is None else args.fit_end_index
+    validation_stop = (
+        fit_count
+        if args.skip_validation_evaluation
+        else (
+            train_x_all.shape[0]
+            if args.validation_end_index is None
+            else args.validation_end_index
+        )
+    )
+    valid_partition = (
+        1 <= fit_count <= validation_stop <= train_x_all.shape[0]
+        and (args.skip_validation_evaluation or fit_count < validation_stop)
+    )
+    if not valid_partition:
+        parser.error(
+            "require 1 <= fit-end-index < validation-end-index <= available rows"
+        )
+    train_x = train_x_all[:fit_count]
+    validation_x = train_x_all[fit_count:validation_stop]
     target = np.load(prepared / f"train_glove_{args.target}.npy")
-    train_y = target[offset:split]
-    validation_target = target[split:]
-    validation_raw = np.load(prepared / "train_glove_25hz_raw.npy")[split:]
-    test_raw = np.load(prepared / "test_glove_25hz_raw.npy")[offset:]
+    aligned_target = target[offset:]
+    aligned_raw = np.load(prepared / "train_glove_25hz_raw.npy")[offset:]
+    train_y = aligned_target[:fit_count]
+    validation_target = aligned_target[fit_count:validation_stop]
+    validation_raw = aligned_raw[fit_count:validation_stop]
+    test_raw = (
+        None
+        if args.skip_test_evaluation
+        else np.load(prepared / "test_glove_25hz_raw.npy")[offset:]
+    )
     validation_prediction = np.full_like(validation_raw, np.nan, dtype=np.float32)
-    test_prediction = np.full_like(test_raw, np.nan, dtype=np.float32)
+    test_prediction = np.full(
+        (test_x.shape[0], len(FINGER_NAMES)), np.nan, dtype=np.float32
+    )
     names = list(args.fingers or FINGER_NAMES)
     report: dict[str, object] = {}
 
@@ -127,14 +177,15 @@ def main() -> None:
             cv=args.cv,
             fit_intercept=True,
             max_iter=args.max_iter,
-            n_jobs=-1,
+            n_jobs=args.n_jobs,
         )
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", ConvergenceWarning)
             model.fit(x_fit, train_y[:, finger])
-        validation_prediction[:, finger] = model.predict(
-            scaler.transform(validation_x[:, selected])
-        )
+        if not args.skip_validation_evaluation:
+            validation_prediction[:, finger] = model.predict(
+                scaler.transform(validation_x[:, selected])
+            )
         test_prediction[:, finger] = model.predict(scaler.transform(test_x[:, selected]))
         nonzero = np.flatnonzero(model.coef_)
         report[name] = {
@@ -157,14 +208,24 @@ def main() -> None:
         )
 
     chosen = [list(FINGER_NAMES).index(name) for name in names]
-    validation_target_metrics = named_subset_metrics(
-        validation_prediction[:, chosen], validation_target[:, chosen], names
+    validation_target_metrics = (
+        None
+        if args.skip_validation_evaluation
+        else named_subset_metrics(
+            validation_prediction[:, chosen], validation_target[:, chosen], names
+        )
     )
-    validation_raw_metrics = named_subset_metrics(
-        validation_prediction[:, chosen], validation_raw[:, chosen], names
+    validation_raw_metrics = (
+        None
+        if args.skip_validation_evaluation
+        else named_subset_metrics(
+            validation_prediction[:, chosen], validation_raw[:, chosen], names
+        )
     )
-    test_raw_metrics = named_subset_metrics(
-        test_prediction[:, chosen], test_raw[:, chosen], names
+    test_raw_metrics = (
+        None
+        if test_raw is None
+        else named_subset_metrics(test_prediction[:, chosen], test_raw[:, chosen], names)
     )
     np.save(output / "validation_prediction.npy", validation_prediction, allow_pickle=False)
     np.save(output / "test_prediction.npy", test_prediction, allow_pickle=False)
@@ -175,11 +236,19 @@ def main() -> None:
         "source_energy_root": str(args.energy_root),
         "target": args.target,
         "history": args.history,
+        "data_partition": {
+            "official_training_rows": official_train_count,
+            "fit_end_index": fit_count,
+            "validation_end_index": validation_stop,
+        },
         "cv": args.cv,
         "max_iter": args.max_iter,
+        "n_jobs": args.n_jobs,
         "diagnostic_max_features": args.max_features,
         "fit_fingers": names,
         "test_labels_used_for_selection": False,
+        "released_test_evaluated": not args.skip_test_evaluation,
+        "heldout_validation_evaluated": not args.skip_validation_evaluation,
         "per_finger": report,
         "validation_target_metrics": validation_target_metrics,
         "validation_raw_metrics": validation_raw_metrics,

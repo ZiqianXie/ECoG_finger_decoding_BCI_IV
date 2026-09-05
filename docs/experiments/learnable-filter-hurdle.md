@@ -197,12 +197,38 @@ movement peaks, but also shows a remaining false-positive rest excursion, so
 this is an experimental S2-middle result rather than a general promotion to all
 15 subject-finger models.
 
-The current S3 spectral path remains an offline zero-phase Butterworth feature
-transform. Although bandpass filtering is differentiable mathematically, its
-SciPy implementation is outside the PyTorch graph. A future S3 experiment must
-represent the validated band responses as initialized torch filters, pretrain
-the head, and then unfreeze the filter coefficients under the same multi-seed
-validation and morphology gates.
+### All-subject differentiable-stem blocked-CV audit
+
+The planned S3 extension was implemented for all subjects and fingers rather
+than only S3. Seven continuous zero-phase Butterworth carrier bands are cached
+once. A PyTorch frontend applies trainable band-specific CSP spatial weights and
+trainable depthwise FIR corrections initialized as impulses before 40 ms log
+energy binning. Thus the initial feature tensor reproduces the fixed CSP/band
+representation while the spatial and spectral corrections remain
+differentiable.
+
+Four independent-stem candidates were evaluated on three rolling blocked folds
+inside the official training partition: wavelet LARS-regime initialization,
+wavelet Softplus, CSP LARS-regime initialization, and CSP Softplus. All five
+fingers were trained separately for all three subjects. Candidate membership,
+ensemble membership, calibration, and median refit epoch were fixed from these
+folds; inner jobs did not load released-test labels. Refits then used the full
+official training partition with no validation-selected checkpoint.
+
+The one-time chronological validation `Macro-5` was 0.485/0.355/0.551 for
+S1/S2/S3. Descriptive released-test `Macro-5` was 0.440/0.356/0.615. These
+values do not support promotion for S1 or S2, despite selected inner-fold OOF
+PCCs of 0.586--0.849. S3 transfers better and reaches descriptive `Hist-4`
+0.650. The main finding is therefore a large temporal generalization gap, not a
+new aggregate record.
+
+The first assembled plots accidentally compared raw-coordinate affine outputs
+against cleaned nonnegative targets. The implementation now saves both domains
+explicitly. Cleaned trajectories use training-fold-only, through-origin gains;
+linear outputs use a smooth Softplus boundary. This reduces test rest RMS to
+0.068/0.055/0.113 for S1/S2/S3 and reveals the actual morphology: S1 index is
+strong, S1 little is mostly missed, S2 contains coupled false bursts, and S3
+captures the clearest five-finger trends.
 
 ## Methodological references
 

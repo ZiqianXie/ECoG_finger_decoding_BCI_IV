@@ -1,0 +1,41 @@
+{
+  "status": "leakage-controlled follow-up; not promoted for S1 or S2",
+  "protocol": {
+    "selection": "three rolling blocked folds entirely inside official training partition",
+    "fold_boundaries_after_history_alignment": [[3322, 4429], [4429, 5536], [5536, 6643]],
+    "selected_inside_folds": [
+      "candidate family",
+      "independent-stem ensemble membership",
+      "output calibration",
+      "median refit epoch"
+    ],
+    "refit": "full official training partition, fixed epochs, no validation checkpoint selection",
+    "chronological_validation": "evaluated once after refit",
+    "released_test": "descriptive only; never used for selection"
+  },
+  "chronological_validation_raw_coordinate_pcc": {
+    "S1": {"thumb": 0.525, "index": 0.851, "middle": 0.398, "ring": 0.384, "little": 0.264, "macro5": 0.485},
+    "S2": {"thumb": 0.507, "index": 0.200, "middle": 0.356, "ring": 0.460, "little": 0.250, "macro5": 0.355},
+    "S3": {"thumb": 0.733, "index": 0.541, "middle": 0.617, "ring": 0.450, "little": 0.414, "macro5": 0.551}
+  },
+  "released_test_raw_coordinate_pcc_descriptive_only": {
+    "S1": {"thumb": 0.490, "index": 0.784, "middle": 0.255, "ring": 0.451, "little": 0.220, "macro5": 0.440, "hist4": 0.437},
+    "S2": {"thumb": 0.398, "index": 0.303, "middle": 0.380, "ring": 0.509, "little": 0.189, "macro5": 0.356, "hist4": 0.317},
+    "S3": {"thumb": 0.751, "index": 0.551, "middle": 0.604, "ring": 0.478, "little": 0.693, "macro5": 0.615, "hist4": 0.650}
+  },
+  "cleaned_flexion_test_morphology": {
+    "S1": {"cleaned_pcc_macro5": 0.456, "rmse": 0.144, "rest_rms": 0.068, "state_f1": 0.428, "derivative_pcc": 0.228},
+    "S2": {"cleaned_pcc_macro5": 0.478, "rmse": 0.120, "rest_rms": 0.055, "state_f1": 0.392, "derivative_pcc": 0.159},
+    "S3": {"cleaned_pcc_macro5": 0.664, "rmse": 0.159, "rest_rms": 0.113, "state_f1": 0.674, "derivative_pcc": 0.253}
+  },
+  "output_domains": {
+    "raw_coordinate": "inner-fold positive affine calibration for paper-comparable PCC",
+    "cleaned_flexion": "inner-fold through-origin gain and smooth nonnegative mapping; used for plots"
+  },
+  "diagnosis": [
+    "inner blocked-fold scores substantially overestimated final chronological transfer for S1 and S2",
+    "optimal five-by-five finger assignment remained diagonal for all subjects",
+    "ring/little and index/middle off-diagonal coupling remains visible",
+    "normalization repairs output domain and amplitude scale but does not recover missed movement"
+  ]
+}

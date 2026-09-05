@@ -307,3 +307,30 @@ def test_joint_huber_loss_is_finite_and_backpropagates() -> None:
     assert torch.isfinite(loss)
     assert torch.isfinite(prediction.grad).all()
     assert all(torch.isfinite(value) for value in parts.values())
+
+
+def test_csp_band_stem_reproduces_fixed_log_energy_and_backpropagates() -> None:
+    from ecog_decoding.models import CSPBandCorrectionEnergy, CSPSpatialProjection
+
+    rng = np.random.default_rng(19)
+    values = rng.normal(size=(2, 3, 4, 80)).astype(np.float32)
+    weights = rng.normal(size=(3, 5, 4)).astype(np.float32)
+    x = torch.from_numpy(values).requires_grad_()
+    spatial = CSPSpatialProjection(weights)
+    spectral = CSPBandCorrectionEnergy(
+        band_count=3,
+        kernel_size=9,
+        energy_window_samples=40,
+        energy_stride_samples=40,
+    )
+    observed = spectral(spatial(x))
+    projected = np.einsum("nbct,bkc->nbkt", values, weights)
+    expected = np.log1p(
+        np.sqrt(np.sum(projected.reshape(2, 3, 5, 2, 40) ** 2, axis=-1))
+    )
+    np.testing.assert_allclose(observed.detach().numpy(), expected, rtol=1e-5, atol=1e-6)
+    observed.square().mean().backward()
+    assert x.grad is not None and torch.isfinite(x.grad).all()
+    assert spatial.weight.grad is not None and torch.isfinite(spatial.weight.grad).all()
+    assert spectral.correction.weight.grad is not None
+    assert torch.isfinite(spectral.correction.weight.grad).all()

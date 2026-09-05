@@ -38,12 +38,11 @@ development results, not an untouched confirmatory benchmark. Validation traces
 were consulted repeatedly during reconstruction, and released-test trajectories
 were later inspected for morphology and failure analysis. The numbers remain
 useful for documenting what the current code can reproduce, but they must not be
-treated as unbiased estimates of model-selection performance. A separately
-frozen protocol uses blocked folds only within the training partition and
-reserves the chronological validation segment for a single final evaluation;
-its results will be reported separately after completion. This prevents new
-selection leakage, but it cannot retroactively make that segment pristine,
-because earlier development already inspected it.
+treated as unbiased estimates of model-selection performance. The separately
+frozen blocked-fold follow-up is reported in the next section. It prevents new
+selection leakage, but it cannot retroactively make the chronological
+validation segment pristine because earlier development had already inspected
+it.
 
 | Subject | Result | Thumb | Index | Middle | Ring | Little | Macro-5 |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -68,6 +67,47 @@ and LSTM head; three validation-best checkpoints occur before stem unfreezing
 and three after it. This is not a single end-to-end model and is therefore shown
 beside the non-stacked baseline. Numerical scores are complemented by held-out
 trajectory plots and morphology diagnostics in the project report.
+
+## Leakage-controlled blocked-CV follow-up
+
+A later audit used three rolling blocked folds entirely inside the official
+training partition. Candidate family, ensemble membership, output calibration,
+and refit epoch count were fixed from those folds. The selected components were
+then refit on the full training partition for fixed epoch counts, and the
+chronological validation segment was evaluated once. Released-test results are
+descriptive only. This is a stronger protocol than the retrospective table,
+although the validation segment cannot be called historically pristine.
+
+| Subject | Validation thumb | Index | Middle | Ring | Little | Validation Macro-5 |
+|---|---:|---:|---:|---:|---:|---:|
+| S1 | 0.525 | 0.851 | 0.398 | 0.384 | 0.264 | **0.485** |
+| S2 | 0.507 | 0.200 | 0.356 | 0.460 | 0.250 | **0.355** |
+| S3 | 0.733 | 0.541 | 0.617 | 0.450 | 0.414 | **0.551** |
+
+| Subject | Descriptive released-test Macro-5 | Hist-4 | Paper Macro-5 |
+|---|---:|---:|---:|
+| S1 | 0.440 | 0.437 | 0.556 |
+| S2 | 0.356 | 0.317 | 0.408 |
+| S3 | 0.615 | 0.650 | 0.582 |
+
+The blocked-fold scores used for selection were much higher than the final
+chronological result, particularly for S1 and S2. This rejects promotion of the
+new ensemble as a general replacement for the retrospective systems and points
+to temporal nonstationarity as the main unresolved problem. Finger-confusion
+assignment remained diagonal for all three subjects, so a global label swap is
+not the explanation, although ring/little and index/middle coupling remains
+visible.
+
+Two output domains are saved explicitly. `*_raw_coordinate.npy` is calibrated
+to the released glove coordinate system for paper-comparable PCC.
+`*_cleaned.npy` is a smooth nonnegative flexion trajectory: its gain is fitted
+through the origin using only inner-fold data. Keeping these arrays separate
+prevents a raw-coordinate negative baseline from being plotted against a
+baseline-corrected target. The cleaned outputs have test rest RMS of 0.068,
+0.055, and 0.113 for S1--S3, but visual review still shows missed or
+under-amplitude S1/S2 movements. See the
+[project report](docs/project-report.md#leakage-controlled-blocked-cv-follow-up)
+and [`docs/results/nested-cv-followup.json`](docs/results/nested-cv-followup.json).
 
 The filter terminology separates the **spectral** and **spatial** stages. A
 trainable-wavelet route updates both the bior6.8 wavelet taps and the
@@ -136,8 +176,11 @@ initialized from the 17-tap `bior6.8` analysis filters. Its dilations are 1, 2,
 and 4, yielding 2, 4, and 8 bands. Band energy is computed in non-overlapping
 40 ms bins. FastICA is fit on the training partition and initializes the spatial
 1x1 convolution. Fixed-feature LSTM, GRU, diagonal SSM, linear-attention, Mamba,
-TCN, CSP, ridge, and LARS-style baselines are all available. Final selection is
-per subject and per finger using only a chronological validation partition.
+TCN, CSP, ridge, and LARS-style baselines are all available. The retrospective
+systems selected per subject and finger on one chronological validation
+partition. The stricter follow-up instead selects candidate family, ensemble
+membership, calibration, and epoch count from three rolling blocked folds
+inside training before one final chronological validation evaluation.
 An experimental nonnegative ridge stack combines diverse S1 candidates for
 thumb and little finger; its regularization is selected with blocked splits
 inside validation, and its weights never read the released test labels.
@@ -152,11 +195,12 @@ S2 middle uses an equal-weight ensemble of six independently optimized
 asymmetric-wavelet LSTMs spanning two validation-screened frontend learning
 rates and three seeds. Equal weighting fits no stacking parameter and reduces
 the large initialization- and minibatch-order variance seen in single runs.
-Prediction amplitude and offset can then be normalized on the cleaned validation
-target with a positive affine transform. This changes calibration without
-changing PCC. Final exported flexion is then projected onto its physical domain
-with `maximum(prediction, 0)`. The projection is parameter-free; unconstrained
-model outputs are retained for auditing rather than silently discarded.
+Retrospective prediction amplitude and offset can be normalized on the cleaned
+validation target with a positive affine transform. In the blocked-CV follow-up,
+paper scoring and visualization use separate arrays: raw-coordinate output uses
+an inner-fold affine transform, while cleaned flexion uses an origin-preserving
+gain learned inside the blocked folds and a smooth nonnegative mapping for
+linear heads. Exact intermediate model outputs remain available for auditing.
 
 The 2018 implementation's four-second training blocks were a Theano static-graph
 constraint, not a physiological assumption; modern training can operate on the
@@ -188,6 +232,15 @@ python scripts/prepare_paper_baseline_targets.py --subjects 1 2 3
 python scripts/compare_target_baselines.py --subjects 1 2 3
 python scripts/audit_wavelet_frequency_response.py
 
+# Leakage-controlled candidate selection and refitting. The final assemble
+# command is the only stage that evaluates the chronological validation block.
+python scripts/cache_csp_band_signals.py --subjects 1 2 3
+python scripts/run_nested_ensemble_cv.py selections --concurrency 7
+python scripts/run_nested_ensemble_cv.py cv --concurrency 7 --gpus 0 1 3 4 5 6 7
+python scripts/run_nested_ensemble_cv.py summarize
+python scripts/run_nested_ensemble_cv.py refit --concurrency 7 --gpus 0 1 3 4 5 6 7
+python scripts/run_nested_ensemble_cv.py assemble
+
 # After producing a selected prediction directory, make the public-facing
 # arrays nonnegative while retaining exact unconstrained arrays for audit.
 python scripts/project_prediction_nonnegative.py --subject 1 \
@@ -205,7 +258,9 @@ listed in the [project report](docs/project-report.md#reproduction-recipes).
 
 - Fit preprocessing, ICA, feature selection, model parameters, and any ensemble
   weights without released test labels.
-- Select candidates on one chronological validation partition.
+- For new primary comparisons, select candidates, calibration, ensemble
+  membership, and epoch count on rolling blocked folds inside training.
+- Open the chronological validation partition once after fixed-epoch refitting.
 - Evaluate the final frozen candidate against the original released glove
   trajectory, not a cleaned surrogate.
 - Report the deterministic nonnegative projection as the default flexion

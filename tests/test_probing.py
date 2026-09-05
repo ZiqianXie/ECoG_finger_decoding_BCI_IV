@@ -29,6 +29,45 @@ def test_manual_lstm_trace_matches_pytorch() -> None:
     )
 
 
+def test_manual_lstm_trace_supports_linear_output() -> None:
+    torch.manual_seed(4)
+    lstm = nn.LSTM(2, 2, batch_first=True)
+    temporal = nn.Linear(2, 1)
+    direct = nn.Linear(2, 1)
+    values = torch.randn(2, 5, 2)
+
+    recurrent, _ = lstm(values)
+    expected = (direct(values) + temporal(recurrent)).squeeze(-1)
+    trace = manual_lstm_trace(
+        lstm, temporal, direct, values, output_activation="linear"
+    )
+
+    assert torch.allclose(trace["prediction"], expected, atol=1.0e-6)
+
+
+def test_manual_lstm_trace_supports_smooth_nonnegative_output() -> None:
+    torch.manual_seed(5)
+    lstm = nn.LSTM(2, 2, batch_first=True)
+    temporal = nn.Linear(2, 1)
+    direct = nn.Linear(2, 1)
+    values = torch.randn(2, 5, 2)
+
+    recurrent, _ = lstm(values)
+    pre_activation = (direct(values) + temporal(recurrent)).squeeze(-1)
+    expected = torch.nn.functional.softplus(pre_activation, beta=8.0)
+    trace = manual_lstm_trace(
+        lstm,
+        temporal,
+        direct,
+        values,
+        output_activation="softplus",
+        softplus_beta=8.0,
+    )
+
+    assert torch.all(trace["prediction"] >= 0)
+    assert torch.allclose(trace["prediction"], expected, atol=1.0e-6)
+
+
 def test_feature_groups_follow_component_band_time_flattening() -> None:
     groups = decode_feature_groups(
         np.asarray([0, 1, 5, 6, 17]),

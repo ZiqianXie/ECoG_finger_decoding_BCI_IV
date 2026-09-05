@@ -133,6 +133,8 @@ def manual_lstm_trace(
     temporal: nn.Linear,
     direct: nn.Linear,
     standardized: torch.Tensor,
+    output_activation: str = "relu",
+    softplus_beta: float = 10.0,
 ) -> dict[str, torch.Tensor]:
     """Reconstruct a one-layer, forward LSTM and retain its internal states."""
     if lstm.num_layers != 1 or lstm.bidirectional or lstm.proj_size:
@@ -192,7 +194,14 @@ def manual_lstm_trace(
     output["direct_term"] = direct(standardized).squeeze(-1)
     output["recurrent_term"] = temporal(output["hidden_state"]).squeeze(-1)
     output["pre_relu"] = output["direct_term"] + output["recurrent_term"]
-    output["prediction"] = torch.relu(output["pre_relu"])
+    if output_activation == "relu":
+        output["prediction"] = torch.relu(output["pre_relu"])
+    elif output_activation == "softplus":
+        output["prediction"] = F.softplus(output["pre_relu"], beta=softplus_beta)
+    elif output_activation == "linear":
+        output["prediction"] = output["pre_relu"]
+    else:
+        raise ValueError(f"unsupported output activation {output_activation!r}")
     return output
 
 

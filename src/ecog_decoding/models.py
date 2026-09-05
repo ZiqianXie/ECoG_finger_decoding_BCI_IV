@@ -381,6 +381,100 @@ class WaveletPacketEnergy(nn.Module):
         return energy.reshape(batch, electrodes, 2**self.levels, energy.shape[-1])
 
 
+class CSPSpatialProjection(nn.Module):
+    """Independent band-specific spatial projections initialized from CSP.
+
+    Input is ``(batch, band, channel, time)`` and output is
+    ``(batch, band, component, time)``.  Keeping the CSP matrices as ordinary
+    parameters lets every ensemble member fine-tune its own spatial stem.
+    """
+
+    def __init__(self, weights: np.ndarray | torch.Tensor) -> None:
+        super().__init__()
+        initial = torch.as_tensor(weights, dtype=torch.float32)
+        if initial.ndim != 3:
+            raise ValueError("CSP weights must have shape (band, component, channel)")
+        self.weight = nn.Parameter(initial.clone())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 4:
+            raise ValueError(
+                "x must have shape (batch, band, channel, time); "
+                f"got {tuple(x.shape)}"
+            )
+        if x.shape[1] != self.weight.shape[0] or x.shape[2] != self.weight.shape[2]:
+            raise ValueError("input bands/channels do not match the CSP weights")
+        return torch.einsum("nbct,bkc->nbkt", x, self.weight)
+
+
+class CSPBandCorrectionEnergy(nn.Module):
+    """Trainable effective band filters on cached Butterworth-band signals.
+
+    The cached signals carry the original fixed zero-phase bandpass response.
+    A per-band FIR correction, shared across spatial components, starts as an
+    impulse.  Consequently the initial representation exactly matches the CSP
+    energy bank (apart from floating-point roundoff), while gradient descent can
+    change each member's effective spectral response.
+    """
+
+    def __init__(
+        self,
+        band_count: int,
+        kernel_size: int = 33,
+        energy_window_samples: int = 40,
+        energy_stride_samples: int = 40,
+        padding_mode: str = "constant",
+    ) -> None:
+        super().__init__()
+        if band_count < 1:
+            raise ValueError("band_count must be positive")
+        if kernel_size < 1 or kernel_size % 2 == 0:
+            raise ValueError("kernel_size must be a positive odd integer")
+        if energy_window_samples < 1 or energy_stride_samples < 1:
+            raise ValueError("energy window and stride must be positive")
+        if padding_mode not in {"constant", "reflect", "replicate", "circular"}:
+            raise ValueError(f"unsupported padding mode {padding_mode!r}")
+        self.correction = nn.Conv1d(
+            band_count,
+            band_count,
+            kernel_size,
+            groups=band_count,
+            bias=False,
+        )
+        with torch.no_grad():
+            self.correction.weight.zero_()
+            self.correction.weight[:, 0, kernel_size // 2] = 1.0
+        self.band_count = int(band_count)
+        self.kernel_size = int(kernel_size)
+        self.energy_window_samples = int(energy_window_samples)
+        self.energy_stride_samples = int(energy_stride_samples)
+        self.padding_mode = padding_mode
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 4:
+            raise ValueError(
+                "x must have shape (batch, band, component, time); "
+                f"got {tuple(x.shape)}"
+            )
+        batch, bands, components, time = x.shape
+        if bands != self.band_count:
+            raise ValueError("input band count does not match the correction filters")
+        flattened = x.permute(0, 2, 1, 3).reshape(batch * components, bands, time)
+        radius = self.kernel_size // 2
+        mode = self.padding_mode
+        if mode == "reflect" and radius >= time:
+            mode = "replicate"
+        corrected = self.correction(F.pad(flattened, (radius, radius), mode=mode))
+        corrected = corrected.reshape(batch, components, bands, time).permute(0, 2, 1, 3)
+        pooled = F.avg_pool1d(
+            corrected.reshape(batch * bands * components, 1, time).square(),
+            kernel_size=self.energy_window_samples,
+            stride=self.energy_stride_samples,
+        ) * self.energy_window_samples
+        energy = torch.log1p(torch.sqrt(torch.clamp_min(pooled, 0.0)))
+        return energy.reshape(batch, bands, components, energy.shape[-1])
+
+
 class AsymmetricWaveletPacketEnergy(nn.Module):
     """Trainable depth-3 tree with selected depth-4 splits and signed LMP.
 

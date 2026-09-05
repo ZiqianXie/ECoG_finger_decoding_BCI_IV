@@ -74,9 +74,23 @@ def rounded(values: np.ndarray) -> list[object]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--prediction", type=parse_mapping, action="append", required=True)
+    parser.add_argument(
+        "--score-prediction",
+        type=parse_mapping,
+        action="append",
+        default=[],
+        help="optional SUBJECT=NPY raw-coordinate prediction used for paper-comparable PCC",
+    )
     parser.add_argument("--method", type=parse_mapping, action="append", default=[])
     parser.add_argument("--prepared-root", default="outputs/preprocessed_v2")
     parser.add_argument("--target-name", default="test_glove_local_w4_q20.npy")
+    parser.add_argument(
+        "--subject-target-name",
+        type=parse_mapping,
+        action="append",
+        default=[],
+        help="optional SUBJECT=FILENAME override for subject-specific cleaned targets",
+    )
     parser.add_argument("--raw-target-name", default="test_glove_25hz_raw.npy")
     parser.add_argument("--excluded-initial-bins", type=int, default=24)
     parser.add_argument("--sampling-rate-hz", type=float, default=25.0)
@@ -92,7 +106,9 @@ def main() -> None:
     args = parser.parse_args()
 
     predictions = dict(args.prediction)
+    score_predictions = dict(args.score_prediction)
     methods = dict(args.method)
+    subject_target_names = dict(args.subject_target_name)
     result: dict[str, object] = {
         "finger_names": [name.title() for name in FINGER_NAMES],
         "sampling_rate_hz": args.sampling_rate_hz,
@@ -102,16 +118,24 @@ def main() -> None:
     for subject, prediction_path in sorted(predictions.items()):
         prepared = Path(args.prepared_root) / f"sub{subject}"
         unconstrained_prediction = np.load(prediction_path)
+        score_prediction_path = score_predictions.get(subject, prediction_path)
+        score_prediction = np.load(score_prediction_path)
         prediction = (
             unconstrained_prediction
             if args.allow_negative
             else project_nonnegative(unconstrained_prediction)
         )
-        cleaned = np.load(prepared / args.target_name)[args.excluded_initial_bins :]
+        target_name = subject_target_names.get(subject, args.target_name)
+        cleaned = np.load(prepared / target_name)[args.excluded_initial_bins :]
         raw = np.load(prepared / args.raw_target_name)[args.excluded_initial_bins :]
-        if prediction.shape != cleaned.shape or prediction.shape != raw.shape:
+        if (
+            prediction.shape != cleaned.shape
+            or prediction.shape != raw.shape
+            or score_prediction.shape != raw.shape
+        ):
             raise RuntimeError(
-                f"subject {subject}: prediction {prediction.shape}, cleaned {cleaned.shape}, raw {raw.shape}"
+                f"subject {subject}: prediction {prediction.shape}, score prediction "
+                f"{score_prediction.shape}, cleaned {cleaned.shape}, raw {raw.shape}"
             )
         windows: list[dict[str, object]] = []
         for start in select_windows(cleaned, width, args.windows_per_subject):
@@ -131,10 +155,12 @@ def main() -> None:
             )
         result["subjects"][str(subject)] = {
             "method": methods.get(subject, Path(prediction_path).parent.name),
+            "cleaned_target_name": target_name,
+            "paper_comparable_prediction": str(score_prediction_path),
             "output_constraint": (
                 "none" if args.allow_negative else "pointwise maximum(prediction, 0)"
             ),
-            "test_raw_metrics": trajectory_metrics(prediction, raw),
+            "test_raw_metrics": trajectory_metrics(score_prediction, raw),
             "test_cleaned_metrics": trajectory_metrics(prediction, cleaned),
             "unconstrained_test_raw_metrics": trajectory_metrics(
                 unconstrained_prediction, raw

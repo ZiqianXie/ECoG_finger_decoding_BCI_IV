@@ -25,27 +25,33 @@ Pearson correlation.
 The rebuilt preprocessing also explicitly applies zero-phase notch filters at
 60 Hz and its 120/180 Hz harmonics to suppress power-line contamination.
 
-The current raw-test `Macro-5` PCC is 0.578 for S1, 0.429 for S2, and 0.646 for
-S3. The paper's aggregate is a five-finger average, so these values—not
-`Hist-4`—are the correct comparison. S1's preceding reconstruction already
-matched the paper's rounded 0.56 at 0.561; the exploratory stacked system
-reaches 0.578 after nonnegative output projection.
-Across all fifteen subject-finger pairs, eight reconstructed PCCs exceed the
-rounded paper CNN-LSTM values.
+The best retrospective development systems reach released-test `Macro-5` PCC
+of 0.578 for S1, 0.466 for S2 after the later middle-finger ensemble, and 0.646
+for S3. These values are retained as reconstruction history, not as unbiased
+benchmarks: the chronological validation trajectories were consulted repeatedly
+and the released-test trajectories were later inspected visually.
 
-The S1 headline is a heterogeneous system, not one end-to-end decoder. Thumb
-and little use validation-only ridge stacking followed by amplitude calibration;
-index and middle retain their selected base models; ring retains a separately
-calibrated base prediction. The non-stacked per-finger baseline is reported
-alongside the headline result because the second-stage stack needs independent
-replication.
-A constrained calibration repairs the previously near-flat ring trace:
-movement-state recall rises from 0.054 to 0.863 and peak ratio from 0.127 to
-0.576. The first thumb/little stack improved correlation and timing but visibly
-overshot amplitude. Positive affine normalization fitted on validation preserves
-PCC while reducing thumb/little rest RMS to 0.063/0.099 and movement peak ratios
-to 0.534/0.587. The remaining middle-finger false activity and under-amplitude
-are preserved in the figures rather than hidden behind one aggregate number.
+A stricter follow-up selected candidate family, independent-stem ensemble
+membership, calibration, and epoch count on three rolling blocked folds entirely
+inside the official training partition. The selected models were refit on the
+full training partition for fixed epoch counts before the chronological
+validation partition was evaluated once. Validation `Macro-5` was 0.485, 0.355,
+and 0.551 for S1--S3. Descriptive released-test `Macro-5` was 0.440, 0.356, and
+0.615. The follow-up therefore does not reproduce the retrospective S1/S2 gains;
+S3 transfers substantially better. This gap, despite inner-fold PCCs commonly
+between 0.7 and 0.85, is direct evidence of temporal nonstationarity and
+selection instability.
+
+The audit also exposed a coordinate-system error in the first visualization of
+the follow-up. A positive affine transform placed predictions in the original
+raw-glove coordinate system for paper-comparable PCC, but the traces were plotted
+against the nonnegative baseline-corrected target. The corrected implementation
+saves raw-coordinate and cleaned-flexion arrays separately. Cleaned output uses
+only an origin-preserving gain fitted inside the blocked folds; linear heads pass
+through a smooth Softplus boundary. Test rest RMS is then 0.068, 0.055, and 0.113
+for S1--S3. Visual review shows that S1 index is strong, S1 little is largely
+missed, S2 retains false or coupled bursts, and S3 captures the clearest
+five-finger temporal structure.
 
 ## Scope and research goals
 
@@ -283,10 +289,13 @@ candidate sweeps.
 
 ## Model selection and metrics
 
-All model and ensemble choices are made independently for each finger using the
-chronological validation partition. A missing finger prediction is represented
-as `NaN` and cannot win selection. Fixed hyperparameters inherited from the
-paper, such as a 100-epoch refit audit, are fixed before test evaluation.
+The retrospective systems made model and ensemble choices independently for
+each finger using one chronological validation partition. The blocked-CV
+follow-up uses three rolling folds inside the official training partition and
+reserves the chronological validation partition for one final evaluation.
+Candidate family, ensemble membership, calibration, and refit epochs are all
+fixed before that evaluation. A missing finger prediction is represented as
+`NaN` and cannot win selection.
 
 Primary reporting uses:
 
@@ -310,10 +319,84 @@ nearly invisible waveform if its timing happens to align with the target.
 
 ## Results
 
-### Per-finger raw-test PCC
+### Leakage-controlled blocked-CV follow-up
+
+The follow-up compared four candidates for every subject and finger: a
+FastICA/wavelet LSTM initialized in the LARS linear regime, a nonlinear
+FastICA/wavelet Softplus model, a differentiable CSP/band-correction LSTM with
+LARS initialization, and a nonlinear differentiable CSP/band-correction
+Softplus model. Each candidate had its own spatial and spectral stem. Three
+rolling folds used fit/validation boundaries 3322/4429, 4429/5536, and
+5536/6643 after history alignment. Inner runs never loaded released-test labels.
+
+| Subject/finger | Selected independent components | Blocked OOF PCC |
+|---|---|---:|
+| S1 thumb | CSP Softplus | 0.787 |
+| S1 index | CSP Softplus + wavelet Softplus | 0.833 |
+| S1 middle | CSP Softplus | 0.773 |
+| S1 ring | CSP Softplus | 0.792 |
+| S1 little | CSP Softplus + CSP LARS-init | 0.805 |
+| S2 thumb | CSP Softplus | 0.849 |
+| S2 index | CSP Softplus | 0.708 |
+| S2 middle | CSP Softplus | 0.757 |
+| S2 ring | wavelet Softplus + CSP Softplus + wavelet LARS-init | 0.628 |
+| S2 little | CSP Softplus + wavelet Softplus + CSP LARS-init | 0.586 |
+| S3 thumb | CSP Softplus | 0.842 |
+| S3 index | CSP Softplus | 0.668 |
+| S3 middle | CSP Softplus | 0.715 |
+| S3 ring | CSP Softplus + CSP LARS-init | 0.780 |
+| S3 little | CSP Softplus | 0.801 |
+
+The selected components were refit on the complete official training partition
+for the median best epoch from the three inner folds. No refit used validation
+selection. The resulting one-time chronological validation scores were:
+
+| Subject | Thumb | Index | Middle | Ring | Little | Macro-5 |
+|---|---:|---:|---:|---:|---:|---:|
+| S1 | 0.525 | 0.851 | 0.398 | 0.384 | 0.264 | **0.485** |
+| S2 | 0.507 | 0.200 | 0.356 | 0.460 | 0.250 | **0.355** |
+| S3 | 0.733 | 0.541 | 0.617 | 0.450 | 0.414 | **0.551** |
+
+Released-test labels were then used descriptively, after every choice was
+frozen:
+
+| Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Hist-4 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| S1 | 0.490 | 0.784 | 0.255 | 0.451 | 0.220 | **0.440** | 0.437 |
+| S2 | 0.398 | 0.303 | 0.380 | 0.509 | 0.189 | **0.356** | 0.317 |
+| S3 | 0.751 | 0.551 | 0.604 | 0.478 | 0.693 | **0.615** | 0.650 |
+
+The inner-fold to final-partition drop is too large to interpret as ordinary
+seed noise. It rejects promotion of the blocked-CV ensemble for S1 and S2 and
+shows that contiguous training folds still do not reproduce the final temporal
+regime. A five-by-five finger-correlation assignment remained diagonal for all
+subjects, so the failure is not a global permutation caused by target cleaning.
+S1 ring and little and S2 ring and little nevertheless retain substantial
+off-diagonal coupling, consistent with glove and physiological co-movement.
+
+The raw-coordinate affine output and the cleaned-flexion output are stored
+separately. The latter uses a nonnegative through-origin gain fitted on inner
+folds and a smooth Softplus boundary for linear heads. It is the only output
+used in the movement plots below.
+
+| Subject | Cleaned test PCC | RMSE | Rest RMS | State F1 | Derivative PCC | Visual diagnosis |
+|---|---:|---:|---:|---:|---:|---|
+| S1 | 0.456 | 0.144 | 0.068 | 0.428 | 0.228 | Index tracks; little mostly missed; other amplitudes conservative |
+| S2 | 0.478 | 0.120 | 0.055 | 0.392 | 0.159 | Some valid events, but false/coupled bursts remain |
+| S3 | 0.664 | 0.159 | 0.113 | 0.674 | 0.253 | Best five-finger trend capture; amplitudes still conservative |
+
+![Leakage-controlled S1 movement windows](figures/nested-cv-s1-movement-windows.png)
+
+![Leakage-controlled S2 movement windows](figures/nested-cv-s2-movement-windows.png)
+
+![Leakage-controlled S3 movement windows](figures/nested-cv-s3-movement-windows.png)
+
+### Retrospective per-finger raw-test PCC
 
 Paper values below are the rounded CNN-LSTM numbers reported in the 2018 paper.
-They are a historical reference, not high-precision targets.
+The reimplementation column is the best retrospective development system, not
+the blocked-CV follow-up above. These values are historical references and not
+high-precision targets.
 
 | Subject | Finger | Paper CNN-LSTM | Reimplementation | Difference |
 |---|---|---:|---:|---:|
@@ -324,7 +407,7 @@ They are a historical reference, not high-precision targets.
 | S1 | Little | 0.470 | 0.426 | -0.044 |
 | S2 | Thumb | 0.620 | 0.599 | -0.021 |
 | S2 | Index | 0.380 | 0.472 | +0.092 |
-| S2 | Middle | 0.270 | 0.208 | -0.062 |
+| S2 | Middle | 0.270 | 0.391 | +0.121 |
 | S2 | Ring | 0.470 | 0.495 | +0.025 |
 | S2 | Little | 0.300 | 0.373 | +0.073 |
 | S3 | Thumb | 0.740 | 0.720 | -0.020 |
@@ -333,17 +416,17 @@ They are a historical reference, not high-precision targets.
 | S3 | Ring | 0.410 | 0.666 | +0.256 |
 | S3 | Little | 0.750 | 0.687 | -0.063 |
 
-The reimplementation is higher on 8/15 pairs. This count is descriptive; the
+The retrospective reimplementation is higher on 9/15 pairs. This count is descriptive; the
 rounded paper values do not support a fine-grained statistical superiority
 claim.
 
-### Aggregate raw-test PCC
+### Retrospective aggregate raw-test PCC
 
 | Subject | Macro-5 | Hist-4 (supplementary) | Paper five-finger aggregate | Interpretation |
 |---|---:|---:|---:|---|
 | S1 exploratory stacked system | 0.578 | 0.568 | 0.560 | above by 0.018 |
 | S1 non-stacked baseline, unconstrained | 0.561 | 0.549 | 0.560 | rounded match |
-| S2 | 0.429 | 0.413 | about 0.410 | above |
+| S2 with middle-finger seed ensemble | 0.466 | 0.459 | about 0.410 | above |
 | S3 | 0.646 | 0.641 | about 0.590 | above |
 
 The paper aggregate averages all five fingers. `Hist-4`, which excludes ring,
@@ -351,7 +434,7 @@ is reported only as a separate competition-style diagnostic and is not compared
 with the paper aggregate. The paper values are rounded, so the differences above
 should not be presented as high-precision or statistical superiority claims.
 
-### Morphology audit
+### Retrospective morphology audit
 
 | Subject | Macro rest RMS | Macro state F1 | Macro derivative PCC | Main concern |
 |---|---:|---:|---:|---|
@@ -531,6 +614,25 @@ python scripts/compare_target_baselines.py --subjects 1 2 3
 # Confirm the initialized wavelet tree before training.
 python scripts/audit_wavelet_frequency_response.py
 
+# Cache continuous CSP carrier bands once per subject, then run the complete
+# leakage-controlled audit. Inner stages do not load released-test labels.
+python scripts/cache_csp_band_signals.py --subjects 1 2 3
+python scripts/run_nested_ensemble_cv.py selections --concurrency 7
+python scripts/run_nested_ensemble_cv.py cv \
+  --concurrency 7 --gpus 0 1 3 4 5 6 7
+python scripts/run_nested_ensemble_cv.py summarize
+python scripts/run_nested_ensemble_cv.py refit \
+  --concurrency 7 --gpus 0 1 3 4 5 6 7
+
+# This is the first stage that reads the final chronological validation labels.
+python scripts/run_nested_ensemble_cv.py assemble
+
+# Plot the cleaned-flexion array, not the raw-coordinate scoring array.
+python scripts/diagnose_prediction_morphology.py --subject 1 \
+  --prepared-root outputs/preprocessed_v2 --target local_w2_q10 \
+  --method nested_cv=outputs/nested_cv_diverse_ensemble_v1/sub1/test_prediction_cleaned.npy \
+  --output outputs/nested_cv_cleaned_diagnostics_v1/sub1
+
 # Audit whether weak-finger behavior is associated with partition shift.
 python scripts/audit_partition_shift.py --subject 1 --finger little \
   --prepared-root outputs/preprocessed_v2 \
@@ -615,29 +717,32 @@ late reconstruction:
   though each individual selector is coded to use validation only;
 - the current public package excludes raw data and large trained artifacts;
 - several experiment scripts reflect research exploration rather than one
-  polished end-to-end command; and
+  polished end-to-end command;
 - the S1 PCC-leading stack uses a meta-model fit on validation predictions, so
   its aggregate improvement needs independent repetition and is presented as
-  an exploratory system rather than a single learned decoder; and
-- S1 middle-finger false activity and conservative amplitudes remain unresolved
-  even though the historical aggregate PCC has been reached.
+  an exploratory system rather than a single learned decoder;
+- the blocked-CV follow-up was frozen before its one-time final evaluation, but
+  that chronological segment had been inspected during earlier project phases
+  and therefore is not historically pristine; and
+- the large inner-fold to final-partition drop for S1/S2 remains unresolved.
 
 For these reasons, the project should be cited as a reimplementation and
 extension, not as the official source code accompanying the 2018 publication.
 
 ## Recommended next work
 
-1. Improve S1 middle-finger precision and test whether blocked affine fits can
-   raise conservative amplitudes without increasing rest activity.
+1. Diagnose the S1/S2 temporal regime shift using label-free ECoG covariate
+   measures and training-only change-point analysis before proposing another
+   decoder.
 2. Build a fully scripted experiment manifest from raw files to every reported
    summary, including hashes and package versions.
-3. Repeat the selected S1 and S2 models over at least five seeds and report both
-   aggregate and per-finger variability.
-4. Repeat the ring calibration on blocked validation folds to quantify how
-   stable the improved movement recall is.
-5. Replace the single chronological validation selector with nested blocked
-   cross-validation for the complete nonlinear training pipeline; the fixed
-   ridge version has now been tested and did not transfer.
+3. Replace the three expanding-window folds with regime-balanced or
+   leave-one-movement-block-out training folds, without opening validation or
+   test during model choice.
+4. Repeat only the resulting frozen S1/S2 candidates over at least five seeds
+   and report per-finger variability, not only aggregate SD.
+5. Improve S1 little and S2 little movement recall while keeping the
+   cleaned-flexion rest RMS below the current 0.038 and 0.048 values.
 
 ## Public-release policy
 

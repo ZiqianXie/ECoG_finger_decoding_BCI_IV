@@ -77,6 +77,8 @@ def load_frozen_model(
         wavelet_levels=int(summary.get("wavelet_levels", 3)),
         frontend=str(summary["frontend"]),
         head_initialization=str(summary.get("head_initialization", "residual_ridge")),
+        output_activation=str(summary.get("output_activation", "relu")),
+        softplus_beta=float(summary.get("softplus_beta", 10.0)),
     )
     model.load_state_dict(state)
     model.to(device).eval()
@@ -139,7 +141,14 @@ def intervention_maps(
         contexts_np = build_contexts(standardized, output_indices, context_steps)
         contexts = torch.from_numpy(contexts_np).to(device)
         with torch.inference_mode():
-            baseline = manual_lstm_trace(model.lstm, model.temporal, model.direct, contexts)
+            baseline = manual_lstm_trace(
+                model.lstm,
+                model.temporal,
+                model.direct,
+                contexts,
+                model.output_activation,
+                model.softplus_beta,
+            )
         baseline_terminal = {
             metric: terminal_value(baseline, metric) for metric in ALL_METRICS
         }
@@ -165,7 +174,12 @@ def intervention_maps(
                 flat = copies.flatten(0, 1)
                 with torch.inference_mode():
                     perturbed = manual_lstm_trace(
-                        model.lstm, model.temporal, model.direct, flat
+                        model.lstm,
+                        model.temporal,
+                        model.direct,
+                        flat,
+                        model.output_activation,
+                        model.softplus_beta,
                     )
                 for metric_number, metric in enumerate(ALL_METRICS):
                     perturbed_value = terminal_value(perturbed, metric).reshape(
@@ -241,7 +255,14 @@ def interaction_maps(
             build_contexts(standardized, output_indices, context_steps)
         ).to(device)
         with torch.inference_mode():
-            baseline = manual_lstm_trace(model.lstm, model.temporal, model.direct, contexts)
+            baseline = manual_lstm_trace(
+                model.lstm,
+                model.temporal,
+                model.direct,
+                contexts,
+                model.output_activation,
+                model.softplus_beta,
+            )
         base = {metric: terminal_value(baseline, metric) for metric in SCALAR_METRICS}
         donor_cache: dict[int, torch.Tensor] = {}
         for lag in range(max_lag + 1):
@@ -275,6 +296,8 @@ def interaction_maps(
                     model.temporal,
                     model.direct,
                     copies.flatten(0, 1),
+                    model.output_activation,
+                    model.softplus_beta,
                 )
             for metric_number, metric in enumerate(SCALAR_METRICS):
                 values = terminal_value(trace, metric).reshape(
