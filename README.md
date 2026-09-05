@@ -159,7 +159,7 @@ atoms survive. CSP, normalization, and LARS are all refitted without the held-ou
 event, and the selected carrier/CSP filters remain fixed during the final LSTM
 training.
 
-## Clean-conscience result: no test peek
+## Current results: no test peek
 
 The primary comparison remains Pearson correlation with the released,
 unmodified test glove trajectory. `Macro-5` is the mean across all five fingers.
@@ -171,7 +171,7 @@ paper's rounded aggregate.
 target processing, candidate choice, history, routing, seed count, and epoch
 policy were selected from the 400,000-sample development recording only. The
 released test trajectories were scored after those choices were fixed, and no
-weak test result was swapped out. This is the clean-conscience result—the number
+weak test result was swapped out. This is the selected final result—the number
 we report whether it wins or loses.
 
 | Subject | 2018 paper | OOF-routed six-seed refit | Test-informed best of runs* |
@@ -180,7 +180,7 @@ we report whether it wins or loses.
 | S2 | 0.408 | **0.423** | **0.512** |
 | S3 | 0.582 | 0.552 | **0.699** |
 
-| Subject | Finger | 2018 paper | Clean-conscience refit | Difference |
+| Subject | Finger | 2018 paper | Selected final refit | Difference |
 |---|---|---:|---:|---:|
 | S1 | Thumb | 0.75 | 0.678 | -0.072 |
 | S1 | Index | 0.79 | 0.793 | +0.003 |
