@@ -10,6 +10,7 @@ from scripts.train_event_grouped_lars_e2e_nested import (
 )
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
 from scripts.summarize_event_lars_lstm_cv import morphology_metrics
+from scripts.evaluate_cv_ensemble_final_validation import movement_groups
 
 
 def test_event_grouped_subfolds_are_disjoint_and_complete() -> None:
@@ -90,3 +91,14 @@ def test_hurdle_selection_likelihood_rewards_correct_components() -> None:
     )
 
     assert good < bad
+
+
+def test_final_validation_event_groups_merge_overlapping_padding() -> None:
+    target = np.zeros(30, dtype=np.float32)
+    target[[5, 6, 12, 20]] = 0.5
+    groups = movement_groups(target, threshold=0.08, padding=3)
+
+    assert groups == [
+        {"start": 2, "stop": 16},
+        {"start": 17, "stop": 24},
+    ]
