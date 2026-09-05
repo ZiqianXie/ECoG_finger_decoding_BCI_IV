@@ -419,6 +419,11 @@ def main() -> None:
     parser.add_argument("--fold", type=int, required=True, choices=(0, 1, 2))
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="target file stem after train_glove_; defaults to the subject policy",
+    )
     parser.add_argument("--feature-root", type=Path, default=Path("outputs/windowed_ica_wavelet_asymmetric_v1"))
     parser.add_argument("--ica-root", type=Path, default=Path("outputs/paper_ica_lars_v1"))
     parser.add_argument("--fold-root", type=Path, default=Path("outputs/event_stratified_folds_v1"))
@@ -474,21 +479,49 @@ def main() -> None:
     ecog = torch.from_numpy(np.array(ecog_numpy, copy=True)).to(device)
     raw_windows = ecog.unfold(0, args.window_samples, args.stride_samples)[:row_count]
     finger_index = list(FINGER_NAMES).index(args.finger)
-    target_all = np.load(prepared / f"train_glove_{TARGETS[args.subject]}.npy")[24 : 24 + row_count, finger_index]
+    target_name = args.target or TARGETS[args.subject]
+    target_all = np.load(prepared / f"train_glove_{target_name}.npy")[24 : 24 + row_count, finger_index]
     raw_all = np.load(prepared / "train_glove_25hz_raw.npy")[24 : 24 + row_count, finger_index]
     target = torch.as_tensor(target_all, dtype=torch.float32, device=device)
 
-    selection_path = args.selection_cache_root / f"sub{args.subject}" / args.finger / f"fold{args.fold}.npz"
-    saved = np.load(selection_path)
-    selected = saved["selected_source"]
-    mean = saved["feature_mean"]
-    scale = saved["feature_scale"]
-    coefficients = saved["coefficients"]
-    intercept = float(saved["intercept"])
     all_fixed = np.load(
         args.feature_root / f"sub{args.subject}" / "train_initialized_window_features.npy",
         mmap_mode="r",
     )[:row_count]
+    if args.target is None:
+        selection_path = (
+            args.selection_cache_root
+            / f"sub{args.subject}"
+            / args.finger
+            / f"fold{args.fold}.npz"
+        )
+        saved = np.load(selection_path)
+        outer_selection = {
+            "selected_source": saved["selected_source"],
+            "feature_mean": saved["feature_mean"],
+            "feature_scale": saved["feature_scale"],
+            "coefficients": saved["coefficients"],
+            "intercept": float(saved["intercept"]),
+        }
+    else:
+        outer_selection = fit_or_load_inner_lars(
+            features_all=all_fixed,
+            target_all=target_all,
+            training_intervals=outer_training_intervals,
+            cache=(
+                args.selection_cache_root
+                / target_name
+                / f"sub{args.subject}"
+                / args.finger
+                / f"fold{args.fold}.npz"
+            ),
+            max_features=args.max_features,
+        )
+    selected = np.asarray(outer_selection["selected_source"], dtype=np.int64)
+    mean = np.asarray(outer_selection["feature_mean"])
+    scale = np.asarray(outer_selection["feature_scale"])
+    coefficients = np.asarray(outer_selection["coefficients"])
+    intercept = float(outer_selection["intercept"])
     cached_features = torch.as_tensor(
         np.asarray(all_fixed[:, selected], dtype=np.float32), device=device
     )
@@ -537,6 +570,7 @@ def main() -> None:
             training_intervals=training_intervals,
             cache=(
                 args.inner_selection_cache_root
+                / (target_name if args.target is not None else Path())
                 / f"sub{args.subject}"
                 / args.finger
                 / f"outer{args.fold}_inner{inner_fold}.npz"
@@ -648,6 +682,7 @@ def main() -> None:
             "wavelet_learning_rate": args.wavelet_learning_rate,
             "loss": args.loss,
             "output_activation": args.output_activation,
+            "target": target_name,
         },
     }
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")

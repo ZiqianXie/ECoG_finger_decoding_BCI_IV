@@ -38,6 +38,10 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=(0,))
     parser.add_argument("--gpus", nargs="+", default=("0", "1", "2", "3"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/event_lars_e2e_nested_strict_v1"))
+    parser.add_argument("--fold-root", type=Path, default=Path("outputs/event_stratified_folds_v1"))
+    parser.add_argument("--selection-cache-root", type=Path, default=Path("outputs/event_lars_selection_v1"))
+    parser.add_argument("--inner-selection-cache-root", type=Path, default=Path("outputs/event_lars_inner_selection_v1"))
+    parser.add_argument("--target", default=None)
     parser.add_argument("--warmup-epochs", type=int, default=6)
     parser.add_argument("--max-epochs", type=int, default=24)
     parser.add_argument("--learning-rate", type=float, default=3.0e-5)
@@ -79,7 +83,12 @@ def main() -> None:
                         "--loss", args.loss,
                         "--output-activation", args.output_activation,
                         "--output-root", str(args.output_root),
+                        "--fold-root", str(args.fold_root),
+                        "--selection-cache-root", str(args.selection_cache_root),
+                        "--inner-selection-cache-root", str(args.inner_selection_cache_root),
                     ]
+                    if args.target is not None:
+                        command.extend(("--target", args.target))
                     tasks.append((name, command, destination))
 
     log_root = args.output_root / "logs"
