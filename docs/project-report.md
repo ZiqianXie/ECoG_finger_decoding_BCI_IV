@@ -60,7 +60,9 @@ designed-band CSP dictionary for S1 middle and S3 thumb, middle, and ring.
 Six LARS-initialized LSTM members were refitted for each selected pair without
 using released-test labels for routing. Replacing only those four predictions
 raises released-test `Macro-5` from 0.512/0.423/0.488 to
-0.540/0.423/0.552 for S1--S3.
+0.540/0.423/0.552 for S1--S3. A subsequent S3-little-only nested experiment
+selected a paper-baseline, state-aware soft-gating route. Its six-seed refit
+raises S3 little from 0.423 to 0.669 and S3 `Macro-5` to 0.601.
 
 This is the report's **clean-conscience result: no test peek, no cheat**. The
 phrase means that the declared final comparison and routing rule were fixed from
@@ -467,15 +469,16 @@ had test exposure: before this protocol was fixed, this 2026 repository had used
 the public test labels to diagnose earlier models and compare saved runs.
 
 The selected final model is a separate decoder for each of the 15
-subject/finger pairs. Eleven pairs use the paper-derived FastICA initialization
+subject/finger pairs. Ten pairs use the paper-derived FastICA initialization
 and eight-terminal-band bior6.8 tree. Their LSTM is optimized first with the
 stem frozen and then with the spatial and wavelet filters unfrozen at a smaller
 learning rate. For the four pairs named below, full-development event-fold
 validation instead selected a fixed joint dictionary containing those
 ICA-wavelet atoms plus decoded-finger and any-movement CSP atoms from seven
 designed frequency bands. LARS selects the sparse starting function in either
-case. Six random-initialization members are retained unless an integrity audit
-finds numerical or near-constant collapse.
+case. S3 little uses the focused state-aware route described in the
+development-only audit below. Six random-initialization members are retained
+unless an integrity audit finds numerical or near-constant collapse.
 
 | Evaluation | S1 Macro-5 | S2 Macro-5 | S3 Macro-5 |
 |---|---:|---:|---:|
@@ -484,7 +487,7 @@ finds numerical or near-constant collapse.
 | Descriptive per-finger history choice on the same OOF data | 0.485 | 0.416 | 0.400 |
 | Older model-fitting-only event-fold OOF selection | 0.488 | 0.444 | 0.373 |
 | Older one-time chronological validation | 0.496 | 0.388 | 0.452 |
-| **Current OOF-routed six-seed refit, released test** | **0.540** | **0.423** | **0.552** |
+| **Current OOF-routed six-seed refit, released test** | **0.540** | **0.423** | **0.601** |
 | ICA-wavelet-only six-seed refit, released test | 0.512 | 0.423 | 0.488 |
 | Previous train+validation refit, released test | 0.506 | 0.415 | 0.486 |
 | 2018 paper, released test | 0.556 | 0.408 | 0.582 |
@@ -522,7 +525,7 @@ released-test result was:
 |---|---:|---:|---:|---:|---:|---:|---:|
 | S1 | 0.678 | 0.793 | 0.268 | 0.589 | 0.374 | **0.540** | 0.556 |
 | S2 | 0.587 | 0.399 | 0.337 | 0.544 | 0.250 | **0.423** | 0.408 |
-| S3 | 0.772 | 0.340 | 0.566 | 0.657 | 0.423 | **0.552** | 0.582 |
+| S3 | 0.772 | 0.340 | 0.566 | 0.657 | 0.669 | **0.601** | 0.582 |
 
 The rounded paper values and finger-level differences are:
 
@@ -535,8 +538,8 @@ The rounded paper values and finger-level differences are:
 | S2 current | 0.587 | 0.399 | 0.337 | 0.544 | 0.250 | 0.423 |
 | S2 difference | -0.033 | +0.019 | +0.067 | +0.074 | -0.050 | +0.015 |
 | S3 paper | 0.740 | 0.550 | 0.460 | 0.410 | 0.750 | 0.582 |
-| S3 current | 0.772 | 0.340 | 0.566 | 0.657 | 0.423 | 0.552 |
-| S3 difference | +0.032 | -0.210 | +0.106 | +0.247 | -0.327 | -0.030 |
+| S3 current | 0.772 | 0.340 | 0.566 | 0.657 | 0.669 | 0.601 |
+| S3 difference | +0.032 | -0.210 | +0.106 | +0.247 | -0.081 | +0.019 |
 
 The historical paper is an important target but not a pristine prospective
 control. The author's present recollection is that the original exploratory
@@ -545,16 +548,17 @@ Because the original code, logs, and hard drive were lost, the magnitude of any
 such influence cannot be reconstructed. This report therefore avoids treating
 small paper-versus-current differences as a clean superiority test.
 
-Relative to the ICA-wavelet-only six-seed refit, the heterogeneous routing adds
-0.028 and 0.063 Macro-5 for S1 and S3; S2 is unchanged. S1 middle improves by
+Relative to the ICA-wavelet-only six-seed refit, the current routing adds
+0.028 and 0.113 Macro-5 for S1 and S3; S2 is unchanged. S1 middle improves by
 0.140 PCC and suppresses several large false bursts, but it remains visibly
 under-amplitude on strong movement trains and has low movement-state precision.
-S3 thumb, middle, and ring improve by 0.048, 0.125, and 0.144. Their event plots
-show better timing and amplitude, although middle remains compressed in some
-long events and ring retains rest leakage. S2 middle/little and S3 index/little
-remain the principal unresolved fingers. These visual findings support the
-four OOF-routed replacements without implying that the remaining morphology is
-fully solved.
+S3 thumb, middle, and ring improve by 0.048, 0.125, and 0.144. S3 little then
+improves from 0.423 to 0.669 through the separately selected paper-baseline,
+state-aware route. The event plots show better timing and amplitude, although
+S3 middle and little remain compressed in some strong movement trains and ring
+retains rest leakage. S2 middle/little and S3 index remain the principal
+unresolved fingers. These visual findings support the OOF-routed replacements
+without implying that the remaining morphology is fully solved.
 
 For provenance, the previous selection procedure added the chronological
 validation segment to the model-fitting data after its choices were fixed. Each
@@ -710,7 +714,8 @@ same full-development event folds as the primary selector, it improved four
 pairs: S1 middle and S3 thumb, middle, and ring. Six-seed refits of those four
 pairs completed without collapsed members. Replacing only those OOF winners
 raised released-test Macro-5 from 0.512 to 0.540 for S1 and from 0.488 to 0.552
-for S3; S2 remained 0.423 because none of its joint candidates won OOF.
+for S3; the later independently selected S3-little route raises the latter to
+0.601. S2 remained 0.423 because none of its joint candidates won OOF.
 
 The selected full-development dictionaries contained 444 features for S1
 middle (178 ICA-wavelet and 266 CSP), 445 for S3 thumb (119 and 326), 436 for S3
@@ -740,9 +745,9 @@ promoted into the frozen path.
 
 ### Development-only little-finger target audit
 
-The final per-finger table makes S3 little an outlier. The paper reported 0.64
+The earlier per-finger table made S3 little an outlier. The paper reported 0.64
 for LARS, 0.68 for the conventional linear decoder, and 0.75 for LSTM; the
-current OOF-routed six-seed refit reaches 0.423. Figure 8 of the paper shows
+initial OOF-routed six-seed refit reached 0.423. Figure 8 of the paper shows
 decoded trajectories for S1 only, so it does not supply an S3 trace for visual
 comparison. A retrospectively routed model in this repository reaches 0.759 on
 S3 little and visually follows the three strongest released-test events. This
@@ -787,11 +792,12 @@ selected without the outer validation events.
 | S3 | 0.274 | 0.271 | 0.271 | -0.003 |
 
 Thus the development data supports the diagnosis of little-finger ambiguity,
-especially for S3, but not promotion of either fixed cleaning rule. The current
-headline targets remain unchanged. A future little-only experiment should infer
-event attribution jointly from ECoG and glove evidence in nested development
-folds, allow genuine co-movement, and compare against the unmodified target
-before the released test is opened. Exact metrics and coefficients are in
+especially for S3, but not promotion of either fixed cleaning rule. At this
+stage the headline targets remained unchanged. The next little-only experiment
+therefore inferred event attribution jointly from ECoG and glove evidence in
+nested development folds, allowed genuine co-movement, and compared against
+the unmodified target before its released-test prediction was generated. Exact
+metrics and coefficients for this first screen are in
 `docs/results/little-finger-training-only-audit.json`.
 
 The paper's actual target construction was then tested more directly. It used a
@@ -809,11 +815,46 @@ held-out glove trajectory.
 
 This changes the diagnosis. For S3, the paper baseline itself is useful, but
 winner-take-all removes some decodable signal and cannot by itself explain the
-paper's 0.75. For S1 and S2, neither paper-style change helps. The appropriate
-next experiment is therefore S3-little only: compare current local baseline,
-paper baseline without WTA, and paper baseline with little-only WTA using the
-stronger multibase/state-aware decoder under nested full-development folds.
-The linear screen is stored in `docs/results/little-paper-target-oof.json`.
+paper's 0.75. For S1 and S2, neither paper-style change helps. The linear screen
+is stored in `docs/results/little-paper-target-oof.json`.
+
+The resulting S3-little reconstruction combined two independently initialized
+seven-band CSP decoders: a temporal convolutional movement-state model and a
+beta/high-gamma gated head. A six-state classifier then used all five predicted
+trajectories and their velocities to estimate rest or the dominant intended
+finger. Its output was not a new hard label. Instead, training-only co-movement
+frequencies converted the state probabilities into a soft little-finger gate.
+Zero gate strength remained an available inner-fold choice.
+
+The nested comparison first confirmed the target result. Mean outer-fold raw
+PCC was 0.590 for the current local target, 0.620 for the paper baseline without
+winner-take-all, and 0.539 with little-only winner-take-all. Adding the soft
+latent gate to the winning no-WTA route improved the three outer folds from
+0.630/0.610/0.641 to 0.696/0.633/0.697. Every fold independently selected gate
+strength 0.5. Rest RMS fell by 29--37% and movement-state F1 improved in all
+three folds. Retaining physical channel 49 and excluding only channel 50 was
+also tested on the same nested protocol; its mean fold PCC was 0.658, below
+0.675 when both 49 and 50 were excluded, so the two-channel exclusion remained
+the development-data choice.
+
+After those decisions were frozen, six models were reinitialized and fitted on
+all 400,000 labeled development samples. No member collapsed. Their released
+test PCCs ranged from 0.667 to 0.671 (SD 0.0013), and their mean prediction
+reached 0.669 for S3 little. Substituting only that route raises S3 Macro-5 from
+0.552 to 0.601. The cleaned-flexion view has PCC 0.703, zero negative values,
+rest RMS 0.141, state F1 0.505, derivative PCC 0.205, and peak ratio 0.660. The
+event plots confirm that the major movement trains are captured, but individual
+cycles remain smoothed, peak amplitude is conservative, and some false motion
+persists during rest. This is a substantial repair, not a claim that S3 little
+is solved.
+
+Exact nested and final summaries are stored in
+`docs/results/s3-little-paper-latent-nested.json` and
+`docs/results/s3-little-paper-latent-six-seed.json`.
+
+![S3 little state-aware cleaned trajectory](figures/s3-little-paper-latent-full.png)
+
+![S3 little strongest movement events](figures/s3-little-paper-latent-events.png)
 
 ![Little-finger coupling and cleaning audit](figures/little-finger-training-only-audit.png)
 
@@ -1171,6 +1212,31 @@ python scripts/prepare_heterogeneous_full_refit.py --subject 3 \
 python scripts/run_heterogeneous_six_seed_refits.py --gpus 0 1 2 3 4 5 6 7
 python scripts/summarize_heterogeneous_six_seed_refits.py
 
+# Reconstruct and refit the separately selected S3-little state-aware route.
+python scripts/run_s3_little_reconstruction.py prepare \
+  --variants current_local paper_no_wta paper_wta_020 \
+  --cache-root outputs/s3_little_nested_csp_cache_v1
+python scripts/run_s3_little_reconstruction.py cv \
+  --variants current_local paper_no_wta paper_wta_020 \
+  --cache-root outputs/s3_little_nested_csp_cache_v1 \
+  --output-root outputs/s3_little_reconstruction_nested_v1 --gpus 0 1 2
+python scripts/run_s3_little_reconstruction.py cv \
+  --variants paper_no_wta --latent-gate \
+  --cache-root outputs/s3_little_nested_csp_cache_v1 \
+  --output-root outputs/s3_little_reconstruction_nested_latent_v1 --gpus 0 1 2
+python scripts/run_s3_little_reconstruction.py prepare-full \
+  --variant paper_no_wta --full-cache outputs/s3_little_full_csp_cache_v1
+python scripts/run_s3_little_reconstruction.py refits \
+  --variant paper_no_wta \
+  --full-cache outputs/s3_little_full_csp_cache_v1 \
+  --cv-root outputs/s3_little_reconstruction_nested_latent_v1 \
+  --output-root outputs/s3_little_six_seed_refit_v1 \
+  --seeds 0 1 2 3 4 5 --gpus 0 1 2 3 4 5
+python scripts/run_s3_little_reconstruction.py ensemble \
+  --full-cache outputs/s3_little_full_csp_cache_v1 \
+  --output-root outputs/s3_little_six_seed_refit_v1 \
+  --baseline-root outputs/heterogeneous_six_seed_refit_v1/ensemble
+
 # Optional: render the explicitly test-informed retrospective upper bound.
 python scripts/render_extension_report.py \
   --routing configs/retrospective_diagnostic_routing.yaml
@@ -1311,8 +1377,9 @@ late reconstruction:
 - the clean-conscience event configuration was frozen from development-only
   folds, but the project is not historically equivalent to a prospectively
   sealed benchmark; and
-- S1 middle, S2 middle/little, and S3 index/little still show important timing,
-  amplitude, or rest-leakage failures despite some high PCC values.
+- S1 middle, S2 middle/little, and S3 index still show important timing,
+  amplitude, or rest-leakage failures despite some high PCC values; S3 little
+  is substantially improved but still smooths cycles and retains rest activity.
 
 For these reasons, the project should be cited as a reimplementation and
 extension, not as the official source code accompanying the 2018 publication.
@@ -1324,16 +1391,17 @@ extension, not as the official source code accompanying the 2018 publication.
    whether the four heterogeneous route choices are stable rather than fortunate
    for one event partition.
 2. Concentrate modeling work on the visually unresolved S1 middle, S2
-   middle/little, and S3 index/little routes. Measure label-free changes in ECoG
+   middle/little, and S3 index routes. Measure label-free changes in ECoG
    covariance, spectral power, and decoder-feature marginals across recording
    blocks before increasing model capacity.
 3. Jointly model flexion and velocity under one coherent likelihood or
    multi-output regression objective. Velocity is a plausible more immediate
    neural consequence, but it should be an auxiliary target rather than another
    ad hoc loss term.
-4. Develop the latent cross-finger model as an explicit subject-specific
-   switching/state-space model with co-movement emissions. Evaluate attribution
-   with synthetic cross-talk injection before applying it to released labels.
+4. Extend the successful soft S3-little attribution model only after testing
+   synthetic cross-talk injection and alternative event partitions. An explicit
+   subject-specific switching/state-space model may improve within-event cycles,
+   but should retain soft co-movement emissions and the zero-gate ablation.
 5. On a future dataset or hidden-label evaluation server, register the complete
    selection rule before scoring. That is the only way to turn the current
    clean-conscience procedure into a genuinely prospective benchmark. Also add

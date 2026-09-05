@@ -1,0 +1,101 @@
+{
+  "protocol": "six-seed full-development ensemble; eligibility uses development predictions only",
+  "subject": 3,
+  "finger": "little",
+  "members": [
+    {
+      "seed": 0,
+      "eligible": true,
+      "development_raw_pcc": 0.8254005170978471,
+      "prediction_sd": 0.16382579505443573,
+      "runtime_seconds": 102.93060835031793
+    },
+    {
+      "seed": 1,
+      "eligible": true,
+      "development_raw_pcc": 0.8237302803532648,
+      "prediction_sd": 0.16392220556735992,
+      "runtime_seconds": 108.74310334119946
+    },
+    {
+      "seed": 2,
+      "eligible": true,
+      "development_raw_pcc": 0.825048462790896,
+      "prediction_sd": 0.1633225530385971,
+      "runtime_seconds": 110.02746518142521
+    },
+    {
+      "seed": 3,
+      "eligible": true,
+      "development_raw_pcc": 0.8245086640291742,
+      "prediction_sd": 0.16311421990394592,
+      "runtime_seconds": 84.45598001265898
+    },
+    {
+      "seed": 4,
+      "eligible": true,
+      "development_raw_pcc": 0.8255960431589381,
+      "prediction_sd": 0.16316282749176025,
+      "runtime_seconds": 105.34856584388763
+    },
+    {
+      "seed": 5,
+      "eligible": true,
+      "development_raw_pcc": 0.8257901944394817,
+      "prediction_sd": 0.16314417123794556,
+      "runtime_seconds": 109.07359386794269
+    }
+  ],
+  "included_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "collapsed_seeds": [],
+  "mean_pairwise_seed_prediction_pcc": 0.9986951345652322,
+  "released_test_raw_pcc": 0.6693933823169804,
+  "released_test_seed_pcc": [
+    0.6684243102424562,
+    0.6691428704729814,
+    0.6669184009320405,
+    0.6688086432301595,
+    0.6703471917377115,
+    0.6705385576735367
+  ],
+  "released_test_seed_pcc_sd": 0.0013340307041142569,
+  "baseline_five_finger_raw_pcc": [
+    0.7719302112905644,
+    0.34039804932980666,
+    0.5660000162540975,
+    0.6569863227085334,
+    0.42306616885321396
+  ],
+  "updated_five_finger_raw_pcc": [
+    0.7719302112905644,
+    0.34039804932980666,
+    0.5660000162540975,
+    0.6569863227085334,
+    0.6693933821536765
+  ],
+  "baseline_macro_five": 0.5516761536872432,
+  "updated_macro_five": 0.6009415963473357,
+  "development_fitted_raw_affine": {
+    "scale": 4.743234550906274,
+    "offset": -0.5191592691234865
+  },
+  "development_fitted_cleaned_gain": 1.0179972111775335,
+  "released_test_cleaned_metrics": {
+    "quality_score": 0.4103906429691349,
+    "pcc_cleaned": 0.7027707646406628,
+    "derivative_pcc": 0.20476317184170473,
+    "state_f1": 0.5050557428052891,
+    "rest_rms": 0.14089170098304749,
+    "peak_ratio": 0.6599169831066773
+  },
+  "released_test_cleaned_negative_fraction": 0.0,
+  "released_test_used_for_selection": false,
+  "released_test_role": "one-time descriptive final evaluation after frozen OOF selection"
+}
