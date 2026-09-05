@@ -1,0 +1,33 @@
+{
+  "protocol": "full-development purged event-grouped out-of-fold",
+  "fold_root": "outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1",
+  "released_test_touched": false,
+  "seeds": [0, 1],
+  "collapsed_seeds": [],
+  "sequence_50": {
+    "output_root": "outputs/event_lars_e2e_fulldev_seq50_v1",
+    "macro_five": {"S1": 0.480148, "S2": 0.414650, "S3": 0.398295},
+    "per_finger": {
+      "S1": {"thumb": 0.601514, "index": 0.778419, "middle": 0.223104, "ring": 0.413358, "little": 0.384347},
+      "S2": {"thumb": 0.642185, "index": 0.347082, "middle": 0.356280, "ring": 0.396697, "little": 0.331006},
+      "S3": {"thumb": 0.651445, "index": 0.363405, "middle": 0.324223, "ring": 0.382847, "little": 0.269554}
+    },
+    "mean_seed_sd_across_15_models": 0.005706,
+    "maximum_seed_sd": 0.016443,
+    "macro_gain_over_lars_initialization": {"S1": 0.006477, "S2": 0.020916, "S3": 0.011925}
+  },
+  "sequence_100": {
+    "output_root": "outputs/event_lars_e2e_fulldev_seq100_v1",
+    "macro_five": {"S1": 0.472436, "S2": 0.402289, "S3": 0.389827},
+    "per_finger": {
+      "S1": {"thumb": 0.573866, "index": 0.767545, "middle": 0.199910, "ring": 0.426623, "little": 0.394235},
+      "S2": {"thumb": 0.610501, "index": 0.346853, "middle": 0.364265, "ring": 0.395522, "little": 0.294305},
+      "S3": {"thumb": 0.635483, "index": 0.359933, "middle": 0.332759, "ring": 0.372888, "little": 0.248073}
+    },
+    "mean_seed_sd_across_15_models": 0.011319,
+    "maximum_seed_sd": 0.031088,
+    "macro_gain_over_lars_initialization": {"S1": -0.001182, "S2": 0.008556, "S3": 0.003457}
+  },
+  "same_oof_per_finger_history_selection_macro": {"S1": 0.484779, "S2": 0.416247, "S3": 0.400002},
+  "selection_warning": "Per-finger history selection and estimation reuse the same OOF predictions and are therefore descriptive, not an unbiased headline estimate."
+}

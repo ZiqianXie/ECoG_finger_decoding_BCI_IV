@@ -87,16 +87,14 @@ sides of the split and give an optimistic validation score. The cross-validation
 code instead keeps complete movement/rest events together and removes 95 bins
 (3.8 s) around each held-out boundary.
 
-The competition training file contains 400,000 labeled samples per subject. We
-use its first two-thirds as the **model-fitting partition** and reserve its last
-third as a **chronological validation partition**. The three event folds are
-built only inside the model-fitting partition. They are built separately for
-each subject and finger because their event distributions differ.
-
-After the model family, target pipeline, seeds, and epoch count have been chosen
-from these folds, the configuration is evaluated once on the untouched
-chronological validation partition. This extra check tests whether a choice made
-on earlier events transfers to a later recording period.
+The complete 400,000-sample competition training file is now treated as the
+**development recording**. Three event-grouped folds are built across that
+recording, separately for each subject and finger because their event
+distributions differ. Within every fold, target baselines, feature selection,
+network fitting, and epoch selection use only the training events; CSP is also
+refitted inside the fold whenever that supervised spatial branch is used. Model
+comparisons use the stitched out-of-fold predictions. The separate 200,000-
+sample released test recording is not used for these choices.
 
 ### Notch filtering and trainable filters
 
@@ -113,13 +111,34 @@ coverage is shown below.
 
 ## Current results
 
-The primary comparison remains Pearson correlation with the released,
-unmodified test glove trajectory. `Macro-5` is the mean across all five fingers.
-The paper values below are calculated from its rounded per-finger CNN-LSTM
-numbers, so they should not be interpreted as more precise versions of the
-paper's rounded aggregate.
+The primary current comparison is Pearson correlation between stitched
+full-development out-of-fold predictions and the original 25 Hz glove
+trajectory. `Macro-5` is the mean across all five fingers. Both columns below
+use the same folds, preprocessing, target map, and two seeds; no seed met the
+predeclared collapse criterion.
 
-| Subject | 2018 paper | Final train+validation refit | Test-informed best of runs* |
+| Subject | 50-step history | 100-step history |
+|---|---:|---:|
+| S1 | **0.480** | 0.472 |
+| S2 | **0.415** | 0.402 |
+| S3 | **0.398** | 0.390 |
+
+The 50-step model is therefore the stronger single configuration for every
+subject. Choosing history separately for each finger would give 0.485, 0.416,
+and 0.400, but those values reuse the same out-of-fold predictions for candidate
+selection and performance estimation; they are not promoted as an unbiased
+headline result. Mean across-finger seed SD was 0.006 for the 50-step grid and
+0.011 for the 100-step grid.
+
+Per-finger values, initialization gains, and seed dispersion are recorded in
+[`docs/results/full-development-sequence-comparison.json`](docs/results/full-development-sequence-comparison.json).
+
+The earlier released-test analysis is retained below as provenance, not as the
+current model-selection result. The paper values are calculated from its rounded
+per-finger CNN-LSTM numbers and should not be interpreted as more precise
+versions of the paper's rounded aggregate.
+
+| Subject | 2018 paper | Earlier train+validation refit | Test-informed best of runs* |
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.506 | **0.652** |
 | S2 | 0.408 | **0.415** | **0.512** |
@@ -144,11 +163,13 @@ all labeled data in the competition training file after the choices have been
 fixed. In this repository, “complete development recording” means that combined
 train-plus-validation file; it never includes the released test recording.
 
-This final-refit result is the one to use when evaluating the reproducible
-pipeline. It exceeds the rounded paper mean for S2, but not yet for S1 or S3.
-The largest gaps are not explained by a global finger permutation or a simple
-temporal lag. They are concentrated in particular fingers and recording
-periods, consistent with target-regime and ECoG nonstationarity.
+These released-test refits were selected under the earlier two-stage
+model-fitting/chronological-validation protocol. They remain useful diagnostic
+results, but they are not refits of the full-development cross-fold
+configuration reported above. Their largest gaps are not explained by a global
+finger permutation or a simple temporal lag; they are concentrated in
+particular fingers and recording periods, consistent with target-regime and
+ECoG nonstationarity.
 
 `*` This column is not a held-out performance estimate.
 
@@ -202,6 +223,14 @@ the report.
 
 ## Main experimental conclusions
 
+- In the completed full-development cross-fold screen, the 50-step model is
+  better than the 100-step model for all three subject-level Macro-5 scores
+  (0.480/0.415/0.398 versus 0.472/0.402/0.390). Fine-tuning improves on the
+  LARS initialization by 0.006, 0.021, and 0.012 respectively.
+- A scale-normalized velocity-Huber pilot improves derivative PCC and rest
+  behavior, but compresses movement amplitude and does not consistently improve
+  raw-target PCC. The broader movement-weighted/correlation loss creates visible
+  false activity and peak overshoot, so neither loss replaces MSE yet.
 - Direct raw-target training improved the first final S1-thumb refit from
   0.647 to 0.714. An 80-unit, three-seed LSTM ensemble reached 0.698 and had
   better velocity and amplitude behavior, but did not improve on the best
