@@ -127,10 +127,10 @@ paper's rounded aggregate.
 
 ### How the final refit is produced
 
-Earlier versions of this README called this the “frozen refit,” which was
-ambiguous. The **configuration** is frozen, but the final network weights are
-trained anew and the chronological validation data are included in that
-training.
+Before the final refit, the preprocessing, architecture, seed membership, and
+epoch count are fixed from model-fitting cross-validation. The network weights
+are then initialized anew and trained on the combined model-fitting and
+chronological validation partitions.
 
 | Phase | Data used | Purpose |
 |---|---|---|
