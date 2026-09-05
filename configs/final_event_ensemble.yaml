@@ -1,0 +1,29 @@
+# Frozen using only split-safe, purged event-fold OOF predictions and morphology.
+# The official chronological validation and released test partitions were not
+# consulted when choosing these roots or seed sets.
+default:
+  input_root: outputs/event_lars_e2e_softplus_targetsafe_lr1e4_v1
+  seeds: [0, 1]
+
+subjects:
+  1:
+    thumb:
+      input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
+      seeds: [0, 1]
+    index:
+      input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
+      seeds: [0, 1]
+    little:
+      input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
+      seeds: [0, 1]
+  2:
+    ring:
+      input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
+      seeds: [0, 1]
+    little:
+      input_root: outputs/event_lars_e2e_softplus_targetsafe_lr1e4_v1
+      seeds: [0]
+  3:
+    little:
+      input_root: outputs/event_lars_e2e_softplus_targetsafe_seq100_v1
+      seeds: [0, 1]
