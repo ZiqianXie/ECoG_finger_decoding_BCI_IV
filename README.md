@@ -87,10 +87,16 @@ sides of the split and give an optimistic validation score. The cross-validation
 code instead keeps complete movement/rest events together and removes 95 bins
 (3.8 s) around each held-out boundary.
 
-The folds are built per subject and finger because their event distributions
-differ. This makes the folds less exchangeable than ordinary iid
-cross-validation, so the report includes fold-level results and chronological
-test behavior rather than presenting one mean as the whole story.
+The competition training file contains 400,000 labeled samples per subject. We
+use its first two-thirds as the **model-fitting partition** and reserve its last
+third as a **chronological validation partition**. The three event folds are
+built only inside the model-fitting partition. They are built separately for
+each subject and finger because their event distributions differ.
+
+After the model family, target pipeline, seeds, and epoch count have been chosen
+from these folds, the configuration is evaluated once on the untouched
+chronological validation partition. This extra check tests whether a choice made
+on earlier events transfers to a later recording period.
 
 ### Notch filtering and trainable filters
 
@@ -113,40 +119,58 @@ The paper values below are calculated from its rounded per-finger CNN-LSTM
 numbers, so they should not be interpreted as more precise versions of the
 paper's rounded aggregate.
 
-| Subject | 2018 paper | Frozen 2026 refit | Retrospective diagnostic |
+| Subject | 2018 paper | Final train+validation refit | Test-informed best of runs* |
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.506 | **0.652** |
 | S2 | 0.408 | **0.415** | **0.512** |
 | S3 | 0.582 | 0.486 | **0.699** |
 
-### What “frozen refit” means
+### How the final refit is produced
 
-For this result, preprocessing, architecture, seed membership, and training
-duration are selected from event-grouped cross-validation. The chosen
-configuration is then refitted on the complete development recording for a
-fixed number of epochs and evaluated on the released test recording. No choice
-is changed in response to that final score.
+Earlier versions of this README called this the “frozen refit,” which was
+ambiguous. The **configuration** is frozen, but the final network weights are
+trained anew and the chronological validation data are included in that
+training.
 
-This is the result to use when evaluating the current reproducible pipeline.
-It exceeds the rounded paper mean for S2, but not yet for S1 or S3. The largest
-gaps are not explained by a global finger permutation or a simple temporal lag.
-They are concentrated in particular fingers and recording periods, consistent
-with target-regime and ECoG nonstationarity.
+| Phase | Data used | Purpose |
+|---|---|---|
+| Model selection | First two-thirds of the 400,000-sample competition training file | Three event-grouped folds choose preprocessing, architecture, seeds, and epoch count. |
+| Chronological validation | Last third of the same competition training file | Evaluate the already selected configuration once on a later recording period. No choice is changed from this result. |
+| Final refit | All 400,000 samples: model-fitting partition **plus** chronological validation partition | Reinitialize and train the selected model for the fixed epoch count. |
+| Final test | Separate 200,000-sample released test file | Compute the reported test PCC; test labels are not used for fitting or selection. |
 
-### Why show a retrospective diagnostic
+Thus, the final refit does **not** use only the first training partition. It uses
+all labeled data in the competition training file after the choices have been
+fixed. In this repository, “complete development recording” means that combined
+train-plus-validation file; it never includes the released test recording.
 
-During reconstruction, many models were trained and their test predictions were
-inspected. The diagnostic column chooses the best-supported saved route for
-each finger after this inspection. For S1 thumb, it also includes a small convex
-blend whose weight was selected on test PCC.
+This final-refit result is the one to use when evaluating the reproducible
+pipeline. It exceeds the rounded paper mean for S2, but not yet for S1 or S3.
+The largest gaps are not explained by a global finger permutation or a simple
+temporal lag. They are concentrated in particular fingers and recording
+periods, consistent with target-regime and ECoG nonstationarity.
 
-This is deliberately reported as a diagnostic ceiling, not as held-out
-performance. It answers a useful engineering question: *did any of the explored
-representations recover the signal for this finger?* All fifteen diagnostic
-routes exceed the corresponding rounded paper values, suggesting that the
-remaining problem is robust training-time selection rather than an absolute
-lack of decodable signal. Because the test labels influenced that conclusion,
-the diagnostic table must not be used as a confirmatory benchmark.
+`*` This column is not a held-out performance estimate.
+
+### What “test-informed best of runs” means
+
+During reconstruction, many models produced predictions for the released test
+recording. After inspecting the test labels, we selected the saved prediction
+with the highest test PCC separately for each subject/finger pair. S1 thumb also
+uses a blend of two saved predictions, with the mixing weight chosen to maximize
+test PCC.
+
+This is an oracle analysis: it uses the answers from the test set to choose
+which run to report. It cannot tell us how the selection rule would perform on
+a new recording where the glove trajectory is unknown, and it must not be
+compared with the paper as a fair held-out result.
+
+We retain the analysis because it answers a narrower diagnostic question: *did
+any model we trained recover the signal for this finger?* All fifteen pairs have
+at least one test prediction above the corresponding rounded paper value. The
+gap between this oracle result and the final train+validation refit shows how
+much performance is currently lost because training-only validation does not
+reliably identify the best model across recording periods.
 
 The per-finger values and the provenance of every route are recorded in
 [`docs/results/retrospective-extension.json`](docs/results/retrospective-extension.json).
@@ -178,7 +202,7 @@ the report.
 
 ## Main experimental conclusions
 
-- Direct raw-target training improved the first frozen S1-thumb refit from
+- Direct raw-target training improved the first final S1-thumb refit from
   0.647 to 0.714. An 80-unit, three-seed LSTM ensemble reached 0.698 and had
   better velocity and amplitude behavior, but did not improve on the best
   single-model PCC.
@@ -190,7 +214,7 @@ the report.
   estimation burden on this dataset, so the original eight-band tree remains
   the default.
 - Latent movement-state gating improved some retrospective morphologies but did
-  not consistently improve the frozen result.
+  not consistently improve the final refit.
 - Hard winner-take-all target correction is rejected because it can transfer
   movement between fingers.
 
@@ -259,7 +283,7 @@ python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
   --spatial-learning-rate 3e-6 --wavelet-learning-rate 3e-6 \
   --output-activation softplus
 
-# Refit the frozen selections and render the recorded diagnostics.
+# Refit the fixed selections on train+validation and render the diagnostics.
 python scripts/run_frozen_event_refits.py
 python scripts/summarize_frozen_full_refit.py
 python scripts/render_extension_report.py \

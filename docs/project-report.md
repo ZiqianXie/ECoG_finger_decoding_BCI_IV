@@ -37,18 +37,20 @@ are chosen only from these out-of-fold predictions.
 
 Under this protocol, the selected two-seed configurations reach mean
 five-finger validation PCC of 0.488, 0.444, and 0.373 for S1--S3. They are then
-refitted for a fixed number of epochs using the complete development recording.
-On the released test recording, mean five-finger PCC is 0.506, 0.415, and 0.486.
+refitted for a fixed number of epochs using all 400,000 samples in the
+competition training file, including the earlier chronological validation
+partition. On the separate released test recording, mean five-finger PCC is
+0.506, 0.415, and 0.486.
 The S1 and S3 changes from cross-validation to the chronological test segment
 are too large to explain by seed variation alone, pointing instead to temporal
 nonstationarity and a change in the target regime.
 
-A separate retrospective diagnostic routes the best already-saved prediction
-per subject and finger after the released test has been inspected. It reaches
-`Macro-5` 0.652, 0.512, and 0.699. All fifteen per-finger PCC values are above
-the rounded paper values. S1 thumb reaches 0.752 only after selecting a 9.6%
-blend weight on released-test PCC. This is a signal-presence and failure-analysis
-ceiling, not an unbiased performance claim.
+A separate test-informed oracle analysis selects the saved prediction with the
+highest released-test PCC for each subject/finger pair. It reaches `Macro-5`
+0.652, 0.512, and 0.699. All fifteen per-finger PCC values are above the rounded
+paper values. S1 thumb reaches 0.752 only after selecting a 9.6% blend weight on
+released-test PCC. Because test labels are used for this selection, these values
+measure signal recovery among the completed runs, not held-out performance.
 The distinction is encoded in the routing configuration and result JSON rather
 than left to prose alone.
 
@@ -100,12 +102,23 @@ zero-based index: physical channel 49 is normal, while physical channel 50
 (array index 49) has a test-only burst with more than 250-fold variance
 inflation. The corrected loader therefore removes physical channel 50 only.
 
-The training recording is divided chronologically. The first two-thirds of the
-training file are available for fitting and the last third is validation. On
-the complete train-plus-released-test timeline, this is approximately 44% model
-fit, 22% validation, and 33% final test. In the confirmatory-style path, test
-labels are used only after the candidate and its hyperparameters are frozen.
-The separately labelled retrospective diagnostic ceiling deliberately searches
+The 400,000-sample competition training recording is divided chronologically.
+Its first two-thirds form the model-fitting partition and its last third is held
+out as chronological validation. Model and seed selection use three event folds
+constructed only inside the model-fitting partition. The selected configuration
+is then evaluated once on the untouched chronological validation partition.
+
+After that check, the architecture, preprocessing, seed set, and epoch count are
+fixed. A new final model is trained on all 400,000 labeled samples: the
+model-fitting partition plus the chronological validation partition. The term
+“frozen refit” used elsewhere in early experiment artifacts refers to these
+fixed choices; it does not mean frozen weights or training on the first
+partition alone. The separate 200,000-sample released test recording is used
+only for the terminal score. On the complete train-plus-test timeline, the
+three stages contain approximately 44% model-fitting data, 22% validation data,
+and 33% final test data.
+
+The separately labelled test-informed oracle analysis deliberately searches
 already-saved test predictions and is never presented as confirmatory.
 
 ## ECoG preprocessing
@@ -343,7 +356,8 @@ crossing a held-out boundary. The lower-envelope glove baseline is also fitted
 inside each split; this closes the target-support leakage found in the first
 event-fold implementation.
 
-The frozen model is a separate decoder for each of the 15 subject/finger pairs.
+The selected final model is a separate decoder for each of the 15
+subject/finger pairs.
 Its stem uses the paper-derived FastICA initialization and eight-terminal-band
 bior6.8 tree. LARS selects a sparse fixed-feature starting function. The LSTM is
 then optimized in two stages: first with the stem frozen, then with the spatial
@@ -352,12 +366,12 @@ unless their prediction variance falls below a training-only collapse threshold.
 
 | Evaluation | S1 Macro-5 | S2 Macro-5 | S3 Macro-5 |
 |---|---:|---:|---:|
-| Training-only event OOF, frozen selection | 0.488 | 0.444 | 0.373 |
+| Model-fitting partition, event-fold OOF selection | 0.488 | 0.444 | 0.373 |
 | One-time chronological validation | 0.496 | 0.388 | 0.452 |
-| All-development refit, released test | 0.506 | 0.415 | 0.486 |
+| Train+validation refit, released test | 0.506 | 0.415 | 0.486 |
 | 2018 paper, released test | 0.556 | 0.408 | 0.582 |
 
-The frozen chronological-validation scores by finger were:
+The one-time chronological-validation scores by finger were:
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -365,9 +379,10 @@ The frozen chronological-validation scores by finger were:
 | S2 | 0.652 | 0.301 | 0.468 | 0.365 | 0.154 | **0.388** |
 | S3 | 0.643 | 0.340 | 0.474 | 0.451 | 0.349 | **0.452** |
 
-After those choices were frozen, the official validation segment was included
-in training and each model was run for the median selected epoch count. The
-released-test result was:
+After those choices were fixed, the chronological validation segment was added
+to the model-fitting data. Each final model was initialized anew and trained on
+the complete 400,000-sample competition training recording for the median epoch
+count selected by event-fold validation. The released-test result was:
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Paper Macro-5 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -443,11 +458,13 @@ events and does not justify replacing the higher-PCC base model by itself.
 
 ![S1 thumb raw-target 80-unit ensemble events](figures/s1-thumb-raw-h80-ensemble-events.png)
 
-### Retrospective diagnostic ceiling and visual audit
+### Test-informed best-of-runs analysis and visual audit
 
-The released labels were used only here to ask a diagnostic question: among all
-saved complete prediction arrays, how much finger-specific signal is already
-present? Selecting the per-finger oracle source gives:
+The released test labels were used here to select the saved prediction with the
+highest test PCC for each subject/finger pair. This is an oracle analysis: the
+selection could not be made for a future recording without its glove labels.
+It is retained only to ask whether any completed run recovered strong
+finger-specific signal. The selected values are:
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Paper Macro-5 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -455,12 +472,14 @@ present? Selecting the per-finger oracle source gives:
 | S2 | 0.622 | 0.556 | 0.395 | 0.579 | 0.407 | **0.512** | 0.408 |
 | S3 | 0.757 | 0.630 | 0.648 | 0.702 | 0.759 | **0.699** | 0.582 |
 
-This ceiling exceeds the rounded paper value on all 15 pairs. S1 thumb is the
-only pair that needs a test-informed convex blend: 90.4% of the earlier latent
-route and 9.6% of the raw-target 80-unit ensemble produce PCC 0.752. The routing
-is explicitly test-informed and cannot be used as an unbiased benchmark. Its
-value is diagnostic: the diverse saved models contain substantially more signal
-than any single frozen selector can reliably choose across chronological regimes.
+This best-of-runs result exceeds the rounded paper value on all 15 pairs. S1
+thumb is the only pair that needs a test-informed convex blend: 90.4% of the
+earlier latent route and 9.6% of the raw-target 80-unit ensemble produce PCC
+0.752. This routing is explicitly test-informed and cannot be used as an
+unbiased benchmark. Its
+diagnostic value is that the diverse saved models contain substantially more
+signal than the training-only selector can reliably identify across
+chronological regimes.
 
 The small thumb blend is not merely a scale-only PCC effect. Under the fixed
 label-free display mapping, cleaned-target PCC improves from 0.726 to 0.735,
