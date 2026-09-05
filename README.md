@@ -121,9 +121,9 @@ paper's rounded aggregate.
 
 | Subject | 2018 paper | Final train+validation refit | Test-informed best of runs* |
 |---|---:|---:|---:|
-| S1 | 0.556 | 0.506 | **0.652** |
-| S2 | 0.408 | **0.415** | **0.512** |
-| S3 | 0.582 | 0.486 | **0.699** |
+| S1 | 0.556 | 0.512 | **0.652** |
+| S2 | 0.408 | **0.423** | **0.512** |
+| S3 | 0.582 | 0.488 | **0.699** |
 
 ### How the final refit is produced
 

@@ -265,12 +265,15 @@ for S2, versus 0.578 and 0.429 for the selected systems. S1's validation stack
 gave the raw CSP candidate zero weight for both stacked fingers, although a
 calibrated CSP trace contributed as a complementary component.
 
-This is a comparison between separately trained decoder families. It does not
-mean that LARS rejected CSP features after they were appended to the main
-wavelet feature matrix; that joint overcomplete-dictionary experiment has not
-yet been performed. Some CSP routes used LARS internally, but the negative
-S1/S2 result above is based on their decoded-trajectory performance and, where
-applicable, their ensemble weights.
+This is a comparison between separately trained decoder families. A later
+fold-safe heterogeneous dictionary did append decoded-finger and any-movement
+CSP components from seven designed bands to the ICA-wavelet features before
+LARS fitting. Macro-5 for ICA-wavelet/CSP/joint was 0.448/0.464/0.474 for S1,
+0.381/0.291/0.323 for S2, and 0.418/0.527/0.529 for S3. The joint dictionary's
+main complementary gain was S1 middle (0.194 to 0.391); it did not improve S2,
+and S3 was already largely explained by CSP. Thus the experiment confirms
+subject- and finger-specific complementarity without supporting a larger
+universal feature set for the current refit.
 
 The beta-gated/high-gamma head was initially evaluated only for S3. A completed
 transfer ablation confirms that this was not an overlooked S1/S2 improvement.
@@ -370,8 +373,9 @@ subject/finger pairs.
 Its stem uses the paper-derived FastICA initialization and eight-terminal-band
 bior6.8 tree. LARS selects a sparse fixed-feature starting function. The LSTM is
 then optimized in two stages: first with the stem frozen, then with the spatial
-and wavelet filters unfrozen at a smaller learning rate. Two seeds are retained
-unless their prediction variance falls below a training-only collapse threshold.
+and wavelet filters unfrozen at a smaller learning rate. Six random-initialization
+members are retained unless an integrity audit finds numerical or near-constant
+collapse.
 
 | Evaluation | S1 Macro-5 | S2 Macro-5 | S3 Macro-5 |
 |---|---:|---:|---:|
@@ -380,8 +384,17 @@ unless their prediction variance falls below a training-only collapse threshold.
 | Descriptive per-finger history choice on the same OOF data | 0.485 | 0.416 | 0.400 |
 | Older model-fitting-only event-fold OOF selection | 0.488 | 0.444 | 0.373 |
 | Older one-time chronological validation | 0.496 | 0.388 | 0.452 |
-| Older train+validation refit, released test | 0.506 | 0.415 | 0.486 |
+| **Current full-development-selected six-seed refit, released test** | **0.512** | **0.423** | **0.488** |
+| Previous train+validation refit, released test | 0.506 | 0.415 | 0.486 |
 | 2018 paper, released test | 0.556 | 0.408 | 0.582 |
+
+The full-development pipeline was selected for the repository headline before
+its new released-test predictions were inspected. The decision is recorded in
+`docs/results/full-development-headline-decision.json`. This prevents the older
+and newer validation protocols from being chosen according to which happens to
+score better on the released test. The comparison is nevertheless retrospective
+because those test labels had already been inspected during earlier
+reconstruction work.
 
 The same-OOF per-finger history-choice row is useful for selecting a candidate,
 but it is not an unbiased performance estimate because history selection and
@@ -394,10 +407,31 @@ chronological-validation scores by finger were:
 | S2 | 0.652 | 0.301 | 0.468 | 0.365 | 0.154 | **0.388** |
 | S3 | 0.643 | 0.340 | 0.474 | 0.451 | 0.349 | **0.452** |
 
-After those choices were fixed, the chronological validation segment was added
-to the model-fitting data. Each final model was initialized anew and trained on
-the complete 400,000-sample competition training recording for the median epoch
-count selected by event-fold validation. The released-test result was:
+The newly selected full-development models were refitted on all 400,000
+development samples. Six members were averaged for each subject/finger pair.
+All 90 training reports had finite losses and full-training PCC from 0.425 to
+0.869; the smallest member prediction standard deviation was 0.052, so no
+member showed numerical or near-constant collapse. The released-test result was:
+
+| Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Paper Macro-5 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| S1 | 0.678 | 0.793 | 0.128 | 0.589 | 0.374 | **0.512** | 0.556 |
+| S2 | 0.587 | 0.399 | 0.337 | 0.544 | 0.250 | **0.423** | 0.408 |
+| S3 | 0.724 | 0.340 | 0.441 | 0.513 | 0.423 | **0.488** | 0.582 |
+
+Relative to the previous refit, Macro-5 increases by 0.006, 0.008, and 0.002
+for S1--S3. Visual inspection agrees that the ensemble contains meaningful
+movement timing, but it also preserves important failure modes: S1 middle has
+substantial false activity and misses true events; S2 middle and little remain
+noisy or weak; and S3 index through little show appreciable rest activity and
+amplitude mismatch. These observations diagnose the selected pipeline; they do
+not alter the precommitted headline choice.
+
+For provenance, the previous selection procedure added the chronological
+validation segment to the model-fitting data after its choices were fixed. Each
+final model was initialized anew and trained on the complete 400,000-sample
+competition training recording for the median epoch count selected by
+event-fold validation. Its released-test result was:
 
 | Subject | Thumb | Index | Middle | Ring | Little | Macro-5 | Paper Macro-5 |
 |---|---:|---:|---:|---:|---:|---:|---:|

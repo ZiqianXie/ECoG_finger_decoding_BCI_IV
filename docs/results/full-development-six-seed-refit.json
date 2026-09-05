@@ -1,0 +1,57 @@
+{
+  "protocol": "per-subject, per-finger full-development OOF selection followed by six-seed refit on all development samples",
+  "released_test_context": "retrospective paper comparison; the current pipeline was frozen before these predictions were inspected, but test labels had been inspected in earlier reconstruction work",
+  "integrity": {
+    "completed_models": 90,
+    "expected_models": 90,
+    "included_seeds": [0, 1, 2, 3, 4, 5],
+    "collapsed_seeds": [],
+    "minimum_full_training_pcc": 0.42472650851602833,
+    "maximum_full_training_pcc": 0.869137802300245,
+    "all_training_losses_finite": true,
+    "minimum_member_prediction_sd": 0.052246
+  },
+  "subjects": {
+    "1": {
+      "per_finger_raw_pcc": {
+        "thumb": 0.677657,
+        "index": 0.793155,
+        "middle": 0.128041,
+        "ring": 0.588723,
+        "little": 0.373863
+      },
+      "macro5_raw_pcc": 0.51228783659916,
+      "previous_refit_macro5": 0.506,
+      "paper_macro5": 0.556
+    },
+    "2": {
+      "per_finger_raw_pcc": {
+        "thumb": 0.586561,
+        "index": 0.398876,
+        "middle": 0.336751,
+        "ring": 0.544393,
+        "little": 0.249769
+      },
+      "macro5_raw_pcc": 0.423269805221991,
+      "previous_refit_macro5": 0.415,
+      "paper_macro5": 0.408
+    },
+    "3": {
+      "per_finger_raw_pcc": {
+        "thumb": 0.72384,
+        "index": 0.340398,
+        "middle": 0.441024,
+        "ring": 0.513048,
+        "little": 0.423066
+      },
+      "macro5_raw_pcc": 0.488275242962568,
+      "previous_refit_macro5": 0.486,
+      "paper_macro5": 0.582
+    }
+  },
+  "visual_diagnosis": {
+    "S1": "Thumb and index track major events; middle remains dominated by false activity and missed movements; ring is amplitude-compressed; little is partial with rest leakage.",
+    "S2": "Ring is the clearest trajectory; thumb and index recover some events; middle is noisy and little remains weak.",
+    "S3": "Thumb is strong; index through little recover some timing but retain substantial rest activity and amplitude mismatch."
+  }
+}

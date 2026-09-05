@@ -42,7 +42,7 @@ def plot_subject_overview(
         axis.axhline(0.0, color="#cbd5e1", linewidth=0.4)
     axes[0].legend(frameon=False, ncol=2)
     axes[-1].set_xlabel("released-test time (s)")
-    figure.suptitle(f"Subject {subject}: frozen full-data ensemble")
+    figure.suptitle(f"Subject {subject}: full-development six-seed ensemble")
     figure.tight_layout()
     figure.savefig(path, dpi=170)
     plt.close(figure)
@@ -126,10 +126,12 @@ def main() -> None:
     ensemble_map = yaml.safe_load(args.ensemble_map.read_text())
     target_map = yaml.safe_load(args.target_map.read_text())
     report: dict[str, object] = {
-        "protocol": "frozen per-finger seed ensemble after all-development-data refit",
+        "protocol": "OOF-selected per-finger six-seed ensemble after full-development refit",
         "official_final_validation_incorporated_into_training": True,
         "released_test_touched": True,
-        "released_test_role": "single terminal evaluation; no post-test model selection",
+        "released_test_role": "retrospective paper-comparison evaluation",
+        "released_test_used_for_current_pipeline_selection": False,
+        "released_test_previously_inspected_during_reconstruction": True,
         "subjects": {},
     }
     args.output_root.mkdir(parents=True, exist_ok=True)
@@ -193,7 +195,7 @@ def main() -> None:
                 raw,
                 cleaned,
                 prediction,
-                f"S{subject} {finger}: frozen full-data ensemble",
+                f"S{subject} {finger}: full-development six-seed ensemble",
             )
             plot_events(
                 subject_output / f"{finger}_strongest_events.png",
