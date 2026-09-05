@@ -2,7 +2,11 @@ import numpy as np
 import torch
 from types import SimpleNamespace
 
-from scripts.train_event_grouped_lars_e2e_nested import batch_loss, event_grouped_cv_splits
+from scripts.train_event_grouped_lars_e2e_nested import (
+    batch_loss,
+    event_grouped_cv_splits,
+    fit_or_load_inner_lars,
+)
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
 from scripts.summarize_event_lars_lstm_cv import morphology_metrics
 
@@ -47,3 +51,21 @@ def test_hurdle_likelihood_backpropagates_through_both_heads() -> None:
     assert torch.isfinite(loss)
     assert state_logit.grad is not None
     assert amplitude.grad is not None
+
+
+def test_null_lars_uses_training_only_ridge_fallback(tmp_path) -> None:
+    rng = np.random.default_rng(4)
+    features = rng.normal(size=(36, 8)).astype(np.float32)
+    target = np.zeros(36, dtype=np.float32)
+    intervals = [[0, 12], [12, 24], [24, 36]]
+
+    saved = fit_or_load_inner_lars(
+        features_all=features,
+        target_all=target,
+        training_intervals=intervals,
+        cache=tmp_path / "selection.npz",
+        max_features=8,
+    )
+
+    assert saved["selection_method"] == "ridge_fallback_after_null_lars"
+    assert len(saved["selected_source"]) == 8

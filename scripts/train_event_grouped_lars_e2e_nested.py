@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.nn import functional as F
-from sklearn.linear_model import LassoLarsCV
+from sklearn.linear_model import LassoLarsCV, RidgeCV
 from sklearn.preprocessing import StandardScaler
 
 from ecog_decoding.training import FINGER_NAMES, joint_trajectory_loss
@@ -100,7 +100,7 @@ def fit_or_load_inner_lars(
     training_intervals: list[list[int]],
     cache: Path,
     max_features: int,
-) -> dict[str, np.ndarray | float]:
+) -> dict[str, np.ndarray | float | str]:
     cache.parent.mkdir(parents=True, exist_ok=True)
     with cache.with_suffix(".lock").open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
@@ -115,19 +115,48 @@ def fit_or_load_inner_lars(
             ).astype(np.float64, copy=False)
             splits = event_grouped_cv_splits(training_intervals, training_indices)
             lars = LassoLarsCV(cv=splits, max_iter=500, n_jobs=1)
-            lars.fit(selected_training, target_all[training_indices])
-            nonzero = np.flatnonzero(lars.coef_)
+            try:
+                lars.fit(selected_training, target_all[training_indices])
+                nonzero = np.flatnonzero(lars.coef_)
+            except ValueError as error:
+                if "empty sequence" not in str(error):
+                    raise
+                nonzero = np.empty(0, dtype=np.int64)
             if nonzero.size == 0:
-                raise RuntimeError("inner event-grouped LARS selected no features")
+                # A strict purged subfold can legitimately prefer the null
+                # LASSO. Keep the fold evaluable with a conservative dense
+                # ridge initializer fitted only on the same training rows.
+                fallback_count = min(64, prescreen.size)
+                fallback = np.arange(fallback_count, dtype=np.int64)
+                ridge = RidgeCV(
+                    alphas=np.logspace(-2, 4, 13),
+                    cv=splits,
+                    scoring="neg_mean_squared_error",
+                )
+                ridge.fit(
+                    selected_training[:, fallback], target_all[training_indices]
+                )
+                selected_nonzero = fallback
+                coefficients = np.asarray(ridge.coef_, dtype=np.float32)
+                intercept = float(ridge.intercept_)
+                alpha = float(ridge.alpha_)
+                selection_method = "ridge_fallback_after_null_lars"
+            else:
+                selected_nonzero = nonzero
+                coefficients = lars.coef_[nonzero].astype(np.float32)
+                intercept = float(lars.intercept_)
+                alpha = float(lars.alpha_)
+                selection_method = "lasso_lars_cv"
             temporary = cache.with_suffix(".tmp.npz")
             np.savez(
                 temporary,
-                selected_source=prescreen[nonzero],
-                feature_mean=scaler.mean_[nonzero].astype(np.float32),
-                feature_scale=scaler.scale_[nonzero].astype(np.float32),
-                coefficients=lars.coef_[nonzero].astype(np.float32),
-                intercept=np.asarray(float(lars.intercept_)),
-                alpha=np.asarray(float(lars.alpha_)),
+                selected_source=prescreen[selected_nonzero],
+                feature_mean=scaler.mean_[selected_nonzero].astype(np.float32),
+                feature_scale=scaler.scale_[selected_nonzero].astype(np.float32),
+                coefficients=coefficients,
+                intercept=np.asarray(intercept),
+                alpha=np.asarray(alpha),
+                selection_method=np.asarray(selection_method),
             )
             temporary.replace(cache)
         saved = np.load(cache)
@@ -138,6 +167,11 @@ def fit_or_load_inner_lars(
             "coefficients": saved["coefficients"],
             "intercept": float(saved["intercept"]),
             "alpha": float(saved["alpha"]),
+            "selection_method": (
+                str(saved["selection_method"])
+                if "selection_method" in saved
+                else "lasso_lars_cv"
+            ),
         }
 
 
@@ -744,6 +778,7 @@ def main() -> None:
                 "best_validation_raw_pcc": best_score,
                 "lars_feature_count": int(inner_selected.size),
                 "lars_alpha": float(inner_selection["alpha"]),
+                "linear_initializer": str(inner_selection["selection_method"]),
                 "history": history,
             }
         )
