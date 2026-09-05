@@ -16,7 +16,9 @@ import numpy as np
 from ecog_decoding.training import FINGER_NAMES
 
 
-def score_matrix(report: dict[str, object]) -> np.ndarray:
+def score_matrix(
+    report: dict[str, object], subjects: tuple[int, ...]
+) -> np.ndarray:
     return np.asarray(
         [
             [
@@ -25,7 +27,7 @@ def score_matrix(report: dict[str, object]) -> np.ndarray:
                 ]
                 for finger in FINGER_NAMES
             ]
-            for subject in (1, 2, 3)
+            for subject in subjects
         ],
         dtype=np.float64,
     )
@@ -57,8 +59,21 @@ def main() -> None:
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
 
-    baseline = score_matrix(json.loads(args.baseline_summary.read_text()))
-    candidate = score_matrix(json.loads(args.candidate_summary.read_text()))
+    baseline_report = json.loads(args.baseline_summary.read_text())
+    candidate_report = json.loads(args.candidate_summary.read_text())
+    subjects = tuple(
+        sorted(
+            int(subject)
+            for subject in (
+                set(baseline_report["subjects"])
+                & set(candidate_report["subjects"])
+            )
+        )
+    )
+    if not subjects:
+        raise RuntimeError("summaries have no subjects in common")
+    baseline = score_matrix(baseline_report, subjects)
+    candidate = score_matrix(candidate_report, subjects)
     delta = candidate - baseline
     args.output_root.mkdir(parents=True, exist_ok=True)
 
@@ -78,13 +93,14 @@ def main() -> None:
     figure.colorbar(image, ax=axes[2], shrink=0.78, label="PCC difference")
     for axis in axes:
         axis.set_xticks(range(5), FINGER_NAMES, rotation=35, ha="right")
-        axis.set_yticks(range(3), ("S1", "S2", "S3"))
+        axis.set_yticks(range(len(subjects)), [f"S{subject}" for subject in subjects])
     figure.savefig(args.output_root / "matched_pcc_comparison.png", dpi=180)
     plt.close(figure)
 
     report = {
         "baseline_label": args.baseline_label,
         "candidate_label": args.candidate_label,
+        "subjects": list(subjects),
         "baseline": baseline.tolist(),
         "candidate": candidate.tolist(),
         "delta": delta.tolist(),
