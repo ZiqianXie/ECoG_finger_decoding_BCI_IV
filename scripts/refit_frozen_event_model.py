@@ -54,12 +54,16 @@ def resolve_options(
 
 
 def frozen_epoch(
-    source_root: Path, subject: int, finger: str, reference_seeds: tuple[int, ...]
-) -> tuple[int, dict[str, list[int]]]:
-    """Choose one epoch count shared by every random-initialization member."""
+    source_root: Path,
+    subject: int,
+    finger: str,
+    seed: int,
+    reference_seeds: tuple[int, ...],
+) -> tuple[int, dict[str, list[int]], str]:
+    """Reuse a seed's OOF duration when available, otherwise use the pooled rule."""
     epochs_by_seed: dict[str, list[int]] = {}
     pooled_epochs: list[int] = []
-    for seed in reference_seeds:
+    for reference_seed in reference_seeds:
         seed_epochs = []
         for fold in range(3):
             path = (
@@ -67,13 +71,24 @@ def frozen_epoch(
                 / f"sub{subject}"
                 / finger
                 / f"fold{fold}"
-                / f"seed{seed}"
+                / f"seed{reference_seed}"
                 / "summary.json"
             )
             seed_epochs.append(int(json.loads(path.read_text())["selected_epoch"]))
-        epochs_by_seed[str(seed)] = seed_epochs
+        epochs_by_seed[str(reference_seed)] = seed_epochs
         pooled_epochs.extend(seed_epochs)
-    return int(np.rint(np.median(pooled_epochs))), epochs_by_seed
+    direct_epochs = epochs_by_seed.get(str(seed))
+    if direct_epochs is not None:
+        return (
+            int(np.rint(np.median(direct_epochs))),
+            epochs_by_seed,
+            "rounded median of this seed's three outer-fold selected epochs",
+        )
+    return (
+        int(np.rint(np.median(pooled_epochs))),
+        epochs_by_seed,
+        "rounded pooled median across outer folds and reference seeds",
+    )
 
 
 def lars_chunks(row_count: int, count: int = 12) -> list[list[int]]:
@@ -176,10 +191,11 @@ def main() -> None:
     options = resolve_options(ensemble_map, args.subject, args.finger)
     if args.seed not in options["seeds"]:
         raise ValueError(f"seed {args.seed} is not frozen for S{args.subject} {args.finger}")
-    selected_epoch, outer_epochs = frozen_epoch(
+    selected_epoch, outer_epochs, epoch_rule = frozen_epoch(
         options["input_root"],
         args.subject,
         args.finger,
+        args.seed,
         options["epoch_reference_seeds"],
     )
     if args.epoch_override is not None:
@@ -282,6 +298,7 @@ def main() -> None:
             "feature_indices": selected,
             "selected_epoch": selected_epoch,
             "outer_fold_selected_epochs_by_reference_seed": outer_epochs,
+            "epoch_rule": epoch_rule,
         },
         output / "model.pt",
     )
@@ -299,7 +316,7 @@ def main() -> None:
         "epoch_rule": (
             "explicit diagnostic override"
             if args.epoch_override is not None
-            else "rounded pooled median across outer folds and reference seeds"
+            else epoch_rule
         ),
         "target_policy_selected_in_oof": target_policy,
         "full_refit_target_policy": full_target_policy,

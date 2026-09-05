@@ -23,13 +23,27 @@ def test_lars_chunks_cover_every_row_once() -> None:
     assert np.array_equal(indices, np.arange(9976))
 
 
-def test_frozen_epoch_uses_one_pooled_median_for_all_members(tmp_path) -> None:
+def test_frozen_epoch_reuses_reference_seed_median(tmp_path) -> None:
     expected = {"0": [3, 11, 7], "1": [5, 13, 9]}
     for seed, epochs in expected.items():
         for fold, epoch in enumerate(epochs):
             path = tmp_path / "sub1" / "ring" / f"fold{fold}" / f"seed{seed}"
             path.mkdir(parents=True)
             (path / "summary.json").write_text(json.dumps({"selected_epoch": epoch}))
-    selected, values = frozen_epoch(tmp_path, 1, "ring", (0, 1))
+    selected, values, rule = frozen_epoch(tmp_path, 1, "ring", 0, (0, 1))
+    assert values == expected
+    assert selected == 7
+    assert "this seed" in rule
+
+
+def test_frozen_epoch_uses_pooled_median_for_new_seed(tmp_path) -> None:
+    expected = {"0": [3, 11, 7], "1": [5, 13, 9]}
+    for seed, epochs in expected.items():
+        for fold, epoch in enumerate(epochs):
+            path = tmp_path / "sub1" / "ring" / f"fold{fold}" / f"seed{seed}"
+            path.mkdir(parents=True)
+            (path / "summary.json").write_text(json.dumps({"selected_epoch": epoch}))
+    selected, values, rule = frozen_epoch(tmp_path, 1, "ring", 2, (0, 1))
     assert values == expected
     assert selected == 8
+    assert "pooled median" in rule

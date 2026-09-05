@@ -1,6 +1,7 @@
-# Candidate families and the common epoch count were selected from the
+# Candidate families and training duration were selected from the
 # full-development event-grouped OOF grids. Released-test labels were not used
-# for these choices. The six ensemble members differ only in random seed.
+# for these choices. Seeds 0 and 1 retain their seed-specific OOF duration;
+# seeds 2 through 5 use the pooled OOF duration from those reference seeds.
 default:
   input_root: outputs/event_lars_e2e_fulldev_seq50_v1
   seeds: [0, 1, 2, 3, 4, 5]
