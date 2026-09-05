@@ -73,9 +73,12 @@ def main() -> None:
     parser.add_argument("--sequence-steps", type=int, default=50)
     parser.add_argument("--sequence-stride", type=int, default=25)
     parser.add_argument("--prediction-chunk-steps", type=int, default=512)
-    parser.add_argument("--loss", choices=("mse", "joint"), default="mse")
+    parser.add_argument(
+        "--loss", choices=("mse", "joint", "velocity_huber"), default="mse"
+    )
     parser.add_argument("--movement-weight", type=float, default=4.0)
     parser.add_argument("--velocity-weight", type=float, default=0.2)
+    parser.add_argument("--velocity-huber-beta", type=float, default=1.0)
     parser.add_argument("--correlation-weight", type=float, default=0.1)
     parser.add_argument(
         "--output-activation",
@@ -136,6 +139,7 @@ def main() -> None:
                         "--loss", args.loss,
                         "--movement-weight", str(args.movement_weight),
                         "--velocity-weight", str(args.velocity_weight),
+                        "--velocity-huber-beta", str(args.velocity_huber_beta),
                         "--correlation-weight", str(args.correlation_weight),
                         "--output-activation", args.output_activation,
                         "--output-root", str(args.output_root),

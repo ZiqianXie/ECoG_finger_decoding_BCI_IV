@@ -1,0 +1,40 @@
+experiment: trajectory_loss_pilot_v1
+purpose: >-
+  Test whether explicitly fitting movement dynamics improves trajectory shape
+  without sacrificing held-out correlation.
+protocol:
+  scope: full-development
+  folds: outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
+  target_map: configs/targetsafe_conservative_targets.yaml
+  released_test_touched: false
+  sequence_steps: 100
+  seed: 0
+cases:
+  - {subject: 1, finger: ring, motivation: known weak morphology}
+  - {subject: 2, finger: index, motivation: finger-attribution diagnostic}
+  - {subject: 3, finger: thumb, motivation: stronger reference case}
+arms:
+  baseline:
+    loss: mse
+    output_root: outputs/event_lars_e2e_fulldev_seq100_v1
+  position_velocity_huber:
+    loss: velocity_huber
+    level_scale: training-fold moving-target p95
+    velocity_scale: training-fold absolute-velocity p90
+    velocity_weight: 0.25
+    huber_beta: 1.0
+    output_root: outputs/event_lars_e2e_fulldev_loss_velocity_huber_pilot_v2
+  broad_joint_diagnostic:
+    loss: joint
+    movement_weight: 4.0
+    velocity_weight: 0.2
+    correlation_weight: 0.1
+    output_root: outputs/event_lars_e2e_fulldev_loss_joint_pilot_v1
+decision_metrics:
+  - raw-target PCC
+  - cleaned-target PCC
+  - velocity PCC
+  - movement-state F1
+  - rest RMS
+  - event peak ratio
+  - trajectory plots

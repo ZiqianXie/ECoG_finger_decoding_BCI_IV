@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from ecog_decoding.training import position_velocity_huber_loss
 from scripts.train_event_grouped_lars_e2e_nested import (
     batch_loss,
     build_model,
@@ -85,6 +86,33 @@ def test_hurdle_likelihood_backpropagates_through_both_heads() -> None:
     assert torch.isfinite(loss)
     assert state_logit.grad is not None
     assert amplitude.grad is not None
+
+
+def test_position_velocity_huber_rewards_matching_motion() -> None:
+    target = torch.tensor([[0.0, 0.2, 0.7, 0.2]], dtype=torch.float32)
+    exact, parts = position_velocity_huber_loss(
+        target,
+        target,
+        level_scale=torch.tensor(0.7),
+        velocity_scale=torch.tensor(0.5),
+    )
+    flat, _ = position_velocity_huber_loss(
+        torch.zeros_like(target),
+        target,
+        level_scale=torch.tensor(0.7),
+        velocity_scale=torch.tensor(0.5),
+    )
+
+    assert exact.item() == 0.0
+    assert parts["velocity"].item() == 0.0
+    assert flat > exact
+    _, flat_parts = position_velocity_huber_loss(
+        torch.zeros_like(target),
+        target,
+        level_scale=torch.tensor(0.7),
+        velocity_scale=torch.tensor(0.5),
+    )
+    assert flat_parts["velocity"] > 0
 
 
 def test_null_lars_uses_training_only_ridge_fallback(tmp_path) -> None:

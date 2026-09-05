@@ -27,7 +27,11 @@ from torch.nn import functional as F
 from sklearn.linear_model import LassoLarsCV, RidgeCV
 from sklearn.preprocessing import StandardScaler
 
-from ecog_decoding.training import FINGER_NAMES, joint_trajectory_loss
+from ecog_decoding.training import (
+    FINGER_NAMES,
+    joint_trajectory_loss,
+    position_velocity_huber_loss,
+)
 from train_event_grouped_lars_lstm import (
     TARGETS,
     correlation_order,
@@ -240,6 +244,7 @@ def batch_loss(
     args: argparse.Namespace,
     amplitude_scale: torch.Tensor,
     positive_weight: torch.Tensor,
+    velocity_scale: torch.Tensor | None = None,
 ) -> torch.Tensor:
     if isinstance(decoded, tuple):
         _, state_logit, amplitude = decoded
@@ -262,6 +267,18 @@ def batch_loss(
     prediction = decoded
     if args.loss == "mse":
         return (prediction - observed).square().mean()
+    if args.loss == "velocity_huber":
+        if velocity_scale is None:
+            raise ValueError("velocity_huber requires a training-fold velocity scale")
+        loss, _ = position_velocity_huber_loss(
+            prediction,
+            observed,
+            level_scale=amplitude_scale,
+            velocity_scale=velocity_scale,
+            velocity_weight=args.velocity_weight,
+            beta=args.velocity_huber_beta,
+        )
+        return loss
     loss, _ = joint_trajectory_loss(
         prediction.unsqueeze(-1),
         observed.unsqueeze(-1),
@@ -349,6 +366,7 @@ def train_one_epoch(
     rng: np.random.Generator,
     amplitude_scale: torch.Tensor,
     positive_weight: torch.Tensor,
+    velocity_scale: torch.Tensor,
 ) -> float:
     model.train()
     offsets = torch.arange(args.sequence_steps, device=target.device)
@@ -363,7 +381,12 @@ def train_one_epoch(
             else decode(cached_features[indices])
         )
         loss = batch_loss(
-            decoded, target[indices], args, amplitude_scale, positive_weight
+            decoded,
+            target[indices],
+            args,
+            amplitude_scale,
+            positive_weight,
+            velocity_scale,
         )
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -386,11 +409,11 @@ def compiled_calls(
     )
 
 
-def hurdle_training_constants(
+def training_loss_constants(
     target: torch.Tensor,
     training_intervals: list[list[int]],
     movement_threshold: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     indices = torch.as_tensor(
         indices_from_intervals(training_intervals), device=target.device
     )
@@ -402,7 +425,22 @@ def hurdle_training_constants(
         amplitude_scale = values.new_tensor(1.0)
     # Keep this a calibrated likelihood rather than a class-balanced surrogate.
     positive_weight = values.new_tensor(1.0)
-    return amplitude_scale.detach(), positive_weight.detach()
+    velocity_parts = [
+        torch.diff(target[start:stop])
+        for start, stop in training_intervals
+        if stop - start > 1
+    ]
+    if velocity_parts:
+        velocity_scale = torch.quantile(
+            torch.abs(torch.cat(velocity_parts)), 0.90
+        ).clamp_min(1.0e-3)
+    else:
+        velocity_scale = values.new_tensor(1.0)
+    return (
+        amplitude_scale.detach(),
+        positive_weight.detach(),
+        velocity_scale.detach(),
+    )
 
 
 def hurdle_validation_nll(
@@ -439,7 +477,7 @@ def train_with_validation(
         model, args.learning_rate, args.gate_learning_rate, args.weight_decay
     )
     forward, decode = compiled_calls(model, args.compile)
-    amplitude_scale, positive_weight = hurdle_training_constants(
+    amplitude_scale, positive_weight, velocity_scale = training_loss_constants(
         target, training_intervals, args.movement_threshold
     )
     starts = starts_from_intervals(
@@ -499,6 +537,7 @@ def train_with_validation(
             rng=rng,
             amplitude_scale=amplitude_scale,
             positive_weight=positive_weight,
+            velocity_scale=velocity_scale,
         )
         if (
             epoch == 1
@@ -560,7 +599,7 @@ def train_fixed_epochs(
         model, args.learning_rate, args.gate_learning_rate, args.weight_decay
     )
     forward, decode = compiled_calls(model, args.compile)
-    amplitude_scale, positive_weight = hurdle_training_constants(
+    amplitude_scale, positive_weight, velocity_scale = training_loss_constants(
         target, training_intervals, args.movement_threshold
     )
     starts = starts_from_intervals(
@@ -588,6 +627,7 @@ def train_fixed_epochs(
                 rng=rng,
                 amplitude_scale=amplitude_scale,
                 positive_weight=positive_weight,
+                velocity_scale=velocity_scale,
             )
         )
     return losses
@@ -709,10 +749,13 @@ def main() -> None:
         choices=("linear", "softplus", "hurdle"),
         default="linear",
     )
-    parser.add_argument("--loss", choices=("mse", "joint"), default="mse")
+    parser.add_argument(
+        "--loss", choices=("mse", "joint", "velocity_huber"), default="mse"
+    )
     parser.add_argument("--movement-threshold", type=float, default=0.08)
     parser.add_argument("--movement-weight", type=float, default=4.0)
     parser.add_argument("--velocity-weight", type=float, default=0.2)
+    parser.add_argument("--velocity-huber-beta", type=float, default=1.0)
     parser.add_argument("--correlation-weight", type=float, default=0.1)
     parser.add_argument("--prediction-chunk-steps", type=int, default=512)
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
@@ -1005,6 +1048,10 @@ def main() -> None:
             "spatial_learning_rate": args.spatial_learning_rate,
             "wavelet_learning_rate": args.wavelet_learning_rate,
             "loss": args.loss,
+            "movement_weight": args.movement_weight,
+            "velocity_weight": args.velocity_weight,
+            "correlation_weight": args.correlation_weight,
+            "velocity_huber_beta": args.velocity_huber_beta,
             "output_activation": args.output_activation,
             "target": target_name,
             "frontend": args.frontend,

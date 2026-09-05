@@ -100,6 +100,37 @@ def joint_trajectory_loss(
     }
 
 
+def position_velocity_huber_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    level_scale: torch.Tensor,
+    velocity_scale: torch.Tensor,
+    velocity_weight: float = 0.25,
+    beta: float = 1.0,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Robust, scale-normalized trajectory and velocity objective."""
+    if prediction.shape != target.shape:
+        raise ValueError("prediction and target must have matching shapes")
+    level_residual = (prediction - target) / level_scale.clamp_min(1.0e-6)
+    level = F.smooth_l1_loss(
+        level_residual, torch.zeros_like(level_residual), beta=beta
+    )
+    # Decoder batches are (batch, time); retain the same time axis for an
+    # optional trailing finger dimension.
+    time_axis = 0 if prediction.ndim == 1 else 1
+    if prediction.shape[time_axis] > 1:
+        velocity_residual = (
+            torch.diff(prediction, dim=time_axis) - torch.diff(target, dim=time_axis)
+        ) / velocity_scale.clamp_min(1.0e-6)
+        velocity = F.smooth_l1_loss(
+            velocity_residual, torch.zeros_like(velocity_residual), beta=beta
+        )
+    else:
+        velocity = prediction.new_zeros(())
+    total = level + velocity_weight * velocity
+    return total, {"level": level.detach(), "velocity": velocity.detach()}
+
+
 def trajectory_metrics(prediction: np.ndarray, target: np.ndarray) -> dict[str, object]:
     """Return per-finger and aggregate Pearson correlations plus RMSE."""
     prediction = np.asarray(prediction, dtype=np.float64)
