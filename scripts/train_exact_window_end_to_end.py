@@ -193,6 +193,13 @@ class ExactWindowFingerDecoder(nn.Module):
             self.movement_head.weight.normal_(0.0, near_zero_std)
             self.movement_head.bias.fill_(5.0)
 
+    @torch.no_grad()
+    def initialize_movement_prior(self, movement_fraction: float) -> None:
+        if self.output_activation != "hurdle":
+            raise RuntimeError("movement prior requires hurdle output activation")
+        probability = float(np.clip(movement_fraction, 1.0e-4, 1.0 - 1.0e-4))
+        self.movement_head.bias.fill_(np.log(probability / (1.0 - probability)))
+
     def decode_with_hurdle(
         self, features: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

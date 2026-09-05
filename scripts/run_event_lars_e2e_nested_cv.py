@@ -53,6 +53,7 @@ def main() -> None:
     parser.add_argument("--warmup-epochs", type=int, default=6)
     parser.add_argument("--max-epochs", type=int, default=24)
     parser.add_argument("--learning-rate", type=float, default=3.0e-5)
+    parser.add_argument("--gate-learning-rate", type=float, default=1.0e-3)
     parser.add_argument("--spatial-learning-rate", type=float, default=1.0e-6)
     parser.add_argument("--wavelet-learning-rate", type=float, default=1.0e-6)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -101,6 +102,7 @@ def main() -> None:
                         "--warmup-epochs", str(args.warmup_epochs),
                         "--max-epochs", str(args.max_epochs),
                         "--learning-rate", str(args.learning_rate),
+                        "--gate-learning-rate", str(args.gate_learning_rate),
                         "--spatial-learning-rate", str(args.spatial_learning_rate),
                         "--wavelet-learning-rate", str(args.wavelet_learning_rate),
                         "--batch-size", str(args.batch_size),

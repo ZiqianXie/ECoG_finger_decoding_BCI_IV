@@ -66,6 +66,24 @@ def test_hurdle_output_is_gate_times_positive_amplitude() -> None:
     assert model.movement_head.weight.grad is not None
 
 
+def test_hurdle_gate_accepts_training_fold_prior() -> None:
+    model = ExactWindowFingerDecoder(
+        input_channels=2,
+        component_count=2,
+        selected_indices=np.arange(3),
+        feature_mean=np.zeros(3, dtype=np.float32),
+        feature_scale=np.ones(3, dtype=np.float32),
+        hidden_size=4,
+        output_activation="hurdle",
+    )
+    model.initialize_movement_prior(0.25)
+    _, state_logit, _ = model.decode_with_hurdle(torch.zeros(1, 2, 3))
+
+    torch.testing.assert_close(
+        torch.sigmoid(state_logit), torch.full_like(state_logit, 0.25), atol=1.0e-3, rtol=0
+    )
+
+
 def test_gpu_unfold_matches_numpy_stride_windows() -> None:
     recording = np.arange(40, dtype=np.float32).reshape(20, 2)
     expected = make_windows(recording, window_samples=5, stride_samples=2)

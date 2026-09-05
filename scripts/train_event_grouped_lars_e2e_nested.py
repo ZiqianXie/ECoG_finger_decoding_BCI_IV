@@ -44,6 +44,7 @@ def build_model(
     mean: np.ndarray, scale: np.ndarray, coefficients: np.ndarray,
     intercept: float, hidden_size: int, near_zero_std: float,
     output_activation: str, device: torch.device,
+    movement_fraction: float | None = None,
 ) -> ExactWindowFingerDecoder:
     model = ExactWindowFingerDecoder(
         input_channels=input_channels,
@@ -61,6 +62,10 @@ def build_model(
         model.initialize_lars_linear_regime(
             coefficients, intercept, near_zero_std=near_zero_std
         )
+        if output_activation == "hurdle":
+            if movement_fraction is None:
+                raise ValueError("hurdle model requires a training-fold movement fraction")
+            model.initialize_movement_prior(movement_fraction)
     return model
 
 
@@ -182,20 +187,22 @@ def trainable_parameters(model: ExactWindowFingerDecoder) -> list[torch.nn.Param
 def make_optimizer(
     model: ExactWindowFingerDecoder,
     head_learning_rate: float,
+    gate_learning_rate: float,
     weight_decay: float,
 ) -> torch.optim.Optimizer:
     head_parameters = list(model.lstm.parameters()) + list(model.temporal.parameters())
-    if model.output_activation == "hurdle":
-        head_parameters += list(model.movement_head.parameters())
-    return torch.optim.AdamW(
-        [
+    groups = [
             {"params": model.spatial.parameters(), "lr": 0.0},
             {"params": model.wavelet.parameters(), "lr": 0.0},
             {
                 "params": head_parameters,
                 "lr": head_learning_rate,
             },
-        ],
+        ]
+    if model.output_activation == "hurdle":
+        groups.append({"params": model.movement_head.parameters(), "lr": gate_learning_rate})
+    return torch.optim.AdamW(
+        groups,
         weight_decay=weight_decay,
     )
 
@@ -398,7 +405,9 @@ def train_with_validation(
     args: argparse.Namespace,
     seed: int,
 ) -> tuple[int, float, list[dict[str, object]]]:
-    optimizer = make_optimizer(model, args.learning_rate, args.weight_decay)
+    optimizer = make_optimizer(
+        model, args.learning_rate, args.gate_learning_rate, args.weight_decay
+    )
     forward, decode = compiled_calls(model, args.compile)
     amplitude_scale, positive_weight = hurdle_training_constants(
         target, training_intervals, args.movement_threshold
@@ -475,7 +484,9 @@ def train_fixed_epochs(
 ) -> list[float]:
     if epochs <= 0:
         return []
-    optimizer = make_optimizer(model, args.learning_rate, args.weight_decay)
+    optimizer = make_optimizer(
+        model, args.learning_rate, args.gate_learning_rate, args.weight_decay
+    )
     forward, decode = compiled_calls(model, args.compile)
     amplitude_scale, positive_weight = hurdle_training_constants(
         target, training_intervals, args.movement_threshold
@@ -608,6 +619,7 @@ def main() -> None:
     parser.add_argument("--warmup-epochs", type=int, default=4)
     parser.add_argument("--max-epochs", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
+    parser.add_argument("--gate-learning-rate", type=float, default=1.0e-3)
     parser.add_argument("--spatial-learning-rate", type=float, default=1.0e-5)
     parser.add_argument("--wavelet-learning-rate", type=float, default=1.0e-5)
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
@@ -707,6 +719,9 @@ def main() -> None:
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
         output_activation=args.output_activation, device=device,
+        movement_fraction=float(
+            np.mean(target_all[outer_training_mask] >= args.movement_threshold)
+        ),
     )
     audit_indices = torch.linspace(
         0, row_count - 1, steps=min(row_count, 64), device=device
@@ -762,6 +777,9 @@ def main() -> None:
             hidden_size=args.hidden_size,
             near_zero_std=args.near_zero_std,
             output_activation=args.output_activation, device=device,
+            movement_fraction=float(
+                np.mean(target_all[training_mask] >= args.movement_threshold)
+            ),
         )
         best_epoch, best_score, history = train_with_validation(
             model=model, cached_features=inner_cached_features, raw_windows=raw_windows,
@@ -793,6 +811,9 @@ def main() -> None:
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
         output_activation=args.output_activation, device=device,
+        movement_fraction=float(
+            np.mean(target_all[outer_training_mask] >= args.movement_threshold)
+        ),
     )
     outer_order, initialized = predict_intervals(
         final_model, cached_features, raw_windows, outer_validation_intervals,
@@ -886,6 +907,7 @@ def main() -> None:
             "warmup_epochs": args.warmup_epochs,
             "max_epochs": args.max_epochs,
             "learning_rate": args.learning_rate,
+            "gate_learning_rate": args.gate_learning_rate,
             "spatial_learning_rate": args.spatial_learning_rate,
             "wavelet_learning_rate": args.wavelet_learning_rate,
             "loss": args.loss,
