@@ -17,7 +17,95 @@ from ecog_decoding.training import FINGER_NAMES
 
 
 def pearson(x: np.ndarray, y: np.ndarray) -> float:
-    return float(np.corrcoef(np.asarray(x), np.asarray(y))[0, 1])
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    x = x - x.mean()
+    y = y - y.mean()
+    denominator = float(np.linalg.norm(x) * np.linalg.norm(y))
+    return float(x @ y / denominator) if denominator > 0 else 0.0
+
+
+def concordance(x: np.ndarray, y: np.ndarray) -> float:
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    covariance = float(np.mean((x - x.mean()) * (y - y.mean())))
+    denominator = float(x.var() + y.var() + (x.mean() - y.mean()) ** 2)
+    return 2.0 * covariance / denominator if denominator > 0 else 0.0
+
+
+def binary_f1(predicted: np.ndarray, observed: np.ndarray) -> float:
+    true_positive = int(np.sum(predicted & observed))
+    false_positive = int(np.sum(predicted & ~observed))
+    false_negative = int(np.sum(~predicted & observed))
+    denominator = 2 * true_positive + false_positive + false_negative
+    return 2.0 * true_positive / denominator if denominator else 0.0
+
+
+def morphology_metrics(
+    prediction: np.ndarray,
+    target: np.ndarray,
+    groups: list[dict[str, int]],
+    movement_threshold: float = 0.08,
+    rest_threshold: float = 0.04,
+) -> dict[str, float]:
+    moving = target >= movement_threshold
+    resting = target <= rest_threshold
+    same_group = np.zeros(target.size - 1, dtype=bool)
+    for group in groups:
+        start, stop = int(group["start"]), int(group["stop"])
+        same_group[start : max(start, stop - 1)] = True
+    target_velocity = np.diff(target)[same_group]
+    predicted_velocity = np.diff(prediction)[same_group]
+    event_ratios: list[float] = []
+    for group in groups:
+        start, stop = int(group["start"]), int(group["stop"])
+        target_amplitude = float(np.max(target[start:stop]))
+        if target_amplitude >= movement_threshold:
+            event_ratios.append(
+                float(np.max(prediction[start:stop])) / max(target_amplitude, 1.0e-8)
+            )
+    return {
+        "cleaned_pcc": pearson(prediction, target),
+        "cleaned_ccc": concordance(prediction, target),
+        "rmse": float(np.sqrt(np.mean(np.square(prediction - target)))),
+        "movement_rmse": float(np.sqrt(np.mean(np.square(prediction[moving] - target[moving])))),
+        "rest_rms": float(np.sqrt(np.mean(np.square(prediction[resting])))),
+        "movement_state_f1": binary_f1(prediction >= movement_threshold, moving),
+        "velocity_pcc": pearson(predicted_velocity, target_velocity),
+        "prediction_to_target_sd_ratio": float(np.std(prediction)) / max(float(np.std(target)), 1.0e-8),
+        "negative_prediction_fraction": float(np.mean(prediction < 0.0)),
+        "median_event_peak_ratio": float(np.median(event_ratios)),
+    }
+
+
+def plot_event_windows(
+    path: Path,
+    groups: list[dict[str, int]],
+    target: np.ndarray,
+    prediction: np.ndarray,
+    title: str,
+) -> None:
+    selected = sorted(
+        groups,
+        key=lambda group: float(
+            np.max(target[int(group["start"]):int(group["stop"])])
+        ),
+        reverse=True,
+    )[:12]
+    figure, axes = plt.subplots(4, 3, figsize=(14, 10))
+    for axis, group in zip(axes.flat, selected):
+        start, stop = int(group["start"]), int(group["stop"])
+        time = np.arange(start, stop) / 25.0
+        axis.plot(time, target[start:stop], color="black", linewidth=0.9, label="target")
+        axis.plot(time, prediction[start:stop], color="#2563eb", linewidth=0.9, label="OOF")
+        axis.set_title(f"{start / 25:.1f}-{stop / 25:.1f} s", fontsize=9)
+    for axis in axes.flat[len(selected):]:
+        axis.set_visible(False)
+    axes.flat[0].legend(frameon=False, ncol=2, fontsize=8)
+    figure.suptitle(title)
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
 
 
 def main() -> None:
@@ -76,22 +164,48 @@ def main() -> None:
                 not np.isfinite(values).all() for values in seed_predictions.values()
             ):
                 raise RuntimeError(f"incomplete OOF coverage for S{subject} {finger}")
-            ensemble = np.mean(np.stack(list(seed_predictions.values())), axis=0)
             seed_scores = {
                 str(seed): pearson(values, raw)
                 for seed, values in seed_predictions.items()
             }
+            target_std = max(float(np.std(cleaned)), 1.0e-8)
+            collapsed_seeds = [
+                seed
+                for seed, values in seed_predictions.items()
+                if not np.isfinite(values).all()
+                or float(np.std(values)) < max(1.0e-4, 0.05 * target_std)
+            ]
+            included_seeds = [seed for seed in args.seeds if seed not in collapsed_seeds]
+            if not included_seeds:
+                included_seeds = list(args.seeds)
+            ensemble = np.mean(
+                np.stack([seed_predictions[seed] for seed in included_seeds]), axis=0
+            )
             ensemble_score = pearson(ensemble, raw)
             ensemble_cleaned_score = pearson(ensemble, cleaned)
             seed_sd = float(np.std(list(seed_scores.values()), ddof=1)) if len(seed_scores) > 1 else 0.0
             subject_report["per_finger"][finger] = {
                 "seed_oof_pcc": seed_scores,
                 "seed_sd": seed_sd,
+                "included_seeds": included_seeds,
+                "collapsed_seeds": collapsed_seeds,
                 "ensemble_oof_pcc": ensemble_score,
                 "ensemble_cleaned_target_oof_pcc": ensemble_cleaned_score,
+                "morphology": morphology_metrics(
+                    ensemble, cleaned, definition["groups"]
+                ),
                 "fold_pcc": fold_scores,
                 "best_epochs": best_epochs,
             }
+            destination = args.input_root / f"sub{subject}"
+            destination.mkdir(parents=True, exist_ok=True)
+            plot_event_windows(
+                destination / f"{finger}_oof_event_windows.png",
+                definition["groups"],
+                cleaned,
+                ensemble,
+                f"Subject {subject} {finger}: highest-amplitude event groups",
+            )
             time = np.arange(rows) / 25.0
             axes[finger_index].plot(time, cleaned, color="black", linewidth=0.8, label="cleaned movement target")
             axes[finger_index].plot(time, ensemble, color="#2563eb", linewidth=0.8, label="OOF ensemble")
@@ -108,8 +222,6 @@ def main() -> None:
         axes[-1].set_xlabel("training-partition time (s)")
         figure.suptitle(f"Subject {subject}: purged event-fold out-of-fold ensemble")
         figure.tight_layout()
-        destination = args.input_root / f"sub{subject}"
-        destination.mkdir(parents=True, exist_ok=True)
         figure.savefig(destination / "oof_ensemble_trajectories.png", dpi=160)
         plt.close(figure)
         report["subjects"][str(subject)] = subject_report

@@ -2,6 +2,7 @@ import numpy as np
 
 from scripts.train_event_grouped_lars_e2e_nested import event_grouped_cv_splits
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
+from scripts.summarize_event_lars_lstm_cv import morphology_metrics
 
 
 def test_event_grouped_subfolds_are_disjoint_and_complete() -> None:
@@ -14,3 +15,14 @@ def test_event_grouped_subfolds_are_disjoint_and_complete() -> None:
         assert np.union1d(training, validation).size == training_indices.size
         validation_seen.extend(validation.tolist())
     assert np.array_equal(np.sort(validation_seen), np.arange(training_indices.size))
+
+
+def test_morphology_metrics_reward_matching_shape() -> None:
+    target = np.array([0.0, 0.0, 0.2, 0.7, 0.2, 0.0, 0.0], dtype=np.float32)
+    groups = [{"start": 0, "stop": target.size}]
+    exact = morphology_metrics(target, target, groups)
+    flat = morphology_metrics(np.zeros_like(target), target, groups)
+    assert exact["cleaned_ccc"] > flat["cleaned_ccc"]
+    assert exact["velocity_pcc"] > flat["velocity_pcc"]
+    assert exact["movement_state_f1"] > flat["movement_state_f1"]
+    assert exact["median_event_peak_ratio"] == 1.0
