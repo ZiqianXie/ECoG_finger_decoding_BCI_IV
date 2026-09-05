@@ -6,6 +6,7 @@ from scripts.train_event_grouped_lars_e2e_nested import (
     batch_loss,
     event_grouped_cv_splits,
     fit_or_load_inner_lars,
+    hurdle_validation_nll,
 )
 from scripts.train_event_grouped_lars_lstm import indices_from_intervals
 from scripts.summarize_event_lars_lstm_cv import morphology_metrics
@@ -69,3 +70,23 @@ def test_null_lars_uses_training_only_ridge_fallback(tmp_path) -> None:
 
     assert saved["selection_method"] == "ridge_fallback_after_null_lars"
     assert len(saved["selected_source"]) == 8
+
+
+def test_hurdle_selection_likelihood_rewards_correct_components() -> None:
+    target = np.array([0.0, 0.0, 0.4, 0.7], dtype=np.float32)
+    good = hurdle_validation_nll(
+        np.array([0.05, 0.10, 0.90, 0.95]),
+        np.array([0.2, 0.1, 0.4, 0.7]),
+        target,
+        movement_threshold=0.08,
+        amplitude_scale=0.7,
+    )
+    bad = hurdle_validation_nll(
+        np.array([0.95, 0.90, 0.10, 0.05]),
+        np.array([0.8, 0.8, 0.1, 0.1]),
+        target,
+        movement_threshold=0.08,
+        amplitude_scale=0.7,
+    )
+
+    assert good < bad

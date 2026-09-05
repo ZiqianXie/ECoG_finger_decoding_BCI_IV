@@ -400,6 +400,24 @@ def hurdle_training_constants(
     return amplitude_scale.detach(), positive_weight.detach()
 
 
+def hurdle_validation_nll(
+    probability: np.ndarray,
+    amplitude: np.ndarray,
+    target: np.ndarray,
+    movement_threshold: float,
+    amplitude_scale: float,
+) -> float:
+    moving = target >= movement_threshold
+    clipped = np.clip(probability, 1.0e-6, 1.0 - 1.0e-6)
+    state = moving.astype(np.float64)
+    state_nll = -np.mean(state * np.log(clipped) + (1.0 - state) * np.log(1.0 - clipped))
+    amplitude_nll = (
+        0.5 * np.mean(np.square((amplitude[moving] - target[moving]) / amplitude_scale))
+        if moving.any() else 0.0
+    )
+    return float(state_nll + amplitude_nll)
+
+
 def train_with_validation(
     *,
     model: ExactWindowFingerDecoder,
@@ -411,7 +429,7 @@ def train_with_validation(
     validation_intervals: list[list[int]],
     args: argparse.Namespace,
     seed: int,
-) -> tuple[int, float, list[dict[str, object]]]:
+) -> tuple[int, float, float, list[dict[str, object]]]:
     optimizer = make_optimizer(
         model, args.learning_rate, args.gate_learning_rate, args.weight_decay
     )
@@ -429,10 +447,33 @@ def train_with_validation(
         model, cached_features, raw_windows, validation_intervals, False,
         args.prediction_chunk_steps,
     )
-    best_score = pearson(initialized, raw_target[order])
+    initial_raw_pcc = pearson(initialized, raw_target[order])
+    if model.output_activation == "hurdle":
+        order, initialized, probability, amplitude = predict_hurdle_intervals(
+            model, cached_features, raw_windows, validation_intervals, False,
+            args.prediction_chunk_steps,
+        )
+        initial_nll = hurdle_validation_nll(
+            probability,
+            amplitude,
+            target[torch.as_tensor(order, device=target.device)].float().cpu().numpy(),
+            args.movement_threshold,
+            float(amplitude_scale.item()),
+        )
+        best_selection_score = -initial_nll
+    else:
+        initial_nll = None
+        best_selection_score = initial_raw_pcc
+    best_raw_pcc = initial_raw_pcc
     best_epoch = 0
     history: list[dict[str, object]] = [
-        {"epoch": 0, "validation_raw_pcc": best_score, "stage": "initialized"}
+        {
+            "epoch": 0,
+            "validation_raw_pcc": initial_raw_pcc,
+            "validation_hurdle_nll": initial_nll,
+            "selection_score": best_selection_score,
+            "stage": "initialized",
+        }
     ]
     for epoch in range(1, args.max_epochs + 1):
         use_raw = epoch > args.warmup_epochs
@@ -459,23 +500,42 @@ def train_with_validation(
             or epoch == args.warmup_epochs
             or epoch % args.validation_interval == 0
         ):
-            order, estimate = predict_intervals(
-                model, cached_features, raw_windows, validation_intervals,
-                use_raw, args.prediction_chunk_steps,
-            )
-            score = pearson(estimate, raw_target[order])
+            if model.output_activation == "hurdle":
+                order, estimate, probability, amplitude = predict_hurdle_intervals(
+                    model, cached_features, raw_windows, validation_intervals,
+                    use_raw, args.prediction_chunk_steps,
+                )
+                validation_nll = hurdle_validation_nll(
+                    probability,
+                    amplitude,
+                    target[torch.as_tensor(order, device=target.device)].float().cpu().numpy(),
+                    args.movement_threshold,
+                    float(amplitude_scale.item()),
+                )
+                selection_score = -validation_nll
+            else:
+                order, estimate = predict_intervals(
+                    model, cached_features, raw_windows, validation_intervals,
+                    use_raw, args.prediction_chunk_steps,
+                )
+                validation_nll = None
+                selection_score = pearson(estimate, raw_target[order])
+            raw_pcc = pearson(estimate, raw_target[order])
             history.append(
                 {
                     "epoch": epoch,
                     "loss": loss,
-                    "validation_raw_pcc": score,
+                    "validation_raw_pcc": raw_pcc,
+                    "validation_hurdle_nll": validation_nll,
+                    "selection_score": selection_score,
                     "stage": "end_to_end" if use_raw else "frozen_stem",
                 }
             )
-            if score > best_score + 1.0e-4:
-                best_score = score
+            if selection_score > best_selection_score + 1.0e-4:
+                best_selection_score = selection_score
+                best_raw_pcc = raw_pcc
                 best_epoch = epoch
-    return best_epoch, best_score, history
+    return best_epoch, best_raw_pcc, best_selection_score, history
 
 
 def train_fixed_epochs(
@@ -788,7 +848,7 @@ def main() -> None:
                 np.mean(target_all[training_mask] >= args.movement_threshold)
             ),
         )
-        best_epoch, best_score, history = train_with_validation(
+        best_epoch, best_score, best_selection_score, history = train_with_validation(
             model=model, cached_features=inner_cached_features, raw_windows=raw_windows,
             target=target, raw_target=raw_all,
             training_intervals=training_intervals,
@@ -801,6 +861,12 @@ def main() -> None:
                 "inner_validation_fold": inner_fold,
                 "selected_epoch": best_epoch,
                 "best_validation_raw_pcc": best_score,
+                "best_selection_score": best_selection_score,
+                "selection_metric": (
+                    "negative_hurdle_nll"
+                    if args.output_activation == "hurdle"
+                    else "raw_pcc"
+                ),
                 "lars_feature_count": int(inner_selected.size),
                 "lars_alpha": float(inner_selection["alpha"]),
                 "linear_initializer": str(inner_selection["selection_method"]),
