@@ -109,6 +109,12 @@ def command(args: argparse.Namespace, subject: int, finger: str) -> list[str]:
                 str(source),
             ]
         )
+    if args.initialization_from_root is not None:
+        source = args.initialization_from_root / f"sub{subject}" / finger
+        values.extend(["--initialization-cache-root", str(source)])
+    if args.reuse_inner_metrics_from_root is not None:
+        source = args.reuse_inner_metrics_from_root / f"sub{subject}" / finger
+        values.extend(["--reuse-inner-metrics-from", str(source)])
     if args.ica_cache_root is not None:
         values.extend(["--ica-cache-root", str(args.ica_cache_root)])
     if not args.compile:
@@ -201,6 +207,18 @@ def main() -> None:
         default=None,
         help="reuse completed split-local caches and inner curves from another run",
     )
+    parser.add_argument(
+        "--initialization-from-root",
+        type=Path,
+        default=None,
+        help="reuse only deterministic split-local target/ICA/CSP/LARS caches",
+    )
+    parser.add_argument(
+        "--reuse-inner-metrics-from-root",
+        type=Path,
+        default=None,
+        help="reuse checkpoint curves only when the recurrent model and schedule are identical",
+    )
     parser.add_argument("--head-learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--model-rate", type=int, choices=(400, 1000), default=1000)
     parser.add_argument("--tap-resample-up", type=int, default=5)
@@ -255,6 +273,14 @@ def main() -> None:
     parser.add_argument("--rerun", action="store_true")
     parser.add_argument("--queue-summary-name", default="queue_summary.json")
     args = parser.parse_args()
+
+    if args.reuse_from_root is not None and (
+        args.initialization_from_root is not None
+        or args.reuse_inner_metrics_from_root is not None
+    ):
+        parser.error(
+            "--reuse-from-root cannot be combined with the split cache-reuse options"
+        )
 
     args.output_root.mkdir(parents=True, exist_ok=True)
     (args.output_root / "logs").mkdir(parents=True, exist_ok=True)
