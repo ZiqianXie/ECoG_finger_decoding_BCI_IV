@@ -63,9 +63,15 @@ def test_final_route_and_published_artifact_cover_fifteen_single_paths() -> None
         ).read_text()
     )
     assert len(result["pairs"]) == 15
-    assert result["subjects"]["S1"]["macro_5_pcc"] > 0.556
-    assert result["subjects"]["S2"]["macro_5_pcc"] > 0.408
-    assert result["subjects"]["S3"]["macro_5_pcc"] > 0.582
+    assert result["subjects"]["S1"]["seed_macro_pcc_mean"] > 0.556
+    assert result["subjects"]["S2"]["seed_macro_pcc_mean"] > 0.408
+    assert result["subjects"]["S3"]["seed_macro_pcc_mean"] > 0.582
+    assert all(
+        subject["seed_macro_pcc_sd"] < 0.002
+        and len(subject["seed_macro_pcc_by_seed"]) == 6
+        for subject in result["subjects"].values()
+    )
+    assert result["reporting"]["primary"].startswith("mean and population")
     assert all(
         pair["configuration"]["frontend"]["leaf_count"] == 8
         and pair["configuration"]["frontend"]["auxiliary_temporal_branches"] == []

@@ -39,8 +39,9 @@ the CSP initialization bank and one of two equivalent nonlinear LSTM equation
 implementations, but every model retains the same one-spatial-bank,
 one-wavelet-tree, one-LSTM topology.
 
-The final six-seed released-test Macro-5 Pearson correlations are **0.565 for
-S1, 0.414 for S2, and 0.593 for S3**. The rounded values reported in the 2018
+Across six independent refits, the released-test Macro-5 Pearson correlations
+are **0.565 ± 0.0008 for S1, 0.414 ± 0.0011 for S2, and 0.593 ± 0.0006
+for S3** (mean ± population SD). The rounded values reported in the 2018
 paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed the
 paper's rounded aggregate results, although several individual finger
 trajectories remain weaker than their historical counterparts.
@@ -249,7 +250,7 @@ fixed LARS initialization but higher than the preceding nonlinear model. This
 release retains a trained nonlinear decoder consistently rather than changing
 the middle model to linear regression after seeing its test score.
 
-The exact ensemble roots, seeds, target policy, CSP mode, recurrent-cell choice,
+The exact checkpoint roots, seeds, target policy, CSP mode, recurrent-cell choice,
 and OOF provenance are recorded in
 [`configs/final_single_wavelet_routes.yaml`](../configs/final_single_wavelet_routes.yaml).
 All four S1 overrides preserve the same one-spatial-convolution,
@@ -261,46 +262,45 @@ Pearson correlation coefficient (PCC) is computed against the unmodified
 released glove trace, matching the competition convention. `Macro-5` is the
 unweighted mean across the five independently decoded fingers.
 
-| Subject | 2018 paper | 2026 single-tree refit |
+| Subject | 2018 paper | 2026 single-tree refits (mean ± SD) |
 |---|---:|---:|
-| S1 | 0.556 | 0.565 |
-| S2 | 0.408 | 0.414 |
-| S3 | 0.582 | 0.593 |
+| S1 | 0.556 | 0.565 ± 0.0008 |
+| S2 | 0.408 | 0.414 ± 0.0011 |
+| S3 | 0.582 | 0.593 ± 0.0006 |
 
-| Subject | Finger | 2018 paper | 2026 ensemble | Difference |
+| Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.733 | -0.017 |
-| S1 | Index | 0.79 | 0.759 | -0.031 |
-| S1 | Middle | 0.17 | 0.265 | +0.095 |
-| S1 | Ring | 0.60 | 0.616 | +0.016 |
-| S1 | Little | 0.47 | 0.454 | -0.016 |
-| S2 | Thumb | 0.62 | 0.586 | -0.034 |
-| S2 | Index | 0.38 | 0.377 | -0.003 |
-| S2 | Middle | 0.27 | 0.210 | -0.060 |
-| S2 | Ring | 0.47 | 0.505 | +0.035 |
-| S2 | Little | 0.30 | 0.393 | +0.093 |
-| S3 | Thumb | 0.74 | 0.663 | -0.077 |
-| S3 | Index | 0.55 | 0.520 | -0.030 |
-| S3 | Middle | 0.46 | 0.619 | +0.159 |
-| S3 | Ring | 0.41 | 0.557 | +0.147 |
-| S3 | Little | 0.75 | 0.608 | -0.142 |
+| S1 | Thumb | 0.75 | 0.733 ± 0.0008 | -0.017 |
+| S1 | Index | 0.79 | 0.759 ± 0.0004 | -0.031 |
+| S1 | Middle | 0.17 | 0.264 ± 0.0017 | +0.094 |
+| S1 | Ring | 0.60 | 0.616 ± 0.0005 | +0.016 |
+| S1 | Little | 0.47 | 0.453 ± 0.0026 | -0.017 |
+| S2 | Thumb | 0.62 | 0.585 ± 0.0016 | -0.035 |
+| S2 | Index | 0.38 | 0.377 ± 0.0007 | -0.003 |
+| S2 | Middle | 0.27 | 0.210 ± 0.0017 | -0.060 |
+| S2 | Ring | 0.47 | 0.504 ± 0.0013 | +0.034 |
+| S2 | Little | 0.30 | 0.392 ± 0.0039 | +0.092 |
+| S3 | Thumb | 0.74 | 0.663 ± 0.0012 | -0.077 |
+| S3 | Index | 0.55 | 0.520 ± 0.0021 | -0.030 |
+| S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
+| S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
+| S3 | Little | 0.75 | 0.608 ± 0.0004 | -0.142 |
 
 Exact values and all member audits are in
 [`results/final-single-branch-six-seed.json`](results/final-single-branch-six-seed.json).
-The largest across-seed standard deviation of member test PCC is 0.0039 (S2
-little). Mean pairwise prediction correlations range from approximately 0.996
-to 1.000. The ensemble therefore improves stability but has little diversity
-to exploit.
+The largest across-seed SD is 0.0039 (S2 little). Mean pairwise prediction
+correlations range from approximately 0.996 to 1.000. Averaging changes any
+finger PCC by at most 0.0008, so there is no meaningful ensemble gain to claim.
 
 ## Visual diagnosis
 
 ![Released-test trajectories for all 15 models](figures/final-single-wavelet-test-trajectories.png)
 
 The black trace in this figure is a post-hoc baseline-corrected glove trajectory
-shown only to make event morphology visible. The blue trace is the exact mean
-of the six saved nonnegative Softplus predictions; no gain or offset is fitted
-from test labels. Panel PCC is still calculated against the raw competition
-target.
+shown only to make event morphology visible. The blue trace is the arithmetic
+mean of the six saved nonnegative Softplus predictions; no gain or offset is
+fitted from test labels. Panel mean ± SD summarizes the six individual PCCs
+against the raw competition target.
 
 The model captures clear event timing for S1 thumb, index, and ring and for
 most S3 fingers. S1 little now follows the main movement blocks but retains
@@ -385,8 +385,8 @@ are versioned with the code.
   cross-subject generalization is made.
 - Electrode order is scrambled in the public data. Correlation- or ICA-derived
   adjacency cannot justify anatomical contact labels.
-- The six seeds are highly correlated, so this ensemble is a stability average,
-  not a diverse committee.
+- The six seeds are highly correlated. Their spread measures refit stability,
+  while averaging their predictions provides negligible PCC gain.
 - S1/S2 middle and S2/S3 little still show important morphology or rest-state
   errors despite useful PCC.
 

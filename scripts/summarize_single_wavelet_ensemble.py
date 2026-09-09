@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Average eligible single-path seeds and visualize requested predictions."""
+"""Summarize independent single-path refits and visualize their mean prediction."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def resolve_route(
     default_root: Path,
     default_seeds: tuple[int, ...] | list[int],
 ) -> tuple[Path, tuple[int, ...], dict[str, object]]:
-    """Resolve one whole-model ensemble route for a subject/finger pair."""
+    """Resolve one fixed-model six-refit route for a subject/finger pair."""
     options: dict[str, object] = {}
     if route_map is not None:
         defaults = route_map.get("default", {})
@@ -66,7 +66,7 @@ def plot_full_subject(
     subject: int,
     fingers: tuple[str, ...] | list[str],
     traces: list[tuple[np.ndarray, np.ndarray]],
-    scores: dict[str, float],
+    score_summaries: dict[str, tuple[float, float]],
 ) -> None:
     figure, axes = plt.subplots(
         len(fingers), 1, figsize=(16, 2.2 * len(fingers)), sharex=True,
@@ -74,10 +74,27 @@ def plot_full_subject(
     )
     for axis, finger, (target, prediction) in zip(axes[:, 0], fingers, traces):
         time = np.arange(target.size) / 25.0
-        axis.plot(time, target, color="black", linewidth=0.55, label="post-hoc cleaned glove")
-        axis.plot(time, prediction, color="#2878d0", linewidth=0.55, label="exact ensemble")
+        axis.plot(
+            time,
+            target,
+            color="black",
+            linewidth=0.55,
+            label="post-hoc cleaned glove",
+        )
+        axis.plot(
+            time,
+            prediction,
+            color="#2878d0",
+            linewidth=0.55,
+            label="mean prediction (six seeds)",
+        )
         axis.set_ylabel(finger.title())
-        axis.set_title(f"PCC {scores[finger]:.3f}", loc="right", fontsize=9)
+        mean_pcc, sd_pcc = score_summaries[finger]
+        axis.set_title(
+            f"seed PCC {mean_pcc:.3f} ± {sd_pcc:.4f}",
+            loc="right",
+            fontsize=9,
+        )
         axis.axhline(0.0, color="#cbd5e1", linewidth=0.45)
     axes[0, 0].legend(frameon=False, ncol=2, fontsize=8)
     axes[-1, 0].set_xlabel("released-test time (s)")
@@ -118,10 +135,14 @@ def main() -> None:
     rows: list[dict[str, object]] = []
     pair_reports: dict[str, object] = {}
     series: dict[int, list[tuple[np.ndarray, np.ndarray]]] = {}
-    scores: dict[int, dict[str, float]] = {}
+    mean_prediction_scores: dict[int, dict[str, float]] = {}
+    seed_score_summaries: dict[int, dict[str, tuple[float, float]]] = {}
+    seed_scores: dict[int, dict[str, dict[int, float]]] = {}
     configurations: list[dict[str, object]] = []
     for subject in args.subjects:
-        scores[subject] = {}
+        mean_prediction_scores[subject] = {}
+        seed_score_summaries[subject] = {}
+        seed_scores[subject] = {}
         series[subject] = []
         prepared = args.prepared_root / f"sub{subject}"
         train_full = np.load(prepared / "train_glove_25hz_raw.npy", mmap_mode="r")
@@ -220,7 +241,18 @@ def main() -> None:
                 for left in range(stacked.shape[0])
                 for right in range(left + 1, stacked.shape[0])
             ]
-            scores[subject][finger] = score
+            mean_prediction_scores[subject][finger] = score
+            eligible_audits = [
+                audit for audit in audits if audit["eligible_from_development_only"]
+            ]
+            seed_scores[subject][finger] = {
+                int(audit["seed"]): float(audit["released_test_pcc_descriptive"])
+                for audit in eligible_audits
+            }
+            seed_score_summaries[subject][finger] = (
+                float(member_scores.mean()),
+                float(member_scores.std(ddof=0)),
+            )
             cleaned_target = test_cleaned[: target.size, finger_index]
             morphology = morphology_metrics(
                 ensemble,
@@ -231,9 +263,10 @@ def main() -> None:
             row = {
                 "subject": subject,
                 "finger": finger,
-                "ensemble_pcc": score,
-                "member_pcc_mean": float(member_scores.mean()),
-                "member_pcc_sd": float(member_scores.std(ddof=0)),
+                "mean_prediction_pcc": score,
+                "seed_pcc_mean": float(member_scores.mean()),
+                "seed_pcc_sd": float(member_scores.std(ddof=0)),
+                "seed_pcc_sd_ddof": 0,
                 "mean_pairwise_prediction_pcc": float(np.mean(diversity)),
                 "included_seed_count": int(stacked.shape[0]),
                 "collapsed_seed_count": int(len(pair_seeds) - stacked.shape[0]),
@@ -250,7 +283,11 @@ def main() -> None:
                 "members": audits,
             }
             artifact_directory.mkdir(parents=True, exist_ok=True)
-            np.save(artifact_directory / "ensemble_prediction.npy", ensemble, allow_pickle=False)
+            np.save(
+                artifact_directory / "ensemble_prediction.npy",
+                ensemble,
+                allow_pickle=False,
+            )
             np.save(artifact_directory / "raw_target.npy", target, allow_pickle=False)
             np.save(
                 artifact_directory / "cleaned_target_visual_only.npy",
@@ -262,23 +299,62 @@ def main() -> None:
             )
 
     subjects = {}
-    complete_finger_set = set(args.fingers) == set(FINGER_NAMES) and len(args.fingers) == 5
+    complete_finger_set = (
+        set(args.fingers) == set(FINGER_NAMES) and len(args.fingers) == 5
+    )
     for subject in args.subjects:
-        mean_score = float(
-            np.mean([scores[subject][finger] for finger in args.fingers])
+        mean_prediction_score = float(
+            np.mean(
+                [mean_prediction_scores[subject][finger] for finger in args.fingers]
+            )
         )
+        common_seeds = sorted(
+            set.intersection(
+                *(set(seed_scores[subject][finger]) for finger in args.fingers)
+            )
+        )
+        if not common_seeds:
+            raise RuntimeError(
+                f"S{subject} has no seed eligible for every requested finger"
+            )
+        seed_macro_scores = {
+            seed: float(
+                np.mean(
+                    [seed_scores[subject][finger][seed] for finger in args.fingers]
+                )
+            )
+            for seed in common_seeds
+        }
+        macro_values = np.asarray(list(seed_macro_scores.values()), dtype=np.float64)
         subjects[f"S{subject}"] = {
             "fingers": list(args.fingers),
-            "mean_requested_finger_pcc": mean_score,
+            "seed_macro_pcc_mean": float(macro_values.mean()),
+            "seed_macro_pcc_sd": float(macro_values.std(ddof=0)),
+            "seed_macro_pcc_sd_ddof": 0,
+            "seed_macro_pcc_by_seed": {
+                str(seed): value for seed, value in seed_macro_scores.items()
+            },
+            "mean_prediction_macro_pcc": mean_prediction_score,
         }
         if complete_finger_set:
-            subjects[f"S{subject}"]["macro_5_pcc"] = mean_score
+            subjects[f"S{subject}"]["metric_name"] = "Macro-5 PCC"
     aggregate = {
         "protocol": (
             "six fixed-configuration full-development refits per pair; collapse "
             "eligibility uses only development prediction validity and variance; "
             "released test is used only for final scoring"
         ),
+        "reporting": {
+            "primary": (
+                "mean and population standard deviation of released-test PCC "
+                "across six independently refitted seeds"
+            ),
+            "subject_macro": (
+                "compute the five-finger Macro-5 PCC within each seed, then "
+                "report mean and population standard deviation across seeds"
+            ),
+            "visualization": "arithmetic mean of the six saved predictions",
+        },
         "model": (
             configurations[0]
             if all(item == configurations[0] for item in configurations)
@@ -334,17 +410,19 @@ def main() -> None:
                 prediction[start:stop],
                 color="#2878d0",
                 linewidth=0.8,
-                label="exact Softplus ensemble",
+                label="mean prediction (six seeds)",
             )
+            mean_pcc, sd_pcc = seed_score_summaries[subject][finger]
             axis.set_title(
-                f"S{subject} {finger.title()}  PCC {scores[subject][finger]:.3f}"
+                f"S{subject} {finger.title()}  "
+                f"seed PCC {mean_pcc:.3f} ± {sd_pcc:.4f}"
             )
             if finger_column == 0:
                 axis.set_ylabel("flexion")
             if subject_row == len(args.subjects) - 1:
                 axis.set_xlabel("released-test time (s)")
     axes[0, 0].legend(frameon=False, fontsize=8)
-    figure.suptitle("Single-path six-seed ensembles: released-test trajectories")
+    figure.suptitle("Six independent single-path refits: released-test trajectories")
     figure.savefig(artifact_root / "aggregate_test_trajectories.png", dpi=180)
     plt.close(figure)
     for subject in args.subjects:
@@ -353,7 +431,7 @@ def main() -> None:
             subject,
             list(args.fingers),
             series[subject],
-            scores[subject],
+            seed_score_summaries[subject],
         )
     print(json.dumps(aggregate, indent=2))
 

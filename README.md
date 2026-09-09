@@ -115,8 +115,10 @@ interval. Target baselines, normalization, FastICA, CSP, and LARS are refitted
 inside every fold.
 
 The complete 400,000-sample competition training file is the development set.
-After cross-fold selection, six seeds are refitted on all development samples.
-The separate 200,000-sample released test file is used only for the final score.
+After cross-fold selection, six independent seeds are refitted on all development
+samples. Results below are their mean PCC ± standard deviation (SD); SD uses
+the six runs as the complete reported set (`ddof=0`). The separate 200,000-sample
+released test file is used only for the final score.
 
 ## Results: no test peek during selection
 
@@ -124,45 +126,45 @@ The reported metric is Pearson correlation coefficient (PCC) against the
 unmodified released test glove trajectory, matching the competition convention.
 `Macro-5` is the unweighted mean over five independently decoded fingers.
 
-| Subject | 2018 paper | 2026 single-tree refit |
+| Subject | 2018 paper | 2026 single-tree refits (mean ± SD) |
 |---|---:|---:|
-| S1 | 0.556 | **0.565** |
-| S2 | 0.408 | **0.414** |
-| S3 | 0.582 | **0.593** |
+| S1 | 0.556 | **0.565 ± 0.0008** |
+| S2 | 0.408 | **0.414 ± 0.0011** |
+| S3 | 0.582 | **0.593 ± 0.0006** |
 
-| Subject | Finger | 2018 paper | 2026 refit | Difference |
+| Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.733 | -0.017 |
-| S1 | Index | 0.79 | 0.759 | -0.031 |
-| S1 | Middle | 0.17 | 0.265 | +0.095 |
-| S1 | Ring | 0.60 | 0.616 | +0.016 |
-| S1 | Little | 0.47 | 0.454 | -0.016 |
-| S2 | Thumb | 0.62 | 0.586 | -0.034 |
-| S2 | Index | 0.38 | 0.377 | -0.003 |
-| S2 | Middle | 0.27 | 0.210 | -0.060 |
-| S2 | Ring | 0.47 | 0.505 | +0.035 |
-| S2 | Little | 0.30 | 0.393 | +0.093 |
-| S3 | Thumb | 0.74 | 0.663 | -0.077 |
-| S3 | Index | 0.55 | 0.520 | -0.030 |
-| S3 | Middle | 0.46 | 0.619 | +0.159 |
-| S3 | Ring | 0.41 | 0.557 | +0.147 |
-| S3 | Little | 0.75 | 0.608 | -0.142 |
+| S1 | Thumb | 0.75 | 0.733 ± 0.0008 | -0.017 |
+| S1 | Index | 0.79 | 0.759 ± 0.0004 | -0.031 |
+| S1 | Middle | 0.17 | 0.264 ± 0.0017 | +0.094 |
+| S1 | Ring | 0.60 | 0.616 ± 0.0005 | +0.016 |
+| S1 | Little | 0.47 | 0.453 ± 0.0026 | -0.017 |
+| S2 | Thumb | 0.62 | 0.585 ± 0.0016 | -0.035 |
+| S2 | Index | 0.38 | 0.377 ± 0.0007 | -0.003 |
+| S2 | Middle | 0.27 | 0.210 ± 0.0017 | -0.060 |
+| S2 | Ring | 0.47 | 0.504 ± 0.0013 | +0.034 |
+| S2 | Little | 0.30 | 0.392 ± 0.0039 | +0.092 |
+| S3 | Thumb | 0.74 | 0.663 ± 0.0012 | -0.077 |
+| S3 | Index | 0.55 | 0.520 ± 0.0021 | -0.030 |
+| S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
+| S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
+| S3 | Little | 0.75 | 0.608 ± 0.0004 | -0.142 |
 
 All three subjects exceed the paper’s rounded aggregate. Six of the 15
 individual finger scores exceed the rounded paper values. The exact scores,
 the complete per-pair route, and all six member audits are in
 [`docs/results/final-single-branch-six-seed.json`](docs/results/final-single-branch-six-seed.json).
 
-All 90 members passed a collapse screen based only on development predictions.
-Seed variation is small: the largest standard deviation of member test PCC is
-0.0039. The members are also highly correlated with one another, so the
-six-seed mean adds stability but little ensemble gain.
+All 90 refits passed a collapse screen based only on development predictions.
+Seed variation is small: the largest SD is 0.0039. Averaging the six
+predictions changes any finger PCC by at most 0.0008, so there is no meaningful
+ensemble gain to claim.
 
 The figure below is the visual verdict, not a decorative score plot. Black is a
 post-hoc baseline-corrected glove trace used only for diagnosis. Blue is the
-exact mean of the six nonnegative Softplus outputs; it is not rescaled with test
-labels. The PCC printed above each panel is still computed against the raw
-competition target.
+arithmetic mean of the six nonnegative Softplus outputs; it is not rescaled
+with test labels. The mean ± SD printed above each panel summarizes the six
+individual PCCs against the raw competition target.
 
 ![Released-test trajectories for all 15 models](docs/figures/final-single-wavelet-test-trajectories.png)
 
