@@ -1199,9 +1199,12 @@ def main() -> None:
     parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
     parser.add_argument(
         "--recurrent-cell",
-        choices=("standard", "paper_equations"),
+        choices=("standard", "paper_equations", "residual_lstm", "residual_gru"),
         default="standard",
-        help="standard PyTorch LSTM or the sigmoid-gated identity-state equations printed in the paper",
+        help=(
+            "LARS-initialized standard/paper LSTM, or a zero-initialized "
+            "LSTM/GRU residual on the fixed LARS logit"
+        ),
     )
     parser.add_argument(
         "--output-activation", choices=("linear", "softplus"), default="softplus"

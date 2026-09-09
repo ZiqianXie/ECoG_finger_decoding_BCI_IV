@@ -96,3 +96,46 @@ def test_decoder_can_use_paper_equation_cell_with_lars_initialization() -> None:
     observed = model.decode_features(torch.zeros(2, 5, 2)).detach()
     assert torch.isfinite(observed).all()
     assert torch.sqrt(torch.mean((expected - observed).square())) < 2.0e-2
+
+
+def test_residual_lstm_starts_exactly_at_softplus_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.head_initialization == "zero_residual_on_lars"
+    assert isinstance(model.lstm, torch.nn.LSTM)
+
+
+def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_gru",
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+    target = torch.rand(2, 12)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-2)
+    for _ in range(2):
+        optimizer.zero_grad(set_to_none=True)
+        loss = (model.decode_features(features) - target).square().mean()
+        loss.backward()
+        optimizer.step()
+    assert torch.count_nonzero(model.output.weight).item() > 0
+    assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0

@@ -56,7 +56,7 @@ def main() -> None:
     parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
     parser.add_argument(
         "--recurrent-cell",
-        choices=("standard", "paper_equations"),
+        choices=("standard", "paper_equations", "residual_lstm", "residual_gru"),
         default="standard",
     )
     parser.add_argument("--sequence-steps", type=int, default=100)

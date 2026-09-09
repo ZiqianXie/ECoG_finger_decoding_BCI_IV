@@ -11,12 +11,17 @@ initialization-bank size and LSTM implementation recorded in
 distributed-fold merge utilities that support those selections remain here for
 auditability. The final learning-rate audit also remains here: it compares
 `1e-4`, `3e-5`, and `1e-5` on development folds while allowing the untouched
-LARS-initialized LSTM as a zero-update candidate. Other archived models may
-score better for individual fingers, but models developed under heterogeneous
-or test-informed diagnostic protocols are not mixed into the headline result.
+LARS-initialized LSTM as a zero-update candidate. A separate development-only
+screen compares zero-initialized residual LSTM and GRU heads at `3e-4` and
+`1e-4`; it promotes the residual LSTM only for S3 little. Other archived models
+may score better for individual fingers, but models developed under
+heterogeneous or test-informed diagnostic protocols are not mixed into the
+headline result.
 The development-only comparison and selected routes are recorded in
 `results/final-lstm-lr-selection.json` and
-`configs/final_lstm_lr_selected_routes.yaml`.
+`configs/final_lstm_lr_selected_routes.yaml`. The residual screen is recorded
+in `results/residual-recurrent-selection.json` and
+`configs/residual_recurrent_selected_routes.yaml`.
 
 ```text
 configs/    settings for alternative and diagnostic runs

@@ -47,3 +47,10 @@ subjects:
       recurrent_cell: standard
       selected_schedule: frozen_0
       development_oof_pcc: 0.5791861773164538
+    little:
+      ensemble_root: outputs/residual_recurrent_single_wavelet_s3_little_six_seed_v1
+      selection_root: outputs/residual_recurrent_single_wavelet_oof_v1/residual_lstm/lr1e-4
+      csp_mode: movement_1
+      recurrent_cell: residual_lstm
+      selected_schedule: frozen_150
+      development_oof_pcc: 0.6499821371497261

@@ -45,18 +45,20 @@ has the same signal path:
    non-overlapping 40 ms bins, giving a 25 Hz feature sequence aligned with the
    glove trajectory.
 5. Use LARS, a sparse linear regression, to select spatial-frequency histories
-   and initialize a nonlinear LSTM in a near-linear operating regime.
+   and provide the initial temporal decoder.
 6. Use development folds to select the LSTM learning rate and update count,
    including zero updates when the LARS initialization is better. When selected,
    fine-tune the full differentiable path at a smaller stem learning rate. A
    Softplus output represents nonnegative flexion.
 
-The LSTM is initialized from LARS; it is not a residual model with a frozen
-linear skip. Weights that should initially be near zero are randomized at about
-`1e-3`, preserving nonlinear capacity while starting from a stable linear
-decoder. S1 thumb, index, and little use the paper-equation LSTM implementation;
-the remaining pairs use the standard PyTorch LSTM. Both are one-layer nonlinear
-gated recurrent decoders with the same single-tree input and one output.
+For 14 pairs, LARS initializes an LSTM in a near-linear operating regime.
+Weights that should initially be near zero are randomized at about `1e-3`,
+preserving nonlinear capacity while starting from a stable linear decoder. S1
+thumb, index, and little use the paper-equation LSTM implementation; the other
+non-residual pairs use the standard PyTorch LSTM. For S3 little only,
+development folds selected a zero-initialized LSTM residual on the fixed LARS
+logit. This is still one recurrent decoder on the same single-tree feature
+stream, not an added signal-processing branch or a separately trained model.
 
 ### Why interpolate the wavelet filters?
 
@@ -131,7 +133,7 @@ unmodified released test glove trajectory, matching the competition convention.
 |---|---:|---:|
 | S1 | 0.556 | **0.563 ± 0.0007** |
 | S2 | 0.408 | **0.414 ± 0.0011** |
-| S3 | 0.582 | **0.596 ± 0.0005** |
+| S3 | 0.582 | **0.597 ± 0.0005** |
 
 | Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
 |---|---|---:|---:|---:|
@@ -149,7 +151,7 @@ unmodified released test glove trajectory, matching the competition convention.
 | S3 | Index | 0.55 | 0.532 ± 0.00003 | -0.018 |
 | S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
 | S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
-| S3 | Little | 0.75 | 0.608 ± 0.0004 | -0.142 |
+| S3 | Little | 0.75 | 0.615 ± 0.0020 | -0.135 |
 
 All three subjects exceed the paper’s rounded aggregate. Six of the 15
 individual finger scores exceed the rounded paper values. The exact scores,
@@ -158,7 +160,7 @@ the complete per-pair route, and all six member audits are in
 
 All 90 refits passed a collapse screen based only on development predictions.
 Seed variation is small: the largest SD is 0.0039. Averaging the six
-predictions changes any finger PCC by at most 0.0008, so there is no meaningful
+predictions changes any finger PCC by at most 0.0018, so there is no meaningful
 ensemble gain to claim.
 
 The figure below is the visual verdict, not a decorative score plot. Black is a
@@ -173,9 +175,10 @@ The model captures clear event timing for S1 thumb/index/ring and for most S3
 fingers. S1 little now captures the main movement blocks but retains some
 false-positive spikes. S1/S2 middle still have weak movement selectivity and
 excessive low-amplitude activity during rest, while S2 little misses several
-large events. S3 little tracks several episodes but does not reproduce the
-paper’s unusually high score. PCC alone should therefore not be read as a
-complete measure of trajectory quality.
+large events. The S3-little residual LSTM tracks several episodes and reduces
+rest activity, but its movement amplitude remains too small and it does not
+reproduce the paper’s unusually high score. PCC alone should therefore not be
+read as a complete measure of trajectory quality.
 
 I had inspected released labels during the broader reconstruction before fixing
 this protocol, and the original 2018 exploration may also have been influenced
@@ -239,7 +242,7 @@ python scripts/run_single_wavelet_cv.py \
   --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
   --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
   --sampler-mode dense_sequences --selection-metric raw_pcc \
-  --selection-rule best --no-require-lstm-update --compile
+  --selection-rule best --compile
 
 python scripts/run_single_wavelet_refits.py \
   --selection-root outputs/single_wavelet_1000hz_tap5over2_nested_v2 \
@@ -263,7 +266,22 @@ python scripts/run_single_wavelet_ensemble.py \
   --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
   --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
   --sampler-mode dense_sequences --selection-metric raw_pcc \
-  --selection-rule best --no-require-lstm-update --compile
+  --selection-rule best --compile
+
+PYTHONPATH=experiments/scripts:scripts:src \
+  python experiments/scripts/run_residual_recurrent_sweep.py \
+  --pairs 3:little --gpus 0 1 2 3 4 5 6 7
+
+python scripts/run_single_wavelet_ensemble.py \
+  --subjects 3 --fingers little --seeds 0 1 2 3 4 5 \
+  --selection-root outputs/residual_recurrent_single_wavelet_oof_v1/residual_lstm/lr1e-4 \
+  --initialization-root outputs/single_wavelet_1000hz_tap5over2_full_refit_v1 \
+  --output-root outputs/residual_recurrent_single_wavelet_s3_little_six_seed_v1 \
+  --force-schedule frozen_150 --recurrent-cell residual_lstm \
+  --head-learning-rate 1e-4 --spatial-learning-rate 0 \
+  --wavelet-learning-rate 0 --csp-mode movement_1 \
+  --sequence-steps 100 --output-activation softplus --softplus-beta 10 \
+  --gpus 0 1 2 3 4 5 --compile
 
 python scripts/summarize_single_wavelet_ensemble.py \
   --root outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1 \
@@ -273,9 +291,9 @@ python scripts/summarize_single_wavelet_ensemble.py \
 python -m pytest -q
 ```
 
-The common commands above produce the one-CSP/standard-LSTM candidates. The
-development-selected per-pair routes, including the four S1 overrides (thumb,
-index, middle, and little), are specified in
+The common commands above produce the one-CSP/standard-LSTM candidates and the
+OOF-selected S3-little residual refit. All development-selected per-pair routes,
+including the four S1 overrides (thumb, index, middle, and little), are specified in
 [`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml);
 the corresponding configuration and validation evidence are documented in the
 [`project report`](docs/project-report.md#final-s1-development-selected-routes).

@@ -72,11 +72,12 @@ class PaperEquationLSTM(nn.Module):
 
 
 class SingleWaveletDecoder(nn.Module):
-    """One spatial convolution, one wavelet tree, and one nonlinear LSTM.
+    """One spatial convolution, one wavelet tree, and one nonlinear sequence head.
 
     The sparse LARS predictor is embedded in one LSTM unit so that the network
-    starts near a useful linear solution. It is retained separately only as an
-    immutable audit baseline; the trainable prediction passes through the LSTM.
+    starts near a useful linear solution. Alternatively, a zero-initialized
+    LSTM or GRU residual can be added to the fixed LARS logit. Both variants
+    retain the same single convolutional stem and Softplus output.
     """
 
     def __init__(
@@ -139,10 +140,15 @@ class SingleWaveletDecoder(nn.Module):
 
         feature_count = int(self.selected_indices.numel())
         self.direct = nn.Linear(feature_count, 1)
+        self.residual_decoder = recurrent_cell in ("residual_lstm", "residual_gru")
         if recurrent_cell == "standard":
             self.lstm = nn.LSTM(feature_count, hidden_size, batch_first=True)
         elif recurrent_cell == "paper_equations":
             self.lstm = PaperEquationLSTM(feature_count, hidden_size, batch_first=True)
+        elif recurrent_cell == "residual_lstm":
+            self.lstm = nn.LSTM(feature_count, hidden_size, batch_first=True)
+        elif recurrent_cell == "residual_gru":
+            self.lstm = nn.GRU(feature_count, hidden_size, batch_first=True)
         else:
             raise ValueError(f"unsupported recurrent cell {recurrent_cell!r}")
         self.recurrent_cell = recurrent_cell
@@ -153,14 +159,19 @@ class SingleWaveletDecoder(nn.Module):
             )
             self.direct.bias.fill_(float(initialization["intercept"]))
         self.direct.requires_grad_(False)
-        self._initialize_lars_linear_regime(
-            coefficients=np.asarray(initialization["coefficients"]),
-            intercept=float(initialization["intercept"]),
-            candidate_scale=lars_candidate_scale,
-            near_zero_std=near_zero_std,
-            open_gate_bias=open_gate_bias,
-            forget_gate_bias=forget_gate_bias,
-        )
+        if self.residual_decoder:
+            self.head_initialization = "zero_residual_on_lars"
+            nn.init.zeros_(self.output.weight)
+            nn.init.zeros_(self.output.bias)
+        else:
+            self._initialize_lars_linear_regime(
+                coefficients=np.asarray(initialization["coefficients"]),
+                intercept=float(initialization["intercept"]),
+                candidate_scale=lars_candidate_scale,
+                near_zero_std=near_zero_std,
+                open_gate_bias=open_gate_bias,
+                forget_gate_bias=forget_gate_bias,
+            )
 
     @torch.no_grad()
     def _initialize_lars_linear_regime(
@@ -233,7 +244,10 @@ class SingleWaveletDecoder(nn.Module):
     def decode_features(self, features: torch.Tensor) -> torch.Tensor:
         standardized = (features - self.feature_mean) / self.feature_scale
         recurrent, _ = self.lstm(standardized)
-        return self.activate_output(self.output(recurrent)).squeeze(-1)
+        prediction = self.output(recurrent)
+        if self.residual_decoder:
+            prediction = self.direct(standardized) + prediction
+        return self.activate_output(prediction).squeeze(-1)
 
     def direct_features(self, features: torch.Tensor) -> torch.Tensor:
         """Return the immutable LARS audit prediction for the same features."""

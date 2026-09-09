@@ -1,0 +1,25 @@
+# Frozen from nested event-fold development OOF results before released-test scoring.
+protocol: development_only_nested_event_oof
+released_test_used_for_selection: false
+minimum_oof_gain: 0.002
+
+subjects:
+  3:
+    little:
+      architecture: single_wavelet_stem_with_residual_lstm
+      recurrent_cell: residual_lstm
+      head_learning_rate: 0.0001
+      selected_schedule: frozen_150
+      selection_root: outputs/residual_recurrent_single_wavelet_oof_v1/residual_lstm/lr1e-4
+      initialization_root: outputs/single_wavelet_1000hz_tap5over2_full_refit_v1
+      output_root: outputs/residual_recurrent_single_wavelet_s3_little_six_seed_v1
+      csp_mode: movement_1
+      model_rate_hz: 1000
+      tap_resample_up: 5
+      tap_resample_down: 2
+      sequence_steps: 100
+      output_activation: softplus
+      softplus_beta: 10.0
+      initialized_oof_pcc: 0.6319427009593224
+      selected_oof_pcc: 0.6499821371497261
+      oof_gain: 0.0180394361904037

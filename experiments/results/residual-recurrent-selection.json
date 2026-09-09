@@ -1,0 +1,58 @@
+{
+  "protocol": "nested event-fold development OOF selection; released test untouched until the S3 little route was frozen",
+  "released_test_used_for_selection": false,
+  "minimum_oof_gain": 0.002,
+  "screen": {
+    "S1_middle": {
+      "reference_oof_pcc": 0.24829724524804403,
+      "best_residual_oof_pcc": 0.2491416217781641,
+      "choice": "no_residual_promotion"
+    },
+    "S2_middle": {
+      "reference_oof_pcc": 0.4319847208978651,
+      "best_residual_oof_pcc": 0.4015448479440693,
+      "choice": "no_residual_promotion"
+    },
+    "S3_index": {
+      "reference_oof_pcc": 0.5774939759176959,
+      "best_residual_oof_pcc": 0.5673794297369066,
+      "choice": "no_residual_promotion"
+    },
+    "S3_little": {
+      "reference_oof_pcc": 0.6319427009593224,
+      "residual_gru_3e-4_oof_pcc": 0.6421690268155476,
+      "residual_gru_1e-4_oof_pcc": 0.6440712249568148,
+      "residual_lstm_3e-4_oof_pcc": 0.6485349318148906,
+      "residual_lstm_1e-4_oof_pcc": 0.6499821371497261,
+      "selected_family": "residual_lstm",
+      "selected_learning_rate": 0.0001,
+      "selected_schedule": "frozen_150",
+      "oof_gain": 0.0180394361904037,
+      "mean_outer_metrics": {
+        "initialized": {
+          "cleaned_pcc": 0.6129531979447711,
+          "event_macro_nmse": 0.9159149254101567,
+          "rest_false_positive_rms": 0.12606183191140494,
+          "movement_rmse": 0.3919343550999959,
+          "movement_balanced_accuracy": 0.7038721914444364,
+          "velocity_pcc": 0.13632172060705725
+        },
+        "selected": {
+          "cleaned_pcc": 0.6279962107687088,
+          "event_macro_nmse": 0.8148483605991864,
+          "rest_false_positive_rms": 0.12133900821208954,
+          "movement_rmse": 0.3649294078350067,
+          "movement_balanced_accuracy": 0.7709037902290136,
+          "velocity_pcc": 0.13044129562546397
+        }
+      }
+    }
+  },
+  "frozen_route_final_scoring": {
+    "S3_little_seed_pcc_mean": 0.6151986845443416,
+    "S3_little_seed_pcc_population_sd": 0.0019854617827698476,
+    "S3_little_mean_prediction_pcc": 0.6170191907584296,
+    "included_seed_count": 6,
+    "collapsed_seed_count": 0
+  }
+}

@@ -29,18 +29,17 @@ notched 1 kHz ECoG
   -> one trainable depth-3 bior6.8 wavelet-packet tree
   -> eight log-energy features per spatial row at 25 Hz
   -> 4 seconds of selected feature history
-  -> one nonlinear LSTM initialized from LARS
+  -> one nonlinear LSTM initialized by LARS or learning its residual
   -> nonnegative Softplus flexion
 ```
 
 There is no auxiliary low-frequency branch, conventional seven-band branch, or
 model stacking in the released result. Development folds select the size of
-the CSP initialization bank and one of two equivalent nonlinear LSTM equation
-implementations, but every model retains the same one-spatial-bank,
-one-wavelet-tree, one-LSTM topology.
+the CSP initialization bank and the recurrent initialization; every model
+retains the same one-spatial-bank, one-wavelet-tree, one-LSTM topology.
 
 Across six independent refits, the released-test Macro-5 Pearson correlations
-are **0.563 ± 0.0007 for S1, 0.414 ± 0.0011 for S2, and 0.596 ± 0.0005
+are **0.563 ± 0.0007 for S1, 0.414 ± 0.0011 for S2, and 0.597 ± 0.0005
 for S3** (mean ± population SD). The rounded values reported in the 2018
 paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed the
 paper's rounded aggregate results, although several individual finger
@@ -163,19 +162,24 @@ Four seconds of wavelet-energy history are available to the decoder. LARS
 spatial-frequency-lag representation and supplies a sparse linear predictor.
 Feature scaling and LARS fitting are repeated inside each split.
 
-The final temporal decoder is a nonlinear LSTM, not a residual LSTM added on
-top of a frozen LARS prediction. One LSTM unit is initialized to approximate
-the LARS mapping in the locally linear part of the sigmoid and tanh functions:
+For 14 subject/finger pairs, one LSTM unit is initialized to approximate the
+LARS mapping in the locally linear part of the sigmoid and tanh functions:
 input and output gates begin open, the forget gate begins closed, and the
 candidate input follows the LARS coefficients. Connections that should be zero
 in the ideal construction receive small random weights with magnitude about
 `1e-3`. The prediction itself passes through the LSTM and a Softplus output.
 
+S3 little uses the same single spatial-wavelet feature stream but a different
+OOF-selected initialization: the LARS logit is kept fixed and a standard LSTM
+learns an additive residual before the shared Softplus. Its output projection is
+initialized to exactly zero, so update zero is exactly the LARS prediction.
+This remains one recurrent decoder, not a second signal-processing branch or a
+stack of independently trained predictors.
+
 S1 thumb, index, and little use an explicit implementation of the equations
-described in the paper; the remaining pairs use the standard PyTorch LSTM.
-Both implementations are one-layer nonlinear gated recurrent models with one
-input sequence and one output. This is an implementation choice within the
-same topology, not an ensemble of recurrent branches.
+described in the paper; the remaining non-residual pairs use the standard
+PyTorch LSTM. All implementations are one-layer nonlinear gated recurrent
+models with one input sequence and one output.
 
 Training has up to two stages:
 
@@ -262,6 +266,18 @@ rather than using the test labels to reverse a pre-specified selection. It is
 evidence that development/test concordance remains imperfect for this small,
 heterogeneous recording.
 
+A subsequent development-only screen tested zero-initialized LSTM and GRU
+residuals on the fixed LARS logit for S1 middle, S2 middle, S3 index, and S3
+little. Learning rates `3e-4` and `1e-4` were compared with proportionally
+matched update grids. Only S3 little cleared the predeclared +0.002 OOF margin:
+its LARS reference was 0.63194, the best GRU reached 0.64407, and the selected
+`1e-4` residual LSTM reached 0.64998 at 150 updates. The route was frozen before
+released-test scoring. Six full-development refits then gave 0.61520 ± 0.00199
+across seeds and 0.61702 for their mean prediction, compared with 0.60771 for
+the preceding mean prediction. OOF rest RMS and event NMSE also improved; on
+the released test trace, raw/cleaned PCC and rest RMS improved while movement
+RMSE and state F1 were slightly worse, so the visual trade-off remains explicit.
+
 The exact checkpoint roots, seeds, target policy, CSP mode, recurrent-cell choice,
 and OOF provenance are recorded in
 [`configs/final_single_wavelet_routes.yaml`](../configs/final_single_wavelet_routes.yaml).
@@ -278,7 +294,7 @@ unweighted mean across the five independently decoded fingers.
 |---|---:|---:|
 | S1 | 0.556 | 0.563 ± 0.0007 |
 | S2 | 0.408 | 0.414 ± 0.0011 |
-| S3 | 0.582 | 0.596 ± 0.0005 |
+| S3 | 0.582 | 0.597 ± 0.0005 |
 
 | Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
 |---|---|---:|---:|---:|
@@ -296,13 +312,13 @@ unweighted mean across the five independently decoded fingers.
 | S3 | Index | 0.55 | 0.532 ± 0.00003 | -0.018 |
 | S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
 | S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
-| S3 | Little | 0.75 | 0.608 ± 0.0004 | -0.142 |
+| S3 | Little | 0.75 | 0.615 ± 0.0020 | -0.135 |
 
 Exact values and all member audits are in
 [`results/final-single-branch-six-seed.json`](results/final-single-branch-six-seed.json).
 The largest across-seed SD is 0.0039 (S2 little). Mean pairwise prediction
-correlations range from approximately 0.996 to 1.000. Averaging changes any
-finger PCC by at most 0.0008, so there is no meaningful ensemble gain to claim.
+correlations range from approximately 0.993 to 1.000. Averaging changes any
+finger PCC by at most 0.0018, so there is no meaningful ensemble gain to claim.
 
 ## Visual diagnosis
 
@@ -326,7 +342,8 @@ most S3 fingers. S1 little now follows the main movement blocks but retains
 several false-positive spikes. The failures are also visible: S1 and S2 middle
 show weak movement selectivity and low-amplitude activity during rest; S2
 little misses several large flexions; and S3 little detects multiple episodes
-but does not reach the paper's high 0.75 PCC. These observations are why the
+with lower rest activity but still underestimates much of their amplitude and
+does not reach the paper's high 0.75 PCC. These observations are why the
 numerical aggregate is reported together with the trajectory figure.
 
 The complete subject trajectories are also provided, rather than restricting
@@ -353,6 +370,7 @@ not rerun:
 | Redundant overcomplete bior dictionary | Won 4 of 15 and lost 11 of 15; rejected as the default. |
 | Asymmetric splits plus signed 0--5 Hz branch | Narrow S2 benefit, no S1 benefit; not a uniform single-path solution. |
 | GRU hurdle model | Worse for the targeted S1/S2 fingers and increased rest activity. |
+| Zero-initialized recurrent residual | Helped S3 little; residual LSTM beat residual GRU. It did not improve S1 middle, S2 middle, or S3 index. |
 | SSM, linear attention, Mamba, and TCN search | No sequence family won consistently across subjects/fingers. |
 | Extra beta/high-gamma features for S1/S2 | No targeted finger beat its selected S1/S2 route. |
 | 10--20 s recurrent context | Did not fix the difficult fingers. |

@@ -80,18 +80,18 @@
         "ring",
         "little"
       ],
-      "seed_macro_pcc_mean": 0.5957403291434921,
-      "seed_macro_pcc_sd": 0.0004910842513275455,
+      "seed_macro_pcc_mean": 0.5972413355812076,
+      "seed_macro_pcc_sd": 0.0005283781522195614,
       "seed_macro_pcc_sd_ddof": 0,
       "seed_macro_pcc_by_seed": {
-        "0": 0.5955680115748447,
-        "1": 0.5960976412022976,
-        "2": 0.5955756311906539,
-        "3": 0.5957930074213662,
-        "4": 0.596496638721612,
-        "5": 0.5949110447501779
+        "0": 0.5970054122979052,
+        "1": 0.5973603207397017,
+        "2": 0.5978655768997394,
+        "3": 0.5968234035104467,
+        "4": 0.5979167005487064,
+        "5": 0.5964765994907462
       },
-      "mean_prediction_macro_pcc": 0.595779057119264,
+      "mean_prediction_macro_pcc": 0.5976402231803404,
       "metric_name": "Macro-5 PCC"
     }
   },
@@ -1940,30 +1940,30 @@
     "S3_little": {
       "subject": 3,
       "finger": "little",
-      "mean_prediction_pcc": 0.6077133604530481,
-      "seed_pcc_mean": 0.6076936523557639,
-      "seed_pcc_sd": 0.0003721258833951035,
+      "mean_prediction_pcc": 0.6170191907584296,
+      "seed_pcc_mean": 0.6151986845443416,
+      "seed_pcc_sd": 0.0019854617827698476,
       "seed_pcc_sd_ddof": 0,
-      "mean_pairwise_prediction_pcc": 0.9999241884861011,
+      "mean_pairwise_prediction_pcc": 0.9929972138112458,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
       "morphology": {
-        "cleaned_pcc": 0.6143078734303246,
-        "cleaned_ccc": 0.5129972879567415,
-        "rmse": 0.1770840585231781,
-        "movement_rmse": 0.28758686780929565,
-        "rest_rms": 0.13257260620594025,
-        "movement_state_f1": 0.4874113908579809,
-        "velocity_pcc": 0.21297150367444379,
-        "prediction_to_target_sd_ratio": 0.5762444707817204,
+        "cleaned_pcc": 0.6251118481071898,
+        "cleaned_ccc": 0.46751802236830303,
+        "rmse": 0.17636993527412415,
+        "movement_rmse": 0.30474892258644104,
+        "rest_rms": 0.12242861837148666,
+        "movement_state_f1": 0.4761459307764266,
+        "velocity_pcc": 0.20945190497122032,
+        "prediction_to_target_sd_ratio": 0.4682039250206268,
         "negative_prediction_fraction": 0.0,
-        "median_event_peak_ratio": 1.108981011224421,
-        "raw_pcc": 0.6077133604530481
+        "median_event_peak_ratio": 0.9720094389680916,
+        "raw_pcc": 0.6170191907584296
       },
-      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "ensemble_root": "outputs/residual_recurrent_single_wavelet_s3_little_six_seed_v1",
       "route": {
-        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
-        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "ensemble_root": "outputs/residual_recurrent_single_wavelet_s3_little_six_seed_v1",
+        "selection_root": "outputs/residual_recurrent_single_wavelet_oof_v1/residual_lstm/lr1e-4",
         "seeds": [
           0,
           1,
@@ -1976,11 +1976,13 @@
         "tap_resample_up": 5,
         "tap_resample_down": 2,
         "csp_mode": "movement_1",
-        "recurrent_cell": "standard",
-        "little_event_decontamination": false
+        "recurrent_cell": "residual_lstm",
+        "little_event_decontamination": false,
+        "selected_schedule": "frozen_150",
+        "development_oof_pcc": 0.6499821371497261
       },
       "configuration": {
-        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "decoder": "zero-initialized LSTM residual on the fixed LARS logit",
         "frontend": {
           "name": "single_wavelet_frequency_compressed_depth3",
           "source_rate_hz": 1000,
@@ -2027,44 +2029,44 @@
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11964665353298187,
-          "development_raw_pcc": 0.6880040839392433,
-          "released_test_pcc_descriptive": 0.6070730451193752
+          "development_prediction_sd": 0.09959182143211365,
+          "development_raw_pcc": 0.6949011920907229,
+          "released_test_pcc_descriptive": 0.6142600487346775
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1202775165438652,
-          "development_raw_pcc": 0.6879513174345046,
-          "released_test_pcc_descriptive": 0.6079290008228018
+          "development_prediction_sd": 0.097288116812706,
+          "development_raw_pcc": 0.6959594398075218,
+          "released_test_pcc_descriptive": 0.6142423985098219
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.12021809816360474,
-          "development_raw_pcc": 0.6891575798163544,
-          "released_test_pcc_descriptive": 0.6079891331928967
+          "development_prediction_sd": 0.09853827208280563,
+          "development_raw_pcc": 0.6951325610463888,
+          "released_test_pcc_descriptive": 0.6194388617383243
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1205657422542572,
-          "development_raw_pcc": 0.6884831473358334,
-          "released_test_pcc_descriptive": 0.6081708539070249
+          "development_prediction_sd": 0.0958428606390953,
+          "development_raw_pcc": 0.6901338829657618,
+          "released_test_pcc_descriptive": 0.613322834352428
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.12038584798574448,
-          "development_raw_pcc": 0.6876276040324458,
-          "released_test_pcc_descriptive": 0.6075110089658593
+          "development_prediction_sd": 0.09502677619457245,
+          "development_raw_pcc": 0.6919187007956938,
+          "released_test_pcc_descriptive": 0.6146113181013311
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.12092677503824234,
-          "development_raw_pcc": 0.6883265228114462,
-          "released_test_pcc_descriptive": 0.6074888721266254
+          "development_prediction_sd": 0.09576261788606644,
+          "development_raw_pcc": 0.6907443934412947,
+          "released_test_pcc_descriptive": 0.6153166458294664
         }
       ]
     }
