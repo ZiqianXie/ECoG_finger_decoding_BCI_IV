@@ -3,7 +3,7 @@
 # averaging never combines spatial or temporal branches.
 default:
   input_root: outputs/event_lars_e2e_ica_csp_1000hz_sevenband_ownany_lowlr_v1
-  refit_root: outputs/full_development_ica_csp_sevenband_single_branch_promoted_v1
+  refit_root: outputs/full_development_ica_csp_sevenband_single_branch_v1
   spatial_cache_root: outputs/perfinger_ica_csp_wavelet_1000hz_sevenband_ownany_v1
   seeds: [0, 1, 2, 3, 4, 5]
   epoch_reference_seeds: [0]

@@ -14,7 +14,9 @@ from ecog_decoding.models import fit_fastica_spatial_weights
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--subject", type=int, required=True)
+    subject_group = parser.add_mutually_exclusive_group(required=True)
+    subject_group.add_argument("--subject", type=int)
+    subject_group.add_argument("--subjects", type=int, nargs="+")
     parser.add_argument(
         "--prepared-root", type=Path, default=Path("outputs/preprocessed_v2")
     )
@@ -27,31 +29,33 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
 
-    prepared = args.prepared_root / f"sub{args.subject}"
-    output = args.output_root / f"sub{args.subject}"
-    output.mkdir(parents=True, exist_ok=True)
-    ecog = np.load(prepared / "train_ecog.npy", mmap_mode="r")
-    unmixing = fit_fastica_spatial_weights(
-        np.asarray(ecog),
-        max_samples=args.max_samples,
-        random_state=args.random_state,
-        backend=args.backend,
-        device=args.device,
-    )
-    np.save(output / "fastica_unmixing.npy", unmixing, allow_pickle=False)
-    report = {
-        "subject": args.subject,
-        "method": "label-free FastICA on the complete released training recording",
-        "backend": args.backend,
-        "available_training_samples": int(ecog.shape[0]),
-        "channels": int(ecog.shape[1]),
-        "max_evenly_spaced_fit_samples": args.max_samples,
-        "random_state": args.random_state,
-        "test_data_used": False,
-        "test_labels_used": False,
-    }
-    (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(json.dumps(report, indent=2), flush=True)
+    subjects = args.subjects if args.subjects is not None else [args.subject]
+    for subject in subjects:
+        prepared = args.prepared_root / f"sub{subject}"
+        output = args.output_root / f"sub{subject}"
+        output.mkdir(parents=True, exist_ok=True)
+        ecog = np.load(prepared / "train_ecog.npy", mmap_mode="r")
+        unmixing = fit_fastica_spatial_weights(
+            np.asarray(ecog),
+            max_samples=args.max_samples,
+            random_state=args.random_state,
+            backend=args.backend,
+            device=args.device,
+        )
+        np.save(output / "fastica_unmixing.npy", unmixing, allow_pickle=False)
+        report = {
+            "subject": subject,
+            "method": "label-free FastICA on the complete released training recording",
+            "backend": args.backend,
+            "available_training_samples": int(ecog.shape[0]),
+            "channels": int(ecog.shape[1]),
+            "max_evenly_spaced_fit_samples": args.max_samples,
+            "random_state": args.random_state,
+            "test_data_used": False,
+            "test_labels_used": False,
+        }
+        (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
+        print(json.dumps(report, indent=2), flush=True)
 
 
 if __name__ == "__main__":

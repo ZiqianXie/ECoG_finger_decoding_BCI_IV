@@ -45,10 +45,10 @@ are chosen only from these out-of-fold predictions.
 The final system uses one signal path for every subject/finger pair: one
 trainable spatial convolution, one three-level asymmetric `bior6.8` wavelet
 tree, 40 ms energy bins, LARS selection, a nonlinear LSTM, and a Softplus
-output. Eleven pairs use a larger spatial initialization made from FastICA plus
-CSP fitted separately in seven designed bands. Four pairs—S1 index and little,
-S2 ring, and S3 middle—retain the earlier FastICA plus high-gamma-CSP
-initialization. The designed-band signals are used only to fit CSP weights;
+output. Relative to the paper's FastICA spatial initialization, eleven pairs
+add CSP rows fitted separately in seven designed bands. Four pairs—S1 index and
+little, S2 ring, and S3 middle—add high-gamma-CSP rows instead. The designed-band
+signals are used only to fit CSP weights;
 they are not parallel inputs to the decoder. Model selection therefore chooses
 one complete single-branch model per finger rather than mixing feature branches
 or model outputs.
@@ -483,9 +483,10 @@ had test exposure: before this protocol was fixed, this 2026 repository had used
 the public test labels to diagnose earlier models and compare saved runs.
 
 The selected final model is a separate decoder for each of the 15
-subject/finger pairs. Eleven use the larger FastICA plus seven-band CSP spatial
-initialization and four retain the earlier FastICA plus high-gamma-CSP
-initialization. Both choices feed one trainable bior6.8 tree and one nonlinear
+subject/finger pairs. Eleven use FastICA plus seven-band CSP spatial
+initialization and four use FastICA plus high-gamma-CSP initialization. Both
+extend the paper-derived FastICA initialization and feed one trainable bior6.8
+tree and one nonlinear
 LSTM. The LSTM is optimized first with the stem frozen and then with the spatial
 and wavelet filters unfrozen at a smaller learning rate. LARS supplies the
 sparse starting function by initializing one unit of the standard nonlinear
@@ -649,14 +650,14 @@ excursions. It is therefore better evidence for movement-state decoding than
 for faithful trajectory reconstruction. The cleaned-target event figures remain
 the acceptance view for shape.
 
-![S1 thumb raw-target out-of-fold event windows](figures/s1-thumb-raw-target-oof-events.png)
+![S1 thumb raw-target out-of-fold event windows](../experiments/figures/s1-thumb-raw-target-oof-events.png)
 
 The normalized 80-unit ensemble has a median event-peak ratio 0.947, rest RMS
 0.071, and velocity PCC 0.461. It reconstructs repeated cycles more visibly
 than its raw coordinate scale suggests, but misses or truncates parts of several
 events and does not justify replacing the higher-PCC base model by itself.
 
-![S1 thumb raw-target 80-unit ensemble events](figures/s1-thumb-raw-h80-ensemble-events.png)
+![S1 thumb raw-target 80-unit ensemble events](../experiments/figures/s1-thumb-raw-h80-ensemble-events.png)
 
 ### Test-informed best-of-runs analysis and visual audit
 
@@ -689,7 +690,7 @@ median peak ratio from 0.918 to 0.895. The trajectory panel was accepted because
 the timing/shape tradeoff is modest and visible, not because 0.752 alone is a
 sufficient endpoint.
 
-![Paper and retrospective per-finger PCC](figures/retrospective-extension-pcc.png)
+![Paper and retrospective per-finger PCC](../experiments/figures/retrospective-extension-pcc.png)
 
 The movement panels plot the baseline-corrected test target against a separate
 display-domain prediction. The mapping does not use released labels: it estimates
@@ -698,13 +699,13 @@ nonnegative projection, and matches gain to the development target distribution.
 It leaves PCC unchanged. This directly addresses the case where a high PCC trace
 is visually almost flat.
 
-![Retrospective S1 movement windows](figures/retrospective-extension-s1-events.png)
+![Retrospective S1 movement windows](../experiments/figures/retrospective-extension-s1-events.png)
 
-![Retrospective S2 movement windows](figures/retrospective-extension-s2-events.png)
+![Retrospective S2 movement windows](../experiments/figures/retrospective-extension-s2-events.png)
 
-![Retrospective S3 movement windows](figures/retrospective-extension-s3-events.png)
+![Retrospective S3 movement windows](../experiments/figures/retrospective-extension-s3-events.png)
 
-![Retrospective morphology summary](figures/retrospective-extension-morphology.png)
+![Retrospective morphology summary](../experiments/figures/retrospective-extension-morphology.png)
 
 Panel-by-panel inspection adds information that the aggregate PCC hides. For
 S1, index timing is often convincing and one thumb sequence is tracked closely,
@@ -747,14 +748,14 @@ families survived sparse selection. The contrast with the perturbed-wavelet
 experiment suggests that diversity of inductive bias matters more here than
 the raw number of atoms.
 
-![Intermediate fixed-dictionary replacements in representative movement windows](figures/heterogeneous-six-seed-comparison.png)
+![Intermediate fixed-dictionary replacements in representative movement windows](../experiments/figures/heterogeneous-six-seed-comparison.png)
 
 Visual review agrees with the aggregate improvement but also limits the claim.
 S1 middle suppresses several false bursts and follows more movement timing, yet
 large trains remain compressed and its state precision is low. The S3 routes
 track major events more clearly; middle still compresses some sustained
 movement and ring retains rest leakage. The exact raw and morphology metrics
-are stored in `docs/results/heterogeneous-six-seed-refit.json`.
+are stored in `experiments/results/heterogeneous-six-seed-refit.json`.
 
 Hard winner-take-all correction was rejected because it converts weak coupled
 motion into fabricated motion on another finger. A latent intended-finger state
@@ -794,7 +795,7 @@ only 0.111--0.130%, and the largest rotation of any row was 0.125 degrees. Thus
 this route was trainable in software but remained effectively at its ICA
 initialization; it was not a strong reproduction of the spatial adaptation
 reported in the paper. The per-seed audit is stored in
-`docs/results/s3-little-ica-spatial-update-audit.json`.
+`experiments/results/s3-little-ica-spatial-update-audit.json`.
 
 To test whether the conservative spatial learning rate caused this near-freeze,
 I screened `1e-5`, `3e-5`, and `1e-4` against the existing `3e-6` setting using
@@ -807,7 +808,7 @@ improve OOF decoding. The `1e-5` gain was 0.0005 and smaller than the observed
 seed variation, so it does not justify another final refit. The missing
 paper-level gain is therefore not explained by spatial learning rate alone.
 The compact screen record is stored in
-`docs/results/s3-little-spatial-lr-screen.json`.
+`experiments/results/s3-little-spatial-lr-screen.json`.
 
 That large gap raised a narrower hypothesis: retaining every baseline-corrected
 glove displacement may preserve useful middle/ring motion but make the little
@@ -853,7 +854,7 @@ therefore inferred event attribution jointly from ECoG and glove evidence in
 nested development folds, allowed genuine co-movement, and compared against
 the unmodified target before its released-test prediction was generated. Exact
 metrics and coefficients for this first screen are in
-`docs/results/little-finger-training-only-audit.json`.
+`experiments/results/little-finger-training-only-audit.json`.
 
 The paper's actual target construction was then tested more directly. It used a
 global fitted baseline, removed small fluctuations, and retained only the
@@ -871,7 +872,7 @@ held-out glove trajectory.
 This changes the diagnosis. For S3, the paper baseline itself is useful, but
 winner-take-all removes some decodable signal and cannot by itself explain the
 paper's 0.75. For S1 and S2, neither paper-style change helps. The linear screen
-is stored in `docs/results/little-paper-target-oof.json`.
+is stored in `experiments/results/little-paper-target-oof.json`.
 
 The resulting S3-little reconstruction combined two independently initialized
 seven-band CSP decoders: a temporal convolutional movement-state model and a
@@ -904,18 +905,18 @@ persists during rest. This is a substantial repair, not a claim that S3 little
 is solved.
 
 Exact nested and final summaries are stored in
-`docs/results/s3-little-paper-latent-nested.json` and
-`docs/results/s3-little-paper-latent-six-seed.json`.
+`experiments/results/s3-little-paper-latent-nested.json` and
+`experiments/results/s3-little-paper-latent-six-seed.json`.
 
-![S3 little state-aware cleaned trajectory](figures/s3-little-paper-latent-full.png)
+![S3 little state-aware cleaned trajectory](../experiments/figures/s3-little-paper-latent-full.png)
 
-![S3 little strongest movement events](figures/s3-little-paper-latent-events.png)
+![S3 little strongest movement events](../experiments/figures/s3-little-paper-latent-events.png)
 
-![Little-finger coupling and cleaning audit](figures/little-finger-training-only-audit.png)
+![Little-finger coupling and cleaning audit](../experiments/figures/little-finger-training-only-audit.png)
 
-![Representative development-only little-finger events](figures/little-finger-training-only-examples.png)
+![Representative development-only little-finger events](../experiments/figures/little-finger-training-only-examples.png)
 
-![Paper-style little-target screen](figures/little-paper-target-oof.png)
+![Paper-style little-target screen](../experiments/figures/little-paper-target-oof.png)
 
 ### Measured filter initialization
 
@@ -992,11 +993,11 @@ used in the movement plots below.
 | S2 | 0.478 | 0.120 | 0.055 | 0.392 | 0.159 | Some valid events, but false/coupled bursts remain |
 | S3 | 0.664 | 0.159 | 0.113 | 0.674 | 0.253 | Best five-finger trend capture; amplitudes still conservative |
 
-![Leakage-controlled S1 movement windows](figures/nested-cv-s1-movement-windows.png)
+![Leakage-controlled S1 movement windows](../experiments/figures/nested-cv-s1-movement-windows.png)
 
-![Leakage-controlled S2 movement windows](figures/nested-cv-s2-movement-windows.png)
+![Leakage-controlled S2 movement windows](../experiments/figures/nested-cv-s2-movement-windows.png)
 
-![Leakage-controlled S3 movement windows](figures/nested-cv-s3-movement-windows.png)
+![Leakage-controlled S3 movement windows](../experiments/figures/nested-cv-s3-movement-windows.png)
 
 ### Earlier retrospective per-finger raw-test PCC (historical)
 
@@ -1084,13 +1085,13 @@ thumb and little outputs had peak ratios 1.836 and 2.389 and rest RMS 0.409 and
 overshoot and negative rest drift are removed, although amplitude is now
 conservative and the middle trace remains noisy.
 
-![Subject 1 movement windows](figures/s1-movement-windows.png)
+![Subject 1 movement windows](../experiments/figures/s1-movement-windows.png)
 
-![Subject 1 peak-triggered average](figures/s1-peak-triggered.png)
+![Subject 1 peak-triggered average](../experiments/figures/s1-peak-triggered.png)
 
-![Subject 2 movement windows](figures/s2-movement-windows.png)
+![Subject 2 movement windows](../experiments/figures/s2-movement-windows.png)
 
-![Subject 3 movement windows](figures/s3-movement-windows.png)
+![Subject 3 movement windows](../experiments/figures/s3-movement-windows.png)
 
 ### Earlier seed-stability experiments
 
@@ -1213,7 +1214,7 @@ narrative.
 The final single-branch comparison and refit are reproduced with:
 
 ```bash
-export PYTHONPATH=scripts:src
+export PYTHONPATH=experiments/scripts:scripts:src
 
 python scripts/prepare_split_safe_targets.py --subjects 1 2 3
 
@@ -1268,20 +1269,20 @@ python scripts/summarize_single_branch_oof.py \
   --baseline-root outputs/event_lars_e2e_ica_csp_1000hz_all_tails2x2_hg_v1 \
   --seeds 0 --output outputs/final_single_branch_oof_comparison.json
 
-# Refit six seeds for the four retained earlier models.
+# Refit six seeds for the four selected high-gamma-CSP models.
 python scripts/run_frozen_event_refits.py \
   --pairs 1:index 1:little 2:ring 3:middle \
   --gpus 0 1 2 3 4 5 6 7 \
   --ensemble-map configs/final_single_branch_oof_selected.yaml \
   --output-root outputs/full_development_ica_csp_single_branch_all_v1
 
-# Refit six seeds for the eleven promoted larger spatial initializations.
+# Refit six seeds for the eleven selected seven-band-CSP models.
 python scripts/run_frozen_event_refits.py \
   --pairs 1:thumb 1:middle 1:ring 2:thumb 2:index 2:middle 2:little \
           3:thumb 3:index 3:ring 3:little \
   --gpus 0 1 2 3 4 5 6 7 \
-  --ensemble-map configs/sevenband_single_branch_promoted.yaml \
-  --output-root outputs/full_development_ica_csp_sevenband_single_branch_promoted_v1
+  --ensemble-map configs/sevenband_single_branch_selected.yaml \
+  --output-root outputs/full_development_ica_csp_sevenband_single_branch_v1
 
 # Assemble the 15 whole-model ensembles and render diagnostics.
 python scripts/summarize_frozen_full_refit.py \
@@ -1307,8 +1308,8 @@ export PYTHONPATH=scripts:src
 # Validate inputs and preprocess all subjects.
 python scripts/audit_dataset.py
 python scripts/preprocess_dataset.py --subjects 1 2 3
-python scripts/prepare_paper_baseline_targets.py --subjects 1 2 3
-python scripts/compare_target_baselines.py --subjects 1 2 3
+python experiments/scripts/prepare_paper_baseline_targets.py --subjects 1 2 3
+python experiments/scripts/compare_target_baselines.py --subjects 1 2 3
 
 # Confirm the initialized wavelet tree before training.
 python scripts/audit_wavelet_frequency_response.py
@@ -1316,24 +1317,24 @@ python scripts/audit_wavelet_frequency_response.py
 # Cache continuous CSP carrier bands once per subject, then run the complete
 # leakage-controlled audit. Inner stages do not load released-test labels.
 python scripts/cache_csp_band_signals.py --subjects 1 2 3
-python scripts/run_nested_ensemble_cv.py selections --concurrency 7
-python scripts/run_nested_ensemble_cv.py cv \
+python experiments/scripts/run_nested_ensemble_cv.py selections --concurrency 7
+python experiments/scripts/run_nested_ensemble_cv.py cv \
   --concurrency 7 --gpus 0 1 3 4 5 6 7
-python scripts/run_nested_ensemble_cv.py summarize
-python scripts/run_nested_ensemble_cv.py refit \
+python experiments/scripts/run_nested_ensemble_cv.py summarize
+python experiments/scripts/run_nested_ensemble_cv.py refit \
   --concurrency 7 --gpus 0 1 3 4 5 6 7
 
 # This is the first stage that reads the final chronological validation labels.
-python scripts/run_nested_ensemble_cv.py assemble
+python experiments/scripts/run_nested_ensemble_cv.py assemble
 
 # Plot the cleaned-flexion array, not the raw-coordinate scoring array.
-python scripts/diagnose_prediction_morphology.py --subject 1 \
+python experiments/scripts/diagnose_prediction_morphology.py --subject 1 \
   --prepared-root outputs/preprocessed_v2 --target local_w2_q10 \
   --method nested_cv=outputs/nested_cv_diverse_ensemble_v1/sub1/test_prediction_cleaned.npy \
   --output outputs/nested_cv_cleaned_diagnostics_v1/sub1
 
 # Audit whether weak-finger behavior is associated with partition shift.
-python scripts/audit_partition_shift.py --subject 1 --finger little \
+python experiments/scripts/audit_partition_shift.py --subject 1 --finger little \
   --prepared-root outputs/preprocessed_v2 \
   --feature-root outputs/windowed_ica_wavelet_v1 \
   --selection-root outputs/fixed_lars_windowed_ica_screen512_v1 \
@@ -1344,27 +1345,27 @@ python scripts/fit_full_training_fastica.py --subject 1 --backend torch \
   --output-root outputs/full_training_fastica_torch_v1
 
 # Test regularization selected over purged blocks spanning all training data.
-python scripts/crossvalidate_selected_ridge.py --subject 1 \
+python experiments/scripts/crossvalidate_selected_ridge.py --subject 1 \
   --feature-root outputs/windowed_ica_wavelet_v1 \
   --selection-root outputs/fixed_lars_windowed_ica_screen512_v1 \
   --target local_w2_q10 --fingers little
 
 # Recreate the frozen S1 per-finger selection.
-python scripts/select_per_finger_ensemble.py --subject 1 \
+python experiments/scripts/select_per_finger_ensemble.py --subject 1 \
   --prepared-root outputs/preprocessed_v2 --history 25 \
   --method stable=outputs/paper_gap_ensemble_v1/sub1 \
   --method e2e_index=outputs/exact_e2e_s1_index_h40_v1/sub1 \
   --output outputs/paper_reproduction_s1_v1/sub1
 
 # Repair the S1 ring trace using validation-only morphology constraints.
-python scripts/calibrate_prediction_constrained.py --subject 1 \
+python experiments/scripts/calibrate_prediction_constrained.py --subject 1 \
   --prepared-root outputs/preprocessed_v2 \
   --prediction-root outputs/paper_reproduction_s1_v1/sub1 \
   --target local_w2_q10 --finger ring \
   --output outputs/s1_ring_constrained_calibration_v1/sub1
 
 # After validation stacking, normalize thumb/little amplitude without changing PCC.
-python scripts/normalize_prediction_affine.py --subject 1 \
+python experiments/scripts/normalize_prediction_affine.py --subject 1 \
   --prepared-root outputs/preprocessed_v2 \
   --prediction-root outputs/s1_validation_stack_v1/sub1 \
   --target local_w2_q10 --finger thumb --finger little \
@@ -1372,13 +1373,13 @@ python scripts/normalize_prediction_affine.py --subject 1 \
 
 # Make the public-facing S1 flexion nonnegative while preserving exact model
 # outputs as *_unconstrained.npy files.
-python scripts/project_prediction_nonnegative.py --subject 1 \
+python experiments/scripts/project_prediction_nonnegative.py --subject 1 \
   --prepared-root outputs/preprocessed_v2 \
   --prediction-root outputs/s1_validation_stack_affine_v1/sub1 \
   --target local_w2_q10 --output outputs/final_nonnegative/sub1
 
 # Recreate the frozen S2 per-finger selection.
-python scripts/select_per_finger_ensemble.py --subject 2 \
+python experiments/scripts/select_per_finger_ensemble.py --subject 2 \
   --prepared-root outputs/preprocessed_v2 --history 25 \
   --method h40=outputs/s2_lstm_sweep_h40_s3/sub2 \
   --method e2e_index=outputs/exact_e2e_idx_h40_t100_v1/sub2 \
@@ -1386,12 +1387,12 @@ python scripts/select_per_finger_ensemble.py --subject 2 \
   --output outputs/paper_reproduction_s2_v1/sub2
 
 # Generate held-out morphology panels.
-python scripts/diagnose_prediction_morphology.py --subject 1 \
+python experiments/scripts/diagnose_prediction_morphology.py --subject 1 \
   --prepared-root outputs/preprocessed_v2 --target local_w2_q10 \
   --method reproduction=outputs/paper_reproduction_s1_v1/sub1 \
   --output outputs/paper_reproduction_visual_v1/sub1
 
-python scripts/diagnose_prediction_morphology.py --subject 2 \
+python experiments/scripts/diagnose_prediction_morphology.py --subject 2 \
   --prepared-root outputs/preprocessed_v2 --target local_w1_q10 \
   --method reproduction=outputs/paper_reproduction_s2_v1/sub2 \
   --output outputs/paper_reproduction_visual_v1/sub2
@@ -1400,8 +1401,9 @@ python -m pytest -q
 ```
 
 Some selection commands consume previously trained candidate directories. The
-candidate-generating scripts and their arguments remain in `scripts/`; the
-compact summaries under `docs/results/` identify the selected methods. A future
+candidate-generating scripts and their arguments are archived in
+`experiments/scripts/`; their compact summaries are in `experiments/results/`.
+A future
 release should add a manifest that maps every public result to a complete command,
 configuration hash, environment lock, and source commit.
 

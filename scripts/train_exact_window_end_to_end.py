@@ -20,16 +20,13 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-try:
-    from scripts.benchmark_ridge_target_variants import lagged, ridge_fit
-except ModuleNotFoundError:  # Direct execution adds scripts/, not the repo root.
-    from benchmark_ridge_target_variants import lagged, ridge_fit
 from ecog_decoding.models import (
     AsymmetricWaveletPacketEnergy,
     CSPBandCorrectionEnergy,
     CSPSpatialProjection,
     WaveletPacketEnergy,
 )
+from ecog_decoding.regression import lagged, ridge_fit
 from ecog_decoding.training import FINGER_NAMES
 
 

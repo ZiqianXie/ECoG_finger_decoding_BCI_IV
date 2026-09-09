@@ -23,6 +23,13 @@
     "retained_members": 90,
     "collapse_screen_uses_training_only": true
   },
+  "seed_stability": {
+    "metric": "sample SD of individual-member released-test raw PCC within each subject/finger",
+    "median_across_15_subject_finger_models": 0.0027333811925128308,
+    "maximum_across_15_subject_finger_models": 0.01063733971897203,
+    "maximum_pair": "S1-index",
+    "note": "small stochastic variation supports repeatability on the documented stack but does not imply bitwise determinism across hardware or PyTorch versions"
+  },
   "spatial_initialization_routes": {
     "fastica_plus_seven_band_csp": [
       "S1-thumb",

@@ -3,11 +3,13 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from ecog_decoding.models import (
+from ecog_decoding.experimental.sequence import (
     CausalLinearAttentionBlock,
     DiagonalSSMBlock,
-    DilatedWaveletFilterBank,
     EcogTrajectoryDecoder,
+)
+from ecog_decoding.models import (
+    DilatedWaveletFilterBank,
     WaveletPacketEnergy,
     compact_wavelet_taps,
     fit_fastica_spatial_weights,

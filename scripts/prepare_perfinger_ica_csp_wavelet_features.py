@@ -19,8 +19,7 @@ import numpy as np
 import torch
 from scipy import signal
 
-from ablate_perfinger_csp_wavelet_s3_little import finger_csp_bank
-from benchmark_csp_ridge import BANDS_HZ
+from ecog_decoding.spatial import CSP_BANDS_HZ, fit_finger_csp_rows
 from ecog_decoding.training import FINGER_NAMES
 from train_event_grouped_lars_lstm import indices_from_intervals
 from train_event_grouped_lars_lstm_nested import intervals_from_mask
@@ -107,18 +106,18 @@ def band_cache_bins(
     """Load the shared seven-band filtering cache without copying it into RAM."""
     path = cache_root / f"sub{subject}" / "train_filtered_bands.npy"
     filtered = np.load(path, mmap_mode="r")
-    if filtered.ndim != 3 or filtered.shape[0] != len(BANDS_HZ):
+    if filtered.ndim != 3 or filtered.shape[0] != len(CSP_BANDS_HZ):
         raise ValueError(
-            f"expected {len(BANDS_HZ)} cached bands with shape "
+            f"expected {len(CSP_BANDS_HZ)} cached bands with shape "
             f"(band, time, channel); got {filtered.shape}"
         )
     usable = filtered.shape[1] // SAMPLES_PER_BIN * SAMPLES_PER_BIN
     bins = filtered[:, :usable].reshape(
-        len(BANDS_HZ), -1, SAMPLES_PER_BIN, filtered.shape[-1]
+        len(CSP_BANDS_HZ), -1, SAMPLES_PER_BIN, filtered.shape[-1]
     )
     return bins, {
         "kind": "seven-band CSP rows projected through one shared wavelet path",
-        "bands_hz": BANDS_HZ,
+        "bands_hz": CSP_BANDS_HZ,
         "cache": str(path),
     }
 
@@ -134,10 +133,15 @@ def fit_csp_rows(
 ) -> tuple[np.ndarray, object]:
     """Fit band-conditioned spatial rows that all enter one wavelet path."""
     if csp_bins.ndim == 3:
-        return finger_csp_bank(
-            csp_bins, target, training, finger_index, component_indices
+        return fit_finger_csp_rows(
+            csp_bins,
+            target,
+            training,
+            finger_index,
+            component_indices,
+            history_offset=HISTORY_OFFSET,
         )
-    if csp_bins.ndim != 4 or csp_bins.shape[0] != len(BANDS_HZ):
+    if csp_bins.ndim != 4 or csp_bins.shape[0] != len(CSP_BANDS_HZ):
         raise ValueError(
             "multi-band CSP input must have shape (band, bin, sample, channel)"
         )
@@ -145,13 +149,14 @@ def fit_csp_rows(
     shared_target = np.max(target, axis=1, keepdims=True)
     rows: list[np.ndarray] = []
     audit: list[dict[str, object]] = []
-    for band_index, (low, high) in enumerate(BANDS_HZ):
-        own, own_audit = finger_csp_bank(
+    for band_index, (low, high) in enumerate(CSP_BANDS_HZ):
+        own, own_audit = fit_finger_csp_rows(
             csp_bins[band_index],
             target,
             training,
             finger_index,
             component_indices,
+            history_offset=HISTORY_OFFSET,
         )
         rows.append(own)
         record: dict[str, object] = {
@@ -159,12 +164,13 @@ def fit_csp_rows(
             "decoded_finger": own_audit,
         }
         if include_any_movement:
-            shared, shared_audit = finger_csp_bank(
+            shared, shared_audit = fit_finger_csp_rows(
                 csp_bins[band_index],
                 shared_target,
                 training,
                 0,
                 component_indices,
+                history_offset=HISTORY_OFFSET,
             )
             rows.append(shared)
             record["any_movement"] = shared_audit
