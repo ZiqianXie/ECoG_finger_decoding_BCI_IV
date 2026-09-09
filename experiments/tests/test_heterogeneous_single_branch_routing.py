@@ -78,7 +78,10 @@ def test_final_decoder_has_no_parallel_or_beta_gate_branch() -> None:
 
 def test_final_map_covers_all_fifteen_whole_models() -> None:
     config = yaml.safe_load(
-        (REPOSITORY_ROOT / "configs/final_single_branch_oof_selected.yaml").read_text()
+        (
+            REPOSITORY_ROOT
+            / "experiments/configs/final_single_branch_oof_selected.yaml"
+        ).read_text()
     )
     default_root = config["default"]["refit_root"]
     routes: list[str] = []

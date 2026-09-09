@@ -25,6 +25,13 @@ PYTHONPATH=experiments/scripts:scripts:src \
   python experiments/scripts/<script>.py ...
 ```
 
+Archived experiment tests can be run explicitly with the same import path:
+
+```bash
+PYTHONPATH=experiments/scripts:scripts:src \
+  python -m pytest -q experiments/tests
+```
+
 The primary pipeline remains in `scripts/`; its reusable implementation is in
 `src/ecog_decoding/`. The current result record is
 `docs/results/final-single-branch-six-seed.json`.

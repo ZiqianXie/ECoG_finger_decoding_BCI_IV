@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.benchmark_event_target_variants import (
+from benchmark_event_target_variants import (
     purge_near_validation,
     target_path,
     target_support_bins,

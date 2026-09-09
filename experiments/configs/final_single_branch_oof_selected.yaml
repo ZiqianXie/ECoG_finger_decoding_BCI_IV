@@ -1,4 +1,4 @@
-# Frozen using only full-development, purged event-fold OOF predictions and
+# Historical route map selected using full-development, purged event-fold OOF predictions and
 # morphology. Each subject/finger selects one complete single-path model; seed
 # averaging never combines spatial or temporal branches.
 default:
