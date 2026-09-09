@@ -221,6 +221,17 @@ The exact unrounded scores, per-finger spatial-initialization routes, ensemble
 membership, and single-branch invariant are recorded in
 [`docs/results/final-single-branch-six-seed.json`](docs/results/final-single-branch-six-seed.json).
 
+The panels below show the complete 200-second released-test trajectories from
+the current final models. Black is the baseline-corrected glove trajectory used
+only for visual diagnosis; blue is the exact saved Softplus prediction. No
+test-fitted gain or display normalization is applied.
+
+![Subject 1 final five-finger trajectories](docs/figures/final-single-branch-s1-full-trajectory.png)
+
+![Subject 2 final five-finger trajectories](docs/figures/final-single-branch-s2-full-trajectory.png)
+
+![Subject 3 final five-finger trajectories](docs/figures/final-single-branch-s3-full-trajectory.png)
+
 This label describes how I selected the current result. It does not mean I had
 never seen the released labels. Before I fixed this protocol, I used them to
 diagnose earlier models and compare saved runs. Looking back, I also think the

@@ -535,6 +535,17 @@ The released-test result was:
 | S2 | 0.573 | 0.411 | 0.283 | 0.531 | 0.389 | **0.438** | 0.408 |
 | S3 | 0.787 | 0.569 | 0.650 | 0.661 | 0.715 | **0.676** | 0.582 |
 
+The following panels show the complete released-test recording for the current
+final models. Black is each finger's baseline-corrected glove trajectory, used
+only as a visual reference, and blue is the exact saved Softplus prediction.
+The displayed prediction has no test-fitted gain or display normalization.
+
+![Subject 1 final five-finger trajectories](figures/final-single-branch-s1-full-trajectory.png)
+
+![Subject 2 final five-finger trajectories](figures/final-single-branch-s2-full-trajectory.png)
+
+![Subject 3 final five-finger trajectories](figures/final-single-branch-s3-full-trajectory.png)
+
 The rounded paper values and finger-level differences are:
 
 | Subject/series | Thumb | Index | Middle | Ring | Little | Macro-5 |
