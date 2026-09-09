@@ -50,7 +50,7 @@ first level, those two are split into four at the second, and the four are split
 into eight at the third. Every node starts from the same low/high `bior6.8`
 prototype pair, but each copy is an independent trainable filter. Dilations of
 1, 2, and 4 replace temporal downsampling, so all eight paths retain the original
-time grid. Initially zero cross-branch connections are also trainable.
+time grid. Coefficients that are zero in the initialization remain trainable.
 
 The LARS solution is more than a pruning step. It gives the recurrent decoder a
 working regression function before nonlinear optimization begins. Parameters
@@ -185,11 +185,11 @@ The paper values below are calculated from its rounded per-finger CNN-LSTM
 numbers, so they should not be interpreted as more precise versions of the
 paper's rounded aggregate.
 
-| Subject | 2018 paper | Cross-fold-validated six-seed refit | Test-informed best of runs* |
-|---|---:|---:|---:|
-| S1 | 0.556 | **0.558** | **0.652** |
-| S2 | 0.408 | **0.438** | **0.512** |
-| S3 | 0.582 | **0.676** | **0.699** |
+| Subject | 2018 paper | Cross-fold-validated six-seed refit |
+|---|---:|---:|
+| S1 | 0.556 | **0.558** |
+| S2 | 0.408 | **0.438** |
+| S3 | 0.582 | **0.676** |
 
 | Subject | Finger | 2018 paper | Selected final refit | Difference |
 |---|---|---:|---:|---:|
@@ -253,31 +253,6 @@ LSTM path.
 The largest gaps are not explained by a global finger permutation or a simple
 temporal lag. They are concentrated in particular fingers and recording
 periods, consistent with target-regime and ECoG nonstationarity.
-
-`*` This column is not a held-out performance estimate.
-
-### What “test-informed best of runs” means
-
-During reconstruction, many models produced predictions for the released test
-recording. After inspecting the test labels, we selected the saved prediction
-with the highest test PCC separately for each subject/finger pair. S1 thumb also
-uses a blend of two saved predictions, with the mixing weight chosen to maximize
-test PCC.
-
-This is an oracle analysis: it uses the answers from the test set to choose
-which run to report. It cannot tell us how the selection rule would perform on
-a new recording where the glove trajectory is unknown, and it must not be
-compared with the paper as a fair held-out result.
-
-We retain the analysis because it answers a narrower diagnostic question: *did
-any model we trained recover the signal for this finger?* All fifteen pairs have
-at least one test prediction above the corresponding rounded paper value. The
-gap between this oracle result and the cross-fold-validated refit shows how much
-performance may be available in the trained candidate set but cannot be claimed
-without a selection rule that generalizes across recording periods.
-
-The per-finger values and the provenance of every route are recorded in
-[`docs/results/retrospective-extension.json`](docs/results/retrospective-extension.json).
 
 ## PCC and trajectory quality
 
@@ -360,9 +335,6 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Native Mamba support is optional and is not needed for the selected LSTM path
-or the test suite.
-
 ## Reproduce the core pipeline
 
 ```bash
@@ -380,47 +352,80 @@ python scripts/build_event_stratified_folds.py --subjects 1 2 3 \
   --target-map configs/targetsafe_conservative_targets.yaml \
   --output-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
 
-# Evaluate the 50-step ICA-wavelet candidates inside those folds. Repeat with
-# --sequence-steps 100 and the seq100 output root for the longer-history family.
+# Prepare both candidate spatial initializations. The seven-band signals are
+# used only to fit CSP rows; both models consume the same broadband ECoG.
+python scripts/run_prepare_perfinger_ica_csp_wavelet_all.py \
+  --subjects 1 2 3 --fingers thumb index middle ring little --gpus 0 \
+  --csp-source high_gamma --csp-mode tails_2x2 \
+  --no-include-any-movement-csp \
+  --output-root outputs/perfinger_ica_csp_wavelet_1000hz_all_tails2x2_hg_v1
+
+python scripts/run_prepare_perfinger_ica_csp_wavelet_all.py \
+  --subjects 1 2 3 --fingers thumb index middle ring little --gpus 0 \
+  --csp-source seven_band --csp-mode tails_2x2 \
+  --include-any-movement-csp \
+  --output-root outputs/perfinger_ica_csp_wavelet_1000hz_sevenband_ownany_v1
+
+# Cross-fold the high-gamma spatial initialization.
 python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
-  --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 1 \
-  --target-map configs/targetsafe_conservative_targets.yaml \
+  --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 \
+  --gpus 0 --target-map configs/targetsafe_conservative_targets.yaml \
   --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
-  --output-root outputs/event_lars_e2e_fulldev_seq50_v1 \
+  --spatial-cache-root outputs/perfinger_ica_csp_wavelet_1000hz_all_tails2x2_hg_v1 \
+  --output-root outputs/event_lars_e2e_ica_csp_1000hz_all_tails2x2_hg_v1 \
   --warmup-epochs 8 --max-epochs 48 --learning-rate 1e-4 \
   --spatial-learning-rate 3e-6 --wavelet-learning-rate 3e-6 \
-  --output-activation softplus --sequence-steps 50
+  --output-activation softplus --sequence-steps 100 \
+  --batch-size 24 --unfrozen-batch-size 4
 
-# Refit the OOF-selected ICA-wavelet configurations with six random seeds.
-python scripts/run_frozen_event_refits.py \
-  --ensemble-map configs/full_development_event_refit.yaml \
-  --output-root outputs/full_development_event_refit_v1 \
-  --selection-cache-root outputs/full_development_event_refit_lars_v1
+# Cross-fold the larger seven-band spatial initialization.
+python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
+  --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 \
+  --gpus 0 --target-map configs/targetsafe_conservative_targets.yaml \
+  --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
+  --spatial-cache-root outputs/perfinger_ica_csp_wavelet_1000hz_sevenband_ownany_v1 \
+  --output-root outputs/event_lars_e2e_ica_csp_1000hz_sevenband_ownany_lowlr_v1 \
+  --max-features 1024 --warmup-epochs 8 --max-epochs 48 \
+  --learning-rate 3e-5 --spatial-learning-rate 1e-6 \
+  --wavelet-learning-rate 1e-6 --output-activation softplus \
+  --sequence-steps 100 --batch-size 24 --unfrozen-batch-size 4
+
+# Compare the two complete single-path models using fold predictions only.
+python scripts/summarize_single_branch_oof.py \
+  --input-root outputs/event_lars_e2e_ica_csp_1000hz_sevenband_ownany_lowlr_v1 \
+  --baseline-root outputs/event_lars_e2e_ica_csp_1000hz_all_tails2x2_hg_v1 \
+  --seeds 0 --output outputs/final_single_branch_oof_comparison.json
+
+# Refit six seeds for the four retained high-gamma models.
+python scripts/run_frozen_event_refits.py --gpus 0 \
+  --pairs 1:index 1:little 2:ring 3:middle \
+  --ensemble-map configs/final_single_branch_oof_selected.yaml \
+  --output-root outputs/full_development_ica_csp_single_branch_all_v1 \
+  --selection-cache-root outputs/full_development_ica_csp_single_branch_all_lars_v1
+
+# Refit six seeds for the eleven selected seven-band models.
+python scripts/run_frozen_event_refits.py --gpus 0 \
+  --pairs 1:thumb 1:middle 1:ring \
+          2:thumb 2:index 2:middle 2:little \
+          3:thumb 3:index 3:ring 3:little \
+  --ensemble-map configs/sevenband_single_branch_promoted.yaml \
+  --output-root outputs/full_development_ica_csp_sevenband_single_branch_promoted_v1 \
+  --selection-cache-root outputs/full_development_ica_csp_sevenband_single_branch_lars_v1
+
+# Average seeds only within each selected whole model and render the final result.
 python scripts/summarize_frozen_full_refit.py \
-  --input-root outputs/full_development_event_refit_v1 \
-  --ensemble-map configs/full_development_event_refit.yaml \
-  --output-root outputs/full_development_event_refit_v1/ensemble
-
-# Screen the heterogeneous fixed dictionary, then prepare and refit only the
-# four OOF winners recorded in configs/heterogeneous_six_seed_refit.yaml.
-python scripts/benchmark_event_heterogeneous_dictionary.py --subject 1
-python scripts/benchmark_event_heterogeneous_dictionary.py --subject 2
-python scripts/benchmark_event_heterogeneous_dictionary.py --subject 3
-python scripts/cache_csp_band_signals.py --subject 1
-python scripts/prepare_heterogeneous_full_refit.py --subject 1 --fingers middle
-python scripts/cache_csp_band_signals.py --subject 3
-python scripts/prepare_heterogeneous_full_refit.py --subject 3 \
-  --fingers thumb middle ring
-python scripts/run_heterogeneous_six_seed_refits.py
-python scripts/summarize_heterogeneous_six_seed_refits.py
+  --input-root outputs/full_development_ica_csp_sevenband_single_branch_promoted_v1 \
+  --ensemble-map configs/final_single_branch_oof_selected.yaml \
+  --output-root outputs/final_single_branch_oof_selected_v1/ensemble
 
 python -m pytest -q
 ```
 
-The CSP-band cache defaults to `/dev/shm`; cache creation and heterogeneous
-feature preparation must therefore run in the same execution environment.
-Some selected fingers use a 100-step input history. Exact selection, refit, and
-negative/ablation recipes are listed in the
+The temporary CSP carrier-band cache defaults to `/dev/shm`, so each preparation
+run must stay on one host. All selected models use a 100-step history at 25 Hz
+(four seconds). List every available GPU after `--gpus` to parallelize the 15
+independent finger models. Historical and negative-control recipes are retained
+in the
 [reproduction recipes](docs/project-report.md#reproduction-recipes).
 
 ## Repository layout
