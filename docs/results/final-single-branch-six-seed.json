@@ -36,18 +36,18 @@
         "ring",
         "little"
       ],
-      "seed_macro_pcc_mean": 0.5650832976544116,
-      "seed_macro_pcc_sd": 0.0008315966299969217,
+      "seed_macro_pcc_mean": 0.5632139407984136,
+      "seed_macro_pcc_sd": 0.000652340586295952,
       "seed_macro_pcc_sd_ddof": 0,
       "seed_macro_pcc_by_seed": {
-        "0": 0.5647231536868731,
-        "1": 0.5650233962404536,
-        "2": 0.5666421903130623,
-        "3": 0.5654330788280457,
-        "4": 0.5647606025406058,
-        "5": 0.5639173643174292
+        "0": 0.5632378827972879,
+        "1": 0.5630693502679872,
+        "2": 0.5644745865488099,
+        "3": 0.5634166437034558,
+        "4": 0.5625365984361088,
+        "5": 0.5625485830368318
       },
-      "mean_prediction_macro_pcc": 0.5653260590494056,
+      "mean_prediction_macro_pcc": 0.5634082621619021,
       "metric_name": "Macro-5 PCC"
     },
     "S2": {
@@ -80,18 +80,18 @@
         "ring",
         "little"
       ],
-      "seed_macro_pcc_mean": 0.5933571995790973,
-      "seed_macro_pcc_sd": 0.0005813501606476794,
+      "seed_macro_pcc_mean": 0.5957403291434921,
+      "seed_macro_pcc_sd": 0.0004910842513275455,
       "seed_macro_pcc_sd_ddof": 0,
       "seed_macro_pcc_by_seed": {
-        "0": 0.5941067108770077,
-        "1": 0.5934975001806563,
-        "2": 0.5929757458653222,
-        "3": 0.5934475956671093,
-        "4": 0.5938039540936957,
-        "5": 0.5923116907907925
+        "0": 0.5955680115748447,
+        "1": 0.5960976412022976,
+        "2": 0.5955756311906539,
+        "3": 0.5957930074213662,
+        "4": 0.596496638721612,
+        "5": 0.5949110447501779
       },
-      "mean_prediction_macro_pcc": 0.5934063457501819,
+      "mean_prediction_macro_pcc": 0.595779057119264,
       "metric_name": "Macro-5 PCC"
     }
   },
@@ -363,30 +363,30 @@
     "S1_middle": {
       "subject": 1,
       "finger": "middle",
-      "mean_prediction_pcc": 0.2646724626844773,
-      "seed_pcc_mean": 0.26443019019605735,
-      "seed_pcc_sd": 0.0016591462925681926,
+      "mean_prediction_pcc": 0.25508347824696037,
+      "seed_pcc_mean": 0.25508340591606693,
+      "seed_pcc_sd": 3.420570900849106e-05,
       "seed_pcc_sd_ddof": 0,
-      "mean_pairwise_prediction_pcc": 0.9978510143454274,
+      "mean_pairwise_prediction_pcc": 0.9999994542213814,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
       "morphology": {
-        "cleaned_pcc": 0.28040160597597563,
-        "cleaned_ccc": 0.18136768342847898,
-        "rmse": 0.13861490786075592,
-        "movement_rmse": 0.22159147262573242,
-        "rest_rms": 0.13354282081127167,
-        "movement_state_f1": 0.2354080891256963,
-        "velocity_pcc": 0.2831135626732349,
-        "prediction_to_target_sd_ratio": 0.6392853992723533,
+        "cleaned_pcc": 0.26106826727614657,
+        "cleaned_ccc": 0.13084105663973686,
+        "rmse": 0.13425564765930176,
+        "movement_rmse": 0.232063427567482,
+        "rest_rms": 0.12773901224136353,
+        "movement_state_f1": 0.21626187961985216,
+        "velocity_pcc": 0.26465233978953656,
+        "prediction_to_target_sd_ratio": 0.4376634418740765,
         "negative_prediction_fraction": 0.0,
-        "median_event_peak_ratio": 2.1494167698749718,
-        "raw_pcc": 0.2646724626844773
+        "median_event_peak_ratio": 1.6946786092974935,
+        "raw_pcc": 0.25508347824696037
       },
-      "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_middle_tails2x2_ensemble_v1",
+      "ensemble_root": "outputs/final_single_wavelet_lstm_lr_selected_six_seed_v1",
       "route": {
-        "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_middle_tails2x2_ensemble_v1",
-        "selection_root": "outputs/single_wavelet_1000hz_standard_s1_middle_tails2x2_v1",
+        "ensemble_root": "outputs/final_single_wavelet_lstm_lr_selected_six_seed_v1",
+        "selection_root": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-4",
         "seeds": [
           0,
           1,
@@ -401,7 +401,8 @@
         "csp_mode": "tails_2x2",
         "recurrent_cell": "standard",
         "little_event_decontamination": false,
-        "development_oof_pcc": 0.2321614723688206
+        "selected_schedule": "frozen_0",
+        "development_oof_pcc": 0.248297245248044
       },
       "configuration": {
         "decoder": "LARS-initialized standard nonlinear gated LSTM",
@@ -451,44 +452,44 @@
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.08088453859090805,
-          "development_raw_pcc": 0.5344557387101905,
-          "released_test_pcc_descriptive": 0.26243773140697474
+          "development_prediction_sd": 0.054958563297986984,
+          "development_raw_pcc": 0.5328768162458621,
+          "released_test_pcc_descriptive": 0.2550113769590487
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.08183065801858902,
-          "development_raw_pcc": 0.5354786000503887,
-          "released_test_pcc_descriptive": 0.2648646854450029
+          "development_prediction_sd": 0.05501703545451164,
+          "development_raw_pcc": 0.5329499321873843,
+          "released_test_pcc_descriptive": 0.2550944555826712
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.0827573910355568,
-          "development_raw_pcc": 0.5366245712661453,
-          "released_test_pcc_descriptive": 0.26592793415809657
+          "development_prediction_sd": 0.05499856546521187,
+          "development_raw_pcc": 0.532962994409148,
+          "released_test_pcc_descriptive": 0.25508991533683434
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.08055494725704193,
-          "development_raw_pcc": 0.538134856434057,
-          "released_test_pcc_descriptive": 0.2651874100603759
+          "development_prediction_sd": 0.05508298799395561,
+          "development_raw_pcc": 0.5329158495216171,
+          "released_test_pcc_descriptive": 0.2551052344374258
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.08196842670440674,
-          "development_raw_pcc": 0.5390619008209453,
-          "released_test_pcc_descriptive": 0.26623789004078063
+          "development_prediction_sd": 0.05501633882522583,
+          "development_raw_pcc": 0.5329109474449643,
+          "released_test_pcc_descriptive": 0.25511786951829557
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.08186798542737961,
-          "development_raw_pcc": 0.538331255323989,
-          "released_test_pcc_descriptive": 0.2619254900651132
+          "development_prediction_sd": 0.05498385801911354,
+          "development_raw_pcc": 0.5329571640568954,
+          "released_test_pcc_descriptive": 0.25508158366212597
         }
       ]
     },
@@ -1544,30 +1545,30 @@
     "S3_index": {
       "subject": 3,
       "finger": "index",
-      "mean_prediction_pcc": 0.5201641476876746,
-      "seed_pcc_mean": 0.5201120108990093,
-      "seed_pcc_sd": 0.002125411615705155,
+      "mean_prediction_pcc": 0.5320277045330851,
+      "seed_pcc_mean": 0.5320276587209835,
+      "seed_pcc_sd": 2.6113284977572924e-05,
       "seed_pcc_sd_ddof": 0,
-      "mean_pairwise_prediction_pcc": 0.9997109638557885,
+      "mean_pairwise_prediction_pcc": 0.9999998024551497,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
       "morphology": {
-        "cleaned_pcc": 0.5703520365230648,
-        "cleaned_ccc": 0.510227012313453,
-        "rmse": 0.17718759179115295,
-        "movement_rmse": 0.20404115319252014,
-        "rest_rms": 0.16584962606430054,
-        "movement_state_f1": 0.6387277829747428,
-        "velocity_pcc": 0.3547967982914861,
-        "prediction_to_target_sd_ratio": 0.736584146006291,
+        "cleaned_pcc": 0.5819303607422648,
+        "cleaned_ccc": 0.45919884619995616,
+        "rmse": 0.16983653604984283,
+        "movement_rmse": 0.2035573571920395,
+        "rest_rms": 0.15602798759937286,
+        "movement_state_f1": 0.610295358649789,
+        "velocity_pcc": 0.34058665887936745,
+        "prediction_to_target_sd_ratio": 0.5406105241390322,
         "negative_prediction_fraction": 0.0,
-        "median_event_peak_ratio": 1.3787093854756867,
-        "raw_pcc": 0.5201641476876746
+        "median_event_peak_ratio": 1.1380778408806183,
+        "raw_pcc": 0.5320277045330851
       },
-      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "ensemble_root": "outputs/final_single_wavelet_lstm_lr_selected_six_seed_v1",
       "route": {
-        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
-        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "ensemble_root": "outputs/final_single_wavelet_lstm_lr_selected_six_seed_v1",
+        "selection_root": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-4",
         "seeds": [
           0,
           1,
@@ -1581,10 +1582,12 @@
         "tap_resample_down": 2,
         "csp_mode": "movement_1",
         "recurrent_cell": "standard",
-        "little_event_decontamination": false
+        "little_event_decontamination": false,
+        "selected_schedule": "frozen_0",
+        "development_oof_pcc": 0.5791861773164538
       },
       "configuration": {
-        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "decoder": "LARS-initialized standard nonlinear gated LSTM",
         "frontend": {
           "name": "single_wavelet_frequency_compressed_depth3",
           "source_rate_hz": 1000,
@@ -1631,44 +1634,44 @@
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1316252201795578,
-          "development_raw_pcc": 0.6620830041739951,
-          "released_test_pcc_descriptive": 0.524719488194148
+          "development_prediction_sd": 0.09801200777292252,
+          "development_raw_pcc": 0.6626403840619617,
+          "released_test_pcc_descriptive": 0.5320259916833341
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.13299846649169922,
-          "development_raw_pcc": 0.6610150337933391,
-          "released_test_pcc_descriptive": 0.5190686331553868
+          "development_prediction_sd": 0.09814728051424026,
+          "development_raw_pcc": 0.662601448459237,
+          "released_test_pcc_descriptive": 0.5320693382635936
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.13315723836421967,
-          "development_raw_pcc": 0.6618387236079357,
-          "released_test_pcc_descriptive": 0.5190418829516048
+          "development_prediction_sd": 0.0980367586016655,
+          "development_raw_pcc": 0.6626461821928196,
+          "released_test_pcc_descriptive": 0.5320413095782629
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.13359761238098145,
-          "development_raw_pcc": 0.6627194556189528,
-          "released_test_pcc_descriptive": 0.5202740410834653
+          "development_prediction_sd": 0.09807506203651428,
+          "development_raw_pcc": 0.6626295887593492,
+          "released_test_pcc_descriptive": 0.5320010998547503
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.13295580446720123,
-          "development_raw_pcc": 0.6613213856532626,
-          "released_test_pcc_descriptive": 0.5185740543891639
+          "development_prediction_sd": 0.09812210500240326,
+          "development_raw_pcc": 0.6626164395375189,
+          "released_test_pcc_descriptive": 0.5320374775287458
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1341753453016281,
-          "development_raw_pcc": 0.6617007827080204,
-          "released_test_pcc_descriptive": 0.5189939656202868
+          "development_prediction_sd": 0.09814324229955673,
+          "development_raw_pcc": 0.662613326025975,
+          "released_test_pcc_descriptive": 0.5319907354172136
         }
       ]
     },

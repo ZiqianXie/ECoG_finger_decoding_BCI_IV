@@ -53,8 +53,10 @@ def test_final_route_and_published_artifact_cover_fifteen_single_paths() -> None
 
     assert len(roots) == 15
     assert roots["S1_thumb"].name.endswith("spatial_grid_ensemble_v1")
-    assert roots["S1_middle"].name.endswith("middle_tails2x2_ensemble_v1")
+    assert roots["S1_index"].name.endswith("paper_equations_s1_six_seed_v1")
+    assert roots["S1_middle"].name.endswith("lstm_lr_selected_six_seed_v1")
     assert roots["S1_little"].name.endswith("little_tails4x4_ensemble_v1")
+    assert roots["S3_index"].name.endswith("lstm_lr_selected_six_seed_v1")
 
     result = json.loads(
         (

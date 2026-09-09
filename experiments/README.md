@@ -9,9 +9,14 @@ for all 15 subject/finger pairs. Development folds select the CSP
 initialization-bank size and LSTM implementation recorded in
 `configs/final_single_wavelet_routes.yaml`. The CSP-count ablation and
 distributed-fold merge utilities that support those selections remain here for
-auditability. Other archived models may score better for individual fingers,
-but models developed under heterogeneous or test-informed diagnostic protocols
-are not mixed into the headline result.
+auditability. The final learning-rate audit also remains here: it compares
+`1e-4`, `3e-5`, and `1e-5` on development folds while allowing the untouched
+LARS-initialized LSTM as a zero-update candidate. Other archived models may
+score better for individual fingers, but models developed under heterogeneous
+or test-informed diagnostic protocols are not mixed into the headline result.
+The development-only comparison and selected routes are recorded in
+`results/final-lstm-lr-selection.json` and
+`configs/final_lstm_lr_selected_routes.yaml`.
 
 ```text
 configs/    settings for alternative and diagnostic runs

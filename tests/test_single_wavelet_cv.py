@@ -1,4 +1,5 @@
 import numpy as np
+import cross_validate_single_wavelet as cv
 
 from cross_validate_single_wavelet import (
     DenseSequenceSampler,
@@ -118,6 +119,13 @@ def test_required_lstm_update_excludes_linear_baseline() -> None:
         records, require_lstm_update=True
     )
     assert selected == "frozen_20"
+
+
+def test_schedule_order_supports_lstm_only_sweep(monkeypatch) -> None:
+    monkeypatch.setattr(cv, "FROZEN_UPDATES", (5, 20, 80))
+    monkeypatch.setattr(cv, "UNFROZEN_UPDATES", ())
+
+    assert cv.schedule_order() == ["frozen_0", "frozen_5", "frozen_20", "frozen_80"]
 
 
 def test_raw_pcc_selection_maximizes_the_requested_metric() -> None:

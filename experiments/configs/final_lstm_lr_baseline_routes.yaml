@@ -1,0 +1,27 @@
+# Pre-sweep routes used as immutable split-local initialization sources.
+# This file prevents a promoted route map from recursively seeding a later audit.
+default:
+  ensemble_root: outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
+  selection_root: outputs/single_wavelet_1000hz_tap5over2_nested_v2
+  seeds: [0, 1, 2, 3, 4, 5]
+  model_rate_hz: 1000
+  tap_resample_up: 5
+  tap_resample_down: 2
+  csp_mode: movement_1
+  recurrent_cell: standard
+  little_event_decontamination: false
+
+subjects:
+  1:
+    index:
+      ensemble_root: outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_six_seed_v1
+      selection_root: outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_v1
+      csp_mode: movement_1
+      recurrent_cell: paper_equations
+      development_oof_pcc: 0.7224760699841841
+    middle:
+      ensemble_root: outputs/full_development_single_wavelet_1000hz_s1_middle_tails2x2_ensemble_v1
+      selection_root: outputs/single_wavelet_1000hz_standard_s1_middle_tails2x2_v1
+      csp_mode: tails_2x2
+      recurrent_cell: standard
+      development_oof_pcc: 0.2321614723688206

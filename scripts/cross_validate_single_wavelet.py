@@ -910,6 +910,8 @@ def monitor_inner_fold(
         )
         if checkpoint == UNFREEZE_AFTER:
             unfreeze_state = copy.deepcopy(model.state_dict())
+    if not UNFROZEN_UPDATES:
+        return metrics
     if unfreeze_state is None:
         raise RuntimeError("unfreeze checkpoint was not captured")
     model.load_state_dict(unfreeze_state)
@@ -1236,6 +1238,11 @@ def main() -> None:
         default=UNFROZEN_UPDATES,
         help="cumulative end-to-end update checkpoints after unfreezing",
     )
+    parser.add_argument(
+        "--frozen-only",
+        action="store_true",
+        help="compare the LARS initialization with LSTM-only updates; do not tune the stem",
+    )
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--feature-chunk", type=int, default=256)
@@ -1259,13 +1266,15 @@ def main() -> None:
     )
     if not frozen_grid or any(value <= 0 for value in frozen_grid):
         raise ValueError("frozen update checkpoints must be positive")
-    if not unfrozen_grid or any(value <= 0 for value in unfrozen_grid):
+    if not args.frozen_only and (
+        not unfrozen_grid or any(value <= 0 for value in unfrozen_grid)
+    ):
         raise ValueError("unfrozen update checkpoints must be positive")
-    if args.unfreeze_after not in frozen_grid:
+    if not args.frozen_only and args.unfreeze_after not in frozen_grid:
         raise ValueError("--unfreeze-after must appear in --frozen-update-grid")
     globals()["FROZEN_UPDATES"] = frozen_grid
     globals()["UNFREEZE_AFTER"] = int(args.unfreeze_after)
-    globals()["UNFROZEN_UPDATES"] = unfrozen_grid
+    globals()["UNFROZEN_UPDATES"] = () if args.frozen_only else unfrozen_grid
 
     finger_index = list(FINGER_NAMES).index(args.finger)
     if args.output is None:

@@ -1,5 +1,5 @@
-# One complete six-refit set is specified for each subject/finger pair.
-# Every set contains six seeds of the same architecture and configuration.
+# Candidate routes frozen from the development-only LSTM learning-rate sweep.
+# Released-test labels were not used to choose these replacements.
 default:
   ensemble_root: outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
   selection_root: outputs/single_wavelet_1000hz_tap5over2_nested_v2

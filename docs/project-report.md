@@ -40,7 +40,7 @@ implementations, but every model retains the same one-spatial-bank,
 one-wavelet-tree, one-LSTM topology.
 
 Across six independent refits, the released-test Macro-5 Pearson correlations
-are **0.565 ± 0.0008 for S1, 0.414 ± 0.0011 for S2, and 0.593 ± 0.0006
+are **0.563 ± 0.0007 for S1, 0.414 ± 0.0011 for S2, and 0.596 ± 0.0005
 for S3** (mean ± population SD). The rounded values reported in the 2018
 paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed the
 paper's rounded aggregate results, although several individual finger
@@ -177,15 +177,17 @@ Both implementations are one-layer nonlinear gated recurrent models with one
 input sequence and one output. This is an implementation choice within the
 same topology, not an ensemble of recurrent branches.
 
-Training has two stages:
+Training has up to two stages:
 
-1. Train the LSTM while the spatial and wavelet stem is frozen.
-2. Unfreeze the complete differentiable path and fine-tune the stem with a
-   smaller learning rate.
+1. Compare the untouched LARS initialization with LSTM-only update checkpoints
+   while the spatial and wavelet stem is frozen.
+2. When supported by development folds, unfreeze the complete differentiable
+   path and fine-tune the stem with a smaller learning rate.
 
-The schedule is selected from development folds. The final six seeds differ in
-random initialization and minibatch order but share the selected architecture,
-target policy, and schedule.
+Learning rate and schedule are selected from development folds, and zero LSTM
+updates remain eligible. The final six seeds differ in random initialization
+and minibatch order but share the selected architecture, target policy, and
+schedule.
 
 ## Development-fold protocol
 
@@ -224,8 +226,8 @@ scores.
 
 The interpolated representation improves the matched 400 Hz baseline for all
 three subjects before nonlinear fine-tuning and most clearly for S2 after
-selection. Fine-tuning did not improve every fold, especially for S1 and S3;
-the development-selected endpoint is still used without test-based replacement.
+selection. Because fine-tuning did not improve every fold, the final schedule
+search also permits the initialized nonlinear LSTM with zero optimizer updates.
 
 ## Final S1 development-selected routes
 
@@ -238,17 +240,27 @@ purged outer folds; released-test scores were not consulted for these choices.
 | Finger | Previous selected OOF | Candidate LARS initialization | Candidate selected OOF | Final initialization / LSTM |
 |---|---:|---:|---:|---|
 | Thumb | 0.554 | 0.578 | 0.581 | 2 movement CSP rows / paper equations |
-| Index | 0.700 | 0.721 | 0.722 | 1 movement CSP row / paper equations |
-| Middle | 0.215 | 0.248 | 0.232 | 2+2 CSP covariance tails / standard LSTM |
+| Index | 0.722 | 0.721 | 0.722 | 1 movement CSP row / paper equations; incumbent schedule retained |
+| Middle | 0.215 | 0.248 | 0.248 | 2+2 CSP covariance tails / standard LSTM; zero updates |
 | Little | 0.386 | 0.434 | 0.468 | 4+4 CSP covariance tails / paper equations; soft decontamination |
 
-For middle finger, both nonlinear LSTM implementations were evaluated from the
-same cached split-local initialization. Their selected OOF PCCs were 0.23216
-for the standard cell and 0.23193 for the paper-equation cell; the standard
-cell was frozen before final refitting. Its selected result is lower than the
-fixed LARS initialization but higher than the preceding nonlinear model. This
-release retains a trained nonlinear decoder consistently rather than changing
-the middle model to linear regression after seeing its test score.
+The learning-rate sweep compared `1e-4`, `3e-5`, and `1e-5` at matched
+optimization distances and allowed zero updates in every inner fold. None of
+the new schedules exceeded the incumbent S1-index route's 0.72248 OOF PCC, so
+that route was retained. S1 middle and S3 index retained their LARS-initialized
+nonlinear LSTMs without optimizer updates: their zero-update OOF PCCs were
+0.24830 and 0.57919, compared with 0.23216 and 0.57749 for the preceding tuned
+routes. These choices were fixed before the corresponding released-test refits
+were evaluated for S1 middle and S3 index. The corrected audit retained the
+already reported S1-index incumbent because it had the best development OOF
+score; its released-test score was not used in that comparison.
+
+On the released test set, S3 index changed from 0.52011 to 0.53203. S1 middle
+moved in the opposite direction, from 0.26443 to 0.25508, despite zero updates
+being the unambiguous development-fold choice. The latter result is retained
+rather than using the test labels to reverse a pre-specified selection. It is
+evidence that development/test concordance remains imperfect for this small,
+heterogeneous recording.
 
 The exact checkpoint roots, seeds, target policy, CSP mode, recurrent-cell choice,
 and OOF provenance are recorded in
@@ -264,15 +276,15 @@ unweighted mean across the five independently decoded fingers.
 
 | Subject | 2018 paper | 2026 single-tree refits (mean ± SD) |
 |---|---:|---:|
-| S1 | 0.556 | 0.565 ± 0.0008 |
+| S1 | 0.556 | 0.563 ± 0.0007 |
 | S2 | 0.408 | 0.414 ± 0.0011 |
-| S3 | 0.582 | 0.593 ± 0.0006 |
+| S3 | 0.582 | 0.596 ± 0.0005 |
 
 | Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
 |---|---|---:|---:|---:|
 | S1 | Thumb | 0.75 | 0.733 ± 0.0008 | -0.017 |
 | S1 | Index | 0.79 | 0.759 ± 0.0004 | -0.031 |
-| S1 | Middle | 0.17 | 0.264 ± 0.0017 | +0.094 |
+| S1 | Middle | 0.17 | 0.255 ± 0.00003 | +0.085 |
 | S1 | Ring | 0.60 | 0.616 ± 0.0005 | +0.016 |
 | S1 | Little | 0.47 | 0.453 ± 0.0026 | -0.017 |
 | S2 | Thumb | 0.62 | 0.585 ± 0.0016 | -0.035 |
@@ -281,7 +293,7 @@ unweighted mean across the five independently decoded fingers.
 | S2 | Ring | 0.47 | 0.504 ± 0.0013 | +0.034 |
 | S2 | Little | 0.30 | 0.392 ± 0.0039 | +0.092 |
 | S3 | Thumb | 0.74 | 0.663 ± 0.0012 | -0.077 |
-| S3 | Index | 0.55 | 0.520 ± 0.0021 | -0.030 |
+| S3 | Index | 0.55 | 0.532 ± 0.00003 | -0.018 |
 | S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
 | S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
 | S3 | Little | 0.75 | 0.608 ± 0.0004 | -0.142 |
@@ -301,6 +313,13 @@ shown only to make event morphology visible. The blue trace is the arithmetic
 mean of the six saved nonnegative Softplus predictions; no gain or offset is
 fitted from test labels. Panel mean ± SD summarizes the six individual PCCs
 against the raw competition target.
+
+The learning-rate audit leaves the incumbent S1-index trajectory unchanged.
+The zero-update S3-index prediction has stronger raw and baseline-corrected PCC
+than its preceding refit. The zero-update S1-middle prediction is visibly too
+small and has poorer movement tracking. These visual and event-level findings
+agree with treating the S1-middle change as a validation-transfer failure, not
+as an improvement hidden by the aggregate score.
 
 The model captures clear event timing for S1 thumb, index, and ring and for
 most S3 fingers. S1 little now follows the main movement blocks but retains

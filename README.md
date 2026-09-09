@@ -46,9 +46,10 @@ has the same signal path:
    glove trajectory.
 5. Use LARS, a sparse linear regression, to select spatial-frequency histories
    and initialize a nonlinear LSTM in a near-linear operating regime.
-6. Train the LSTM with the spatial/wavelet stem frozen, then fine-tune the full
-   differentiable path at a smaller learning rate. A Softplus output represents
-   nonnegative flexion.
+6. Use development folds to select the LSTM learning rate and update count,
+   including zero updates when the LARS initialization is better. When selected,
+   fine-tune the full differentiable path at a smaller stem learning rate. A
+   Softplus output represents nonnegative flexion.
 
 The LSTM is initialized from LARS; it is not a residual model with a frozen
 linear skip. Weights that should initially be near zero are randomized at about
@@ -128,15 +129,15 @@ unmodified released test glove trajectory, matching the competition convention.
 
 | Subject | 2018 paper | 2026 single-tree refits (mean ± SD) |
 |---|---:|---:|
-| S1 | 0.556 | **0.565 ± 0.0008** |
+| S1 | 0.556 | **0.563 ± 0.0007** |
 | S2 | 0.408 | **0.414 ± 0.0011** |
-| S3 | 0.582 | **0.593 ± 0.0006** |
+| S3 | 0.582 | **0.596 ± 0.0005** |
 
 | Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
 |---|---|---:|---:|---:|
 | S1 | Thumb | 0.75 | 0.733 ± 0.0008 | -0.017 |
 | S1 | Index | 0.79 | 0.759 ± 0.0004 | -0.031 |
-| S1 | Middle | 0.17 | 0.264 ± 0.0017 | +0.094 |
+| S1 | Middle | 0.17 | 0.255 ± 0.00003 | +0.085 |
 | S1 | Ring | 0.60 | 0.616 ± 0.0005 | +0.016 |
 | S1 | Little | 0.47 | 0.453 ± 0.0026 | -0.017 |
 | S2 | Thumb | 0.62 | 0.585 ± 0.0016 | -0.035 |
@@ -145,7 +146,7 @@ unmodified released test glove trajectory, matching the competition convention.
 | S2 | Ring | 0.47 | 0.504 ± 0.0013 | +0.034 |
 | S2 | Little | 0.30 | 0.392 ± 0.0039 | +0.092 |
 | S3 | Thumb | 0.74 | 0.663 ± 0.0012 | -0.077 |
-| S3 | Index | 0.55 | 0.520 ± 0.0021 | -0.030 |
+| S3 | Index | 0.55 | 0.532 ± 0.00003 | -0.018 |
 | S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
 | S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
 | S3 | Little | 0.75 | 0.608 ± 0.0004 | -0.142 |
@@ -238,7 +239,7 @@ python scripts/run_single_wavelet_cv.py \
   --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
   --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
   --sampler-mode dense_sequences --selection-metric raw_pcc \
-  --selection-rule best --require-lstm-update --compile
+  --selection-rule best --no-require-lstm-update --compile
 
 python scripts/run_single_wavelet_refits.py \
   --selection-root outputs/single_wavelet_1000hz_tap5over2_nested_v2 \
@@ -262,19 +263,19 @@ python scripts/run_single_wavelet_ensemble.py \
   --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
   --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
   --sampler-mode dense_sequences --selection-metric raw_pcc \
-  --selection-rule best --compile
+  --selection-rule best --no-require-lstm-update --compile
 
 python scripts/summarize_single_wavelet_ensemble.py \
   --root outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1 \
   --route-map configs/final_single_wavelet_routes.yaml \
-  --output-root outputs/final_single_wavelet_routes_v1
+  --output-root outputs/final_single_wavelet_routes
 
 python -m pytest -q
 ```
 
-The common commands above produce the one-CSP/standard-LSTM route. The four
-development-selected S1 overrides (thumb, index, middle, and little) and their
-exact output roots are specified in
+The common commands above produce the one-CSP/standard-LSTM candidates. The
+development-selected per-pair routes, including the four S1 overrides (thumb,
+index, middle, and little), are specified in
 [`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml);
 the corresponding configuration and validation evidence are documented in the
 [`project report`](docs/project-report.md#final-s1-development-selected-routes).

@@ -1,0 +1,247 @@
+{
+  "protocol": "learning rate and update count selected from nested event-fold development OOF predictions; released test labels are untouched",
+  "released_test_used": false,
+  "selection_metric": "stitched development OOF raw PCC",
+  "pairs": {
+    "S1_index": {
+      "baseline_oof_pcc": 0.7213366403602278,
+      "previous_selected_oof_pcc": 0.7224760699841841,
+      "candidates": [
+        {
+          "learning_rate": 0.0001,
+          "stitched_initialized_oof_pcc": 0.7213366403602278,
+          "stitched_selected_oof_pcc": 0.7182779274400957,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_5",
+            "frozen_10"
+          ],
+          "full_development_refit_schedule": "frozen_5",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.6992649064543168,
+            "frozen_5": 0.6996008903632567,
+            "frozen_10": 0.6986009737725234,
+            "frozen_20": 0.6925936175921052,
+            "frozen_40": 0.6723245013317618,
+            "frozen_80": 0.651929701747161,
+            "frozen_120": 0.6363773829340214,
+            "frozen_200": 0.5858759358774321
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-4/sub1/index/summary.json"
+        },
+        {
+          "learning_rate": 3e-05,
+          "stitched_initialized_oof_pcc": 0.7213366403602278,
+          "stitched_selected_oof_pcc": 0.7203071934460179,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_17",
+            "frozen_17"
+          ],
+          "full_development_refit_schedule": "frozen_17",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.6992649064543168,
+            "frozen_17": 0.6995684277114919,
+            "frozen_33": 0.6981274691916014,
+            "frozen_67": 0.6912879145446151,
+            "frozen_133": 0.6761735548233597,
+            "frozen_267": 0.6579832042479069,
+            "frozen_400": 0.6463116575340877,
+            "frozen_667": 0.6095063325508715
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr3e-5/sub1/index/summary.json"
+        },
+        {
+          "learning_rate": 1e-05,
+          "stitched_initialized_oof_pcc": 0.7213366403602278,
+          "stitched_selected_oof_pcc": 0.720371694368276,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_50",
+            "frozen_50"
+          ],
+          "full_development_refit_schedule": "frozen_50",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.6992649064543168,
+            "frozen_50": 0.6993711945573615,
+            "frozen_100": 0.6976478243495297,
+            "frozen_200": 0.6913118433963773,
+            "frozen_400": 0.6771586038797747,
+            "frozen_800": 0.6609665831030652,
+            "frozen_1200": 0.6526725247631752,
+            "frozen_2000": 0.6269542613414522
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-5/sub1/index/summary.json"
+        }
+      ],
+      "selected": {
+        "choice": "previous_route",
+        "learning_rate": 0.0001,
+        "full_development_refit_schedule": "frozen_20",
+        "development_oof_pcc": 0.7224760699841841,
+        "summary": "outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_v1/sub1/index/summary.json",
+        "reason": "incumbent route retained because no new candidate improved OOF PCC"
+      }
+    },
+    "S1_middle": {
+      "baseline_oof_pcc": 0.248297245248044,
+      "previous_selected_oof_pcc": 0.2321614723688206,
+      "candidates": [
+        {
+          "learning_rate": 0.0001,
+          "stitched_initialized_oof_pcc": 0.24829724524804403,
+          "stitched_selected_oof_pcc": 0.2454014664364263,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_20",
+            "frozen_10"
+          ],
+          "full_development_refit_schedule": "frozen_5",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.21212019908983254,
+            "frozen_5": 0.2124980516682623,
+            "frozen_10": 0.21246801055744594,
+            "frozen_20": 0.2102816798441315,
+            "frozen_40": 0.20378006514829303,
+            "frozen_80": 0.1910704368764594,
+            "frozen_120": 0.18719150366330037,
+            "frozen_200": 0.18361628948123299
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-4/sub1/middle/summary.json"
+        },
+        {
+          "learning_rate": 3e-05,
+          "stitched_initialized_oof_pcc": 0.24829724524804403,
+          "stitched_selected_oof_pcc": 0.22666765084274323,
+          "selected_schedule_by_outer_fold": [
+            "frozen_667",
+            "frozen_33",
+            "frozen_33"
+          ],
+          "full_development_refit_schedule": "frozen_17",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.21212019908983254,
+            "frozen_17": 0.21303738871596728,
+            "frozen_33": 0.21292364171475106,
+            "frozen_67": 0.2106656476778172,
+            "frozen_133": 0.20408802388951058,
+            "frozen_267": 0.1940647807617612,
+            "frozen_400": 0.192414760852638,
+            "frozen_667": 0.18490769657130549
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr3e-5/sub1/middle/summary.json"
+        },
+        {
+          "learning_rate": 1e-05,
+          "stitched_initialized_oof_pcc": 0.24829724524804403,
+          "stitched_selected_oof_pcc": 0.22797943278372235,
+          "selected_schedule_by_outer_fold": [
+            "frozen_2000",
+            "frozen_100",
+            "frozen_50"
+          ],
+          "full_development_refit_schedule": "frozen_50",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.21212019908983254,
+            "frozen_50": 0.21325576406972688,
+            "frozen_100": 0.21311462295881892,
+            "frozen_200": 0.21079271875061764,
+            "frozen_400": 0.20443210438429563,
+            "frozen_800": 0.19549973369336765,
+            "frozen_1200": 0.19406876630250494,
+            "frozen_2000": 0.187113646125189
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-5/sub1/middle/summary.json"
+        }
+      ],
+      "selected": {
+        "choice": "frozen_0",
+        "learning_rate": null,
+        "full_development_refit_schedule": "frozen_0",
+        "development_oof_pcc": 0.248297245248044,
+        "summary": null,
+        "reason": "untouched initialization had the highest OOF PCC"
+      }
+    },
+    "S3_index": {
+      "baseline_oof_pcc": 0.5791861773164538,
+      "previous_selected_oof_pcc": 0.5774939759176959,
+      "candidates": [
+        {
+          "learning_rate": 0.0001,
+          "stitched_initialized_oof_pcc": 0.5791861773164538,
+          "stitched_selected_oof_pcc": 0.5788427908420116,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_5",
+            "frozen_0"
+          ],
+          "full_development_refit_schedule": "frozen_0",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.5187803123508692,
+            "frozen_5": 0.5181620692566383,
+            "frozen_10": 0.516461742888303,
+            "frozen_20": 0.5107923775574101,
+            "frozen_40": 0.4957053898437804,
+            "frozen_80": 0.4673779733677722,
+            "frozen_120": 0.4452695972997677,
+            "frozen_200": 0.4134975250350825
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-4/sub3/index/summary.json"
+        },
+        {
+          "learning_rate": 3e-05,
+          "stitched_initialized_oof_pcc": 0.5791861773164538,
+          "stitched_selected_oof_pcc": 0.5789727868908691,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_17",
+            "frozen_0"
+          ],
+          "full_development_refit_schedule": "frozen_0",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.5187803123508692,
+            "frozen_17": 0.5179664055239812,
+            "frozen_33": 0.5160904577466269,
+            "frozen_67": 0.5099927271207563,
+            "frozen_133": 0.4959231098334643,
+            "frozen_267": 0.46804812928911843,
+            "frozen_400": 0.4459855493230558,
+            "frozen_667": 0.4106817483877601
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr3e-5/sub3/index/summary.json"
+        },
+        {
+          "learning_rate": 1e-05,
+          "stitched_initialized_oof_pcc": 0.5791861773164538,
+          "stitched_selected_oof_pcc": 0.5778795238319742,
+          "selected_schedule_by_outer_fold": [
+            "frozen_0",
+            "frozen_0",
+            "frozen_0"
+          ],
+          "full_development_refit_schedule": "frozen_0",
+          "full_development_inner_mean_pcc_by_schedule": {
+            "frozen_0": 0.5187803123508692,
+            "frozen_50": 0.5178635955413892,
+            "frozen_100": 0.5157650496482623,
+            "frozen_200": 0.5098692363975024,
+            "frozen_400": 0.49578941405983024,
+            "frozen_800": 0.46851786608994056,
+            "frozen_1200": 0.44792658993934914,
+            "frozen_2000": 0.4174462157000088
+          },
+          "summary": "outputs/final_single_wavelet_lstm_lr_sweep_v2/lr1e-5/sub3/index/summary.json"
+        }
+      ],
+      "selected": {
+        "choice": "frozen_0",
+        "learning_rate": null,
+        "full_development_refit_schedule": "frozen_0",
+        "development_oof_pcc": 0.5791861773164538,
+        "summary": null,
+        "reason": "untouched initialization had the highest OOF PCC"
+      }
+    }
+  }
+}

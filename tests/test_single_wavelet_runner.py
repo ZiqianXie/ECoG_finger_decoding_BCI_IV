@@ -57,3 +57,10 @@ def test_paper_cell_reuses_initialization_without_reusing_training_curve() -> No
         "outputs/standard/sub1/little"
     )
     assert "--reuse-inner-metrics-from" not in values
+
+
+def test_zero_update_eligibility_is_forwarded_to_fold_runner() -> None:
+    values = command(base_args(require_lstm_update=False), 1, "index")
+
+    assert "--no-require-lstm-update" in values
+    assert "--require-lstm-update" not in values

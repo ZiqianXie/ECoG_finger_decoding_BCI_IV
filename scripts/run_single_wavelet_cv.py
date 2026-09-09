@@ -103,6 +103,8 @@ def command(args: argparse.Namespace, subject: int, finger: str) -> list[str]:
     ]
     if args.require_lstm_update:
         values.append("--require-lstm-update")
+    else:
+        values.append("--no-require-lstm-update")
     if getattr(args, "little_event_decontamination", False):
         values.append("--little-event-decontamination")
     if args.reuse_from_root is not None:
