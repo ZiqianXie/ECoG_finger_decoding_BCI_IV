@@ -19,13 +19,13 @@ remote experiment orchestration, quantitative checks, visual diagnosis, and
 documentation. I remain responsible for the scientific choices and
 interpretation.
 
-The released 2026 model is intentionally uniform: one independently fitted
-model for each of 3 subjects and 5 fingers, with the same single signal path in
-all 15 cases. The path is:
+The released 2026 model uses one independently fitted model for each of 3
+subjects and 5 fingers, with the same single signal path in all 15 cases. The
+path is:
 
 ```text
 notched 1 kHz ECoG
-  -> FastICA rows + one finger-specific CSP row
+  -> FastICA rows + a finger-specific CSP initialization bank
   -> one trainable depth-3 bior6.8 wavelet-packet tree
   -> eight log-energy features per spatial row at 25 Hz
   -> 4 seconds of selected feature history
@@ -33,14 +33,17 @@ notched 1 kHz ECoG
   -> nonnegative Softplus flexion
 ```
 
-There is no auxiliary low-frequency branch, conventional seven-band branch,
-model stacking, or per-finger architecture routing in the released result.
+There is no auxiliary low-frequency branch, conventional seven-band branch, or
+model stacking in the released result. Development folds select the size of
+the CSP initialization bank and one of two equivalent nonlinear LSTM equation
+implementations, but every model retains the same one-spatial-bank,
+one-wavelet-tree, one-LSTM topology.
 
-The final six-seed released-test Macro-5 Pearson correlations are **0.525 for
+The final six-seed released-test Macro-5 Pearson correlations are **0.565 for
 S1, 0.414 for S2, and 0.593 for S3**. The rounded values reported in the 2018
-paper were 0.556, 0.408, and 0.582. S2 and S3 therefore exceed the paper's
-aggregate results; S1 remains lower, principally because thumb, index, and
-little finger do not reach their old values.
+paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed the
+paper's rounded aggregate results, although several individual finger
+trajectories remain weaker than their historical counterparts.
 
 ## Data
 
@@ -84,26 +87,34 @@ is normalized using training statistics only.
 The preprocessing does not use hard winner-take-all reassignment. Ring and
 little fingers, for example, can physically co-move. Forcing every weak movement
 to a single winner produced false activity on the wrong finger in an earlier
-diagnostic. The released path preserves the observed per-finger trajectory
-after baseline correction.
+diagnostic. The default path therefore preserves the observed per-finger
+trajectory after baseline correction. S1 little is the sole exception: a soft
+event-level attenuation, selected from development folds, suppresses events
+clearly dominated by another finger while retaining ambiguous and co-moving
+events.
 
 ## Spatial initialization
 
 Every subject/finger model starts with a bias-free 1x1 spatial convolution.
-Most rows are initialized by FastICA fitted without labels. One additional row
-is initialized by finger-specific common spatial patterns (CSP): movement of
-the decoded finger is contrasted with common rest.
+Most rows are initialized by FastICA fitted without labels. Additional rows are
+initialized by finger-specific common spatial patterns (CSP): movement of the
+decoded finger is contrasted with common rest.
 
 The CSP covariance is not fitted from seven conventional bands. It is fitted
 from samples in the two initialized wavelet paths centered near 110 and 137 Hz
 (lexicographic paths `HHL` and `HHH`). Those samples are concatenated for one
-movement-versus-rest eigensystem, and the highest-movement component supplies
-one spatial row. That row, like the ICA rows, is then applied to the same
-notched broadband ECoG before the common wavelet tree. CSP is refitted for each
-finger and inside each development fold.
+movement-versus-rest eigensystem. Most models retain the most
+movement-dominant eigenvector. Development folds selected two
+movement-dominant vectors for S1 thumb, two vectors from each covariance tail
+for S1 middle, and four vectors from each tail for S1 little. Every CSP vector,
+like the ICA rows, is then applied to the same notched broadband ECoG before
+the common wavelet tree. CSP is refitted for each finger and inside each
+development fold.
 
-This initialization lets the model start with a spatial view sensitive to the
-100--150 Hz movement-related range without creating a second feature branch.
+This initialization lets the model start with several spatial views sensitive
+to the 100--150 Hz movement-related range without creating a second feature
+branch: all rows remain channels of one spatial convolution feeding the same
+wavelet tree.
 
 ## Frequency-compressed wavelet tree
 
@@ -151,14 +162,19 @@ Four seconds of wavelet-energy history are available to the decoder. LARS
 spatial-frequency-lag representation and supplies a sparse linear predictor.
 Feature scaling and LARS fitting are repeated inside each split.
 
-The final temporal decoder is a standard nonlinear LSTM, not a residual LSTM
-added on top of a frozen LARS prediction. One LSTM unit is initialized to
-approximate the LARS mapping in the locally linear part of the sigmoid and tanh
-functions: input and output gates begin open, the forget gate begins closed,
-and the candidate input follows the LARS coefficients. Connections that should
-be zero in the ideal construction receive small random weights with magnitude
-about `1e-3`. The prediction itself passes through the LSTM and a Softplus
-output.
+The final temporal decoder is a nonlinear LSTM, not a residual LSTM added on
+top of a frozen LARS prediction. One LSTM unit is initialized to approximate
+the LARS mapping in the locally linear part of the sigmoid and tanh functions:
+input and output gates begin open, the forget gate begins closed, and the
+candidate input follows the LARS coefficients. Connections that should be zero
+in the ideal construction receive small random weights with magnitude about
+`1e-3`. The prediction itself passes through the LSTM and a Softplus output.
+
+S1 thumb, index, and little use an explicit implementation of the equations
+described in the paper; the remaining pairs use the standard PyTorch LSTM.
+Both implementations are one-layer nonlinear gated recurrent models with one
+input sequence and one output. This is an implementation choice within the
+same topology, not an ensemble of recurrent branches.
 
 Training has two stages:
 
@@ -210,6 +226,35 @@ three subjects before nonlinear fine-tuning and most clearly for S2 after
 selection. Fine-tuning did not improve every fold, especially for S1 and S3;
 the development-selected endpoint is still used without test-based replacement.
 
+## Final S1 development-selected routes
+
+The remaining S1 gap was addressed without adding temporal branches. A
+split-local CSP-bank ablation first varied only the rows of the existing
+spatial convolution. The candidates were then passed through the same nested
+LSTM selection protocol. The table reports stitched predictions from the three
+purged outer folds; released-test scores were not consulted for these choices.
+
+| Finger | Previous selected OOF | Candidate LARS initialization | Candidate selected OOF | Final initialization / LSTM |
+|---|---:|---:|---:|---|
+| Thumb | 0.554 | 0.578 | 0.581 | 2 movement CSP rows / paper equations |
+| Index | 0.700 | 0.721 | 0.722 | 1 movement CSP row / paper equations |
+| Middle | 0.215 | 0.248 | 0.232 | 2+2 CSP covariance tails / standard LSTM |
+| Little | 0.386 | 0.434 | 0.468 | 4+4 CSP covariance tails / paper equations; soft decontamination |
+
+For middle finger, both nonlinear LSTM implementations were evaluated from the
+same cached split-local initialization. Their selected OOF PCCs were 0.23216
+for the standard cell and 0.23193 for the paper-equation cell; the standard
+cell was frozen before final refitting. Its selected result is lower than the
+fixed LARS initialization but higher than the preceding nonlinear model. This
+release retains a trained nonlinear decoder consistently rather than changing
+the middle model to linear regression after seeing its test score.
+
+The exact ensemble roots, seeds, target policy, CSP mode, recurrent-cell choice,
+and OOF provenance are recorded in
+[`configs/final_single_wavelet_routes.yaml`](../configs/final_single_wavelet_routes.yaml).
+All four S1 overrides preserve the same one-spatial-convolution,
+one-eight-leaf-tree, one-LSTM signal path.
+
 ## Final released-test result
 
 Pearson correlation coefficient (PCC) is computed against the unmodified
@@ -218,17 +263,17 @@ unweighted mean across the five independently decoded fingers.
 
 | Subject | 2018 paper | 2026 single-tree refit |
 |---|---:|---:|
-| S1 | 0.556 | 0.525 |
+| S1 | 0.556 | 0.565 |
 | S2 | 0.408 | 0.414 |
 | S3 | 0.582 | 0.593 |
 
 | Subject | Finger | 2018 paper | 2026 ensemble | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.691 | -0.059 |
-| S1 | Index | 0.79 | 0.743 | -0.047 |
-| S1 | Middle | 0.17 | 0.222 | +0.052 |
+| S1 | Thumb | 0.75 | 0.733 | -0.017 |
+| S1 | Index | 0.79 | 0.759 | -0.031 |
+| S1 | Middle | 0.17 | 0.265 | +0.095 |
 | S1 | Ring | 0.60 | 0.616 | +0.016 |
-| S1 | Little | 0.47 | 0.353 | -0.117 |
+| S1 | Little | 0.47 | 0.454 | -0.016 |
 | S2 | Thumb | 0.62 | 0.586 | -0.034 |
 | S2 | Index | 0.38 | 0.377 | -0.003 |
 | S2 | Middle | 0.27 | 0.210 | -0.060 |
@@ -258,11 +303,19 @@ from test labels. Panel PCC is still calculated against the raw competition
 target.
 
 The model captures clear event timing for S1 thumb, index, and ring and for
-most S3 fingers. The failures are also visible. S1 and S2 middle show weak
-movement selectivity and low-amplitude activity during rest. S2 little misses
-several large flexions. S3 little detects multiple episodes but does not reach
-the paper's high 0.75 PCC. These observations are why the numerical aggregate
-is reported together with the full trajectory panel.
+most S3 fingers. S1 little now follows the main movement blocks but retains
+several false-positive spikes. The failures are also visible: S1 and S2 middle
+show weak movement selectivity and low-amplitude activity during rest; S2
+little misses several large flexions; and S3 little detects multiple episodes
+but does not reach the paper's high 0.75 PCC. These observations are why the
+numerical aggregate is reported together with the trajectory figure.
+
+The complete subject trajectories are also provided, rather than restricting
+inspection to the high-activity windows in the summary figure:
+
+- [S1 full trajectory](figures/final-single-branch-s1-full-trajectory.png)
+- [S2 full trajectory](figures/final-single-branch-s2-full-trajectory.png)
+- [S3 full trajectory](figures/final-single-branch-s3-full-trajectory.png)
 
 PCC is invariant to affine scale. A low-amplitude prediction can therefore have
 good PCC while being unsuitable as a literal movement reconstruction. The
@@ -306,15 +359,22 @@ The released path includes checks for:
 - development-only seed eligibility; and
 - measured rather than assumed wavelet frequency responses.
 
+All 90 saved checkpoints in the final route were loaded and inspected. Every
+checkpoint reports eight wavelet leaves, no auxiliary temporal branch, no LMP
+branch, and state keys for exactly one spatial bank, one wavelet tree, and one
+LSTM.
+
 Repeated reconstructed features are cached in `/dev/shm`, window extraction is
 vectorized, and repeated training uses
-`torch.compile(mode="reduce-overhead")`. With prepared caches, a complete
-full-development refit took approximately 10--45 seconds on the lab H100. The
-A100 and H100 project copies point to the same shared remote data directory.
+`torch.compile(mode="reduce-overhead")`. With prepared caches, the final S1
+full-development refits took 17 seconds for middle, 48 seconds for thumb, and
+101 seconds for the eight-CSP-row little model on the lab H100. The A100 and
+H100 project copies point to the same shared remote data directory.
 
-The main README contains the exact reproduction commands. Generated checkpoints
-and large intermediate arrays are ignored by Git; compact results, figures, and
-the frequency-response audit are versioned with the code.
+The main README contains the common reproduction commands and links the exact
+final route configuration. Generated checkpoints and large intermediate arrays
+are ignored by Git; compact results, figures, and the frequency-response audit
+are versioned with the code.
 
 ## Limitations
 

@@ -64,6 +64,13 @@ def main() -> None:
         "--output-activation", choices=("linear", "softplus"), default="softplus"
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
+    parser.add_argument(
+        "--little-event-decontamination",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--little-event-ratio-low", type=float, default=0.8)
+    parser.add_argument("--little-event-ratio-high", type=float, default=1.2)
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument("--ica-initialization-root", type=Path, default=None)
     parser.add_argument(
@@ -134,6 +141,10 @@ def main() -> None:
                             args.output_activation,
                             "--softplus-beta",
                             str(args.softplus_beta),
+                            "--little-event-ratio-low",
+                            str(args.little_event_ratio_low),
+                            "--little-event-ratio-high",
+                            str(args.little_event_ratio_high),
                             "--csp-mode",
                             args.csp_mode,
                             "--selection-metric",
@@ -163,6 +174,8 @@ def main() -> None:
                     tasks[-1][1].extend(
                         ["--ica-initialization-root", str(args.ica_initialization_root)]
                     )
+                if args.little_event_decontamination:
+                    tasks[-1][1].append("--little-event-decontamination")
                 if not args.compile:
                     tasks[-1][1].append("--no-compile")
                 for option, value in (

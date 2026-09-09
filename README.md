@@ -19,10 +19,13 @@ developed with substantial help from OpenAI Codex using GPT-5.6 Sol for code,
 experiment orchestration, diagnostics, and documentation. I remain responsible
 for the scientific decisions and interpretation.
 
-The released implementation deliberately uses one understandable model for all
-15 subject/finger pairs. It keeps the original 1 kHz signal, initializes one
-trainable wavelet tree to spend its eight outputs below 200 Hz, and uses neither
-an auxiliary low-frequency branch nor a mixture of separately trained models.
+The released implementation deliberately uses one understandable signal path
+for all 15 subject/finger pairs. It keeps the original 1 kHz signal,
+initializes one trainable wavelet tree to spend its eight outputs below 200 Hz,
+and uses neither an auxiliary low-frequency branch nor a mixture of separately
+trained models. The number of CSP initialization rows and the LSTM equation
+implementation are selected per subject/finger from development folds; they do
+not create additional decoding branches.
 
 ## The model
 
@@ -31,9 +34,10 @@ has the same signal path:
 
 1. Remove the documented bad channel(s), notch 60, 120, and 180 Hz line noise,
    and standardize ECoG with statistics fitted on the training split.
-2. Initialize a 1x1 spatial convolution with FastICA components and one
-   finger-specific CSP component. CSP (common spatial patterns) contrasts
-   movement of the decoded finger with common rest.
+2. Initialize a 1x1 spatial convolution with FastICA components and a small
+   finger-specific CSP bank. CSP (common spatial patterns) contrasts movement
+   of the decoded finger with common rest. Most models use one CSP row; the S1
+   thumb, middle, and little models use 2, 4, and 8 rows respectively.
 3. Pass every spatial component through one three-level, undecimated
    `bior6.8` wavelet-packet tree. “Undecimated” means that the convolutions do
    not discard time samples.
@@ -49,7 +53,9 @@ has the same signal path:
 The LSTM is initialized from LARS; it is not a residual model with a frozen
 linear skip. Weights that should initially be near zero are randomized at about
 `1e-3`, preserving nonlinear capacity while starting from a stable linear
-decoder.
+decoder. S1 thumb, index, and little use the paper-equation LSTM implementation;
+the remaining pairs use the standard PyTorch LSTM. Both are one-layer nonlinear
+gated recurrent decoders with the same single-tree input and one output.
 
 ### Why interpolate the wavelet filters?
 
@@ -75,12 +81,17 @@ from idealized textbook band edges.
 
 ### Spatial initialization
 
-FastICA supplies label-free spatial components. The additional CSP component is
-fitted separately inside every subject/finger training split. It uses the two
-initialized wavelet paths covering roughly 100–150 Hz, aggregated before the
-CSP covariance calculation. The resulting single CSP weight vector is then
-applied to the same notched broadband ECoG as the ICA rows. It is not a second
-temporal branch, and it is not one of seven conventional bandpass inputs.
+FastICA supplies label-free spatial components. CSP rows are fitted separately
+inside every subject/finger training split. They use the two initialized
+wavelet paths covering roughly 100–150 Hz, aggregated before the CSP covariance
+calculation. Most models retain the most movement-dominant CSP vector. The S1
+thumb retains two movement-dominant vectors; S1 middle retains two vectors from
+each covariance tail; and S1 little retains four from each tail. These choices
+were made from purged development folds.
+
+Every selected CSP vector is applied to the same notched broadband ECoG as the
+ICA rows. The enlarged banks are still rows of one spatial convolution feeding
+one temporal tree—not second branches or seven conventional bandpass inputs.
 
 LARS sees the eight wavelet energies from every retained spatial row and keeps
 only the useful histories. Thus the complete decoder remains one spatial
@@ -93,7 +104,9 @@ baseline is therefore fitted and subtracted separately inside each split. The
 window is subject-specific because the glove drift differs across recordings.
 Hard winner-take-all assignment is not used: ring/little and other finger pairs
 can genuinely co-move, and forced reassignment can fabricate movement on the
-wrong finger.
+wrong finger. For S1 little only, development-fold diagnostics selected a soft
+event-level attenuation when another finger clearly dominates; ambiguous and
+co-moving events are retained.
 
 Random bin splits would leak nearly identical ECoG histories across train and
 validation. Model selection instead uses three folds made from complete
@@ -113,17 +126,17 @@ unmodified released test glove trajectory, matching the competition convention.
 
 | Subject | 2018 paper | 2026 single-tree refit |
 |---|---:|---:|
-| S1 | 0.556 | **0.525** |
+| S1 | 0.556 | **0.565** |
 | S2 | 0.408 | **0.414** |
 | S3 | 0.582 | **0.593** |
 
 | Subject | Finger | 2018 paper | 2026 refit | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.691 | -0.059 |
-| S1 | Index | 0.79 | 0.743 | -0.047 |
-| S1 | Middle | 0.17 | 0.222 | +0.052 |
+| S1 | Thumb | 0.75 | 0.733 | -0.017 |
+| S1 | Index | 0.79 | 0.759 | -0.031 |
+| S1 | Middle | 0.17 | 0.265 | +0.095 |
 | S1 | Ring | 0.60 | 0.616 | +0.016 |
-| S1 | Little | 0.47 | 0.353 | -0.117 |
+| S1 | Little | 0.47 | 0.454 | -0.016 |
 | S2 | Thumb | 0.62 | 0.586 | -0.034 |
 | S2 | Index | 0.38 | 0.377 | -0.003 |
 | S2 | Middle | 0.27 | 0.210 | -0.060 |
@@ -135,9 +148,9 @@ unmodified released test glove trajectory, matching the competition convention.
 | S3 | Ring | 0.41 | 0.557 | +0.147 |
 | S3 | Little | 0.75 | 0.608 | -0.142 |
 
-S2 and S3 exceed the paper’s rounded aggregate; S1 does not. Six of the 15
-individual finger scores exceed the rounded paper values. The exact scores and
-all six member audits are in
+All three subjects exceed the paper’s rounded aggregate. Six of the 15
+individual finger scores exceed the rounded paper values. The exact scores,
+the complete per-pair route, and all six member audits are in
 [`docs/results/final-single-branch-six-seed.json`](docs/results/final-single-branch-six-seed.json).
 
 All 90 members passed a collapse screen based only on development predictions.
@@ -154,11 +167,12 @@ competition target.
 ![Released-test trajectories for all 15 models](docs/figures/final-single-wavelet-test-trajectories.png)
 
 The model captures clear event timing for S1 thumb/index/ring and for most S3
-fingers. It also shows the remaining failure plainly: S1/S2 middle have weak
-movement selectivity and excessive low-amplitude activity during rest, while
-S2 little misses several large events. S3 little tracks several episodes but
-does not reproduce the paper’s unusually high score. PCC alone should therefore
-not be read as a complete measure of trajectory quality.
+fingers. S1 little now captures the main movement blocks but retains some
+false-positive spikes. S1/S2 middle still have weak movement selectivity and
+excessive low-amplitude activity during rest, while S2 little misses several
+large events. S3 little tracks several episodes but does not reproduce the
+paper’s unusually high score. PCC alone should therefore not be read as a
+complete measure of trajectory quality.
 
 I had inspected released labels during the broader reconstruction before fixing
 this protocol, and the original 2018 exploration may also have been influenced
@@ -249,15 +263,24 @@ python scripts/run_single_wavelet_ensemble.py \
   --selection-rule best --compile
 
 python scripts/summarize_single_wavelet_ensemble.py \
-  --root outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
+  --root outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1 \
+  --route-map configs/final_single_wavelet_routes.yaml \
+  --output-root outputs/final_single_wavelet_routes_v1
 
 python -m pytest -q
 ```
 
+The common commands above produce the one-CSP/standard-LSTM route. The four
+development-selected S1 overrides (thumb, index, middle, and little) and their
+exact output roots are specified in
+[`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml);
+the corresponding configuration and validation evidence are documented in the
+[`project report`](docs/project-report.md#final-s1-development-selected-routes).
+
 The code caches reconstructed wavelet leaves in `/dev/shm` and uses
 `torch.compile(mode="reduce-overhead")` for repeated training calls. On the H100
-server, a complete full-development refit took roughly 10–45 seconds after the
-shared cache was prepared.
+server, the final S1 full-development refits took 17–101 seconds after the
+shared cache was prepared; the eight-CSP-row little-finger model is the slowest.
 
 ## Repository layout
 

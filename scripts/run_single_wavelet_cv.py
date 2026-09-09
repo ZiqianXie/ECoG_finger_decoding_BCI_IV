@@ -82,6 +82,10 @@ def command(args: argparse.Namespace, subject: int, finger: str) -> list[str]:
         args.output_activation,
         "--softplus-beta",
         str(args.softplus_beta),
+        "--little-event-ratio-low",
+        str(getattr(args, "little_event_ratio_low", 0.8)),
+        "--little-event-ratio-high",
+        str(getattr(args, "little_event_ratio_high", 1.2)),
         "--selection-metric",
         args.selection_metric,
         "--selection-rule",
@@ -99,6 +103,8 @@ def command(args: argparse.Namespace, subject: int, finger: str) -> list[str]:
     ]
     if args.require_lstm_update:
         values.append("--require-lstm-update")
+    if getattr(args, "little_event_decontamination", False):
+        values.append("--little-event-decontamination")
     if args.reuse_from_root is not None:
         source = args.reuse_from_root / f"sub{subject}" / finger
         values.extend(
@@ -252,6 +258,13 @@ def main() -> None:
         "--output-activation", choices=("linear", "softplus"), default="softplus"
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
+    parser.add_argument(
+        "--little-event-decontamination",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--little-event-ratio-low", type=float, default=0.8)
+    parser.add_argument("--little-event-ratio-high", type=float, default=1.2)
     parser.add_argument(
         "--selection-metric", choices=("event_macro_nmse", "raw_pcc"), default="raw_pcc"
     )

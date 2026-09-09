@@ -1,11 +1,8 @@
 {
   "protocol": "six fixed-configuration full-development refits per pair; collapse eligibility uses only development prediction validity and variance; released test is used only for final scoring",
   "model": {
-    "input_rate_hz": 1000,
-    "spatial_initialization": "full-rank split-local FastICA plus one split-local, finger-specific movement-versus-rest CSP row fitted from HHL/HHH samples",
-    "frontend": "one trainable depth-3 bior6.8 wavelet-packet tree; first filter pair interpolated 5/2; deeper dilations 5 and 10; eight energy leaves; no auxiliary branch",
-    "temporal_decoder": "one nonlinear LSTM initialized in a near-linear regime from LARS; not a residual or frozen linear skip",
-    "output": "Softplus(beta=10)"
+    "varies_by_pair": true,
+    "see_pair_configuration": true
   },
   "selection": {
     "development_samples_per_subject": 400000,
@@ -23,15 +20,40 @@
     4,
     5
   ],
+  "route_map": "configs/final_single_wavelet_routes.yaml",
   "collapse_sd": 1e-08,
   "subjects": {
     "S1": {
-      "macro_5_pcc": 0.5250196766237526
+      "fingers": [
+        "thumb",
+        "index",
+        "middle",
+        "ring",
+        "little"
+      ],
+      "mean_requested_finger_pcc": 0.5653260590494054,
+      "macro_5_pcc": 0.5653260590494054
     },
     "S2": {
+      "fingers": [
+        "thumb",
+        "index",
+        "middle",
+        "ring",
+        "little"
+      ],
+      "mean_requested_finger_pcc": 0.4140331233009382,
       "macro_5_pcc": 0.4140331233009382
     },
     "S3": {
+      "fingers": [
+        "thumb",
+        "index",
+        "middle",
+        "ring",
+        "little"
+      ],
+      "mean_requested_finger_pcc": 0.5934063457501816,
       "macro_5_pcc": 0.5934063457501816
     }
   },
@@ -39,162 +61,393 @@
     "S1_thumb": {
       "subject": 1,
       "finger": "thumb",
-      "ensemble_pcc": 0.6907431171937356,
-      "member_pcc_mean": 0.6906841350519234,
-      "member_pcc_sd": 0.0014243793202240297,
-      "mean_pairwise_prediction_pcc": 0.9998169942116463,
+      "ensemble_pcc": 0.733166026246915,
+      "member_pcc_mean": 0.7330411599724719,
+      "member_pcc_sd": 0.0007538980599979287,
+      "mean_pairwise_prediction_pcc": 0.9996198436929867,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.7354259712218124,
+        "cleaned_ccc": 0.6241674185917632,
+        "rmse": 0.1556212604045868,
+        "movement_rmse": 0.28462910652160645,
+        "rest_rms": 0.11791907995939255,
+        "movement_state_f1": 0.45282010157711844,
+        "velocity_pcc": 0.41874149924832277,
+        "prediction_to_target_sd_ratio": 0.5919821305283453,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.5722566803210656,
+        "raw_pcc": 0.733166026246915
+      },
+      "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_spatial_grid_ensemble_v1",
+      "route": {
+        "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_spatial_grid_ensemble_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_paper_s1_spatial_grid_v1",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_2",
+        "recurrent_cell": "paper_equations",
+        "little_event_decontamination": false,
+        "development_oof_pcc": 0.5811437805548132
+      },
+      "configuration": {
+        "decoder": "LARS-initialized paper_equations nonlinear gated LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.12875224649906158,
-          "development_raw_pcc": 0.7060159353975025,
-          "released_test_pcc_descriptive": 0.6914760000216834
+          "development_prediction_sd": 0.12939071655273438,
+          "development_raw_pcc": 0.6745314759518266,
+          "released_test_pcc_descriptive": 0.7324729503855137
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1265747845172882,
-          "development_raw_pcc": 0.7042827835568078,
-          "released_test_pcc_descriptive": 0.6892681944539714
+          "development_prediction_sd": 0.12783314287662506,
+          "development_raw_pcc": 0.6757125244859856,
+          "released_test_pcc_descriptive": 0.7318957017773334
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1281747668981552,
-          "development_raw_pcc": 0.7008969236994983,
-          "released_test_pcc_descriptive": 0.6912408278050644
+          "development_prediction_sd": 0.13232344388961792,
+          "development_raw_pcc": 0.6747813107578727,
+          "released_test_pcc_descriptive": 0.7339825323518996
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.12926363945007324,
-          "development_raw_pcc": 0.7025106351731418,
-          "released_test_pcc_descriptive": 0.6924966326110983
+          "development_prediction_sd": 0.13172195851802826,
+          "development_raw_pcc": 0.6744757233994253,
+          "released_test_pcc_descriptive": 0.7339634958688609
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.12834487855434418,
-          "development_raw_pcc": 0.7043217932403816,
-          "released_test_pcc_descriptive": 0.6883243934700575
+          "development_prediction_sd": 0.1333690583705902,
+          "development_raw_pcc": 0.6754509480843693,
+          "released_test_pcc_descriptive": 0.7330825346574087
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1276271790266037,
-          "development_raw_pcc": 0.705302729279187,
-          "released_test_pcc_descriptive": 0.6912987619496652
+          "development_prediction_sd": 0.13147157430648804,
+          "development_raw_pcc": 0.6740454175219739,
+          "released_test_pcc_descriptive": 0.7328497447938153
         }
       ]
     },
     "S1_index": {
       "subject": 1,
       "finger": "index",
-      "ensemble_pcc": 0.7433625974488876,
-      "member_pcc_mean": 0.7433329981964273,
-      "member_pcc_sd": 0.00031394854876539346,
-      "mean_pairwise_prediction_pcc": 0.9999053268180774,
+      "ensemble_pcc": 0.7586461529855792,
+      "member_pcc_mean": 0.7586072150451001,
+      "member_pcc_sd": 0.00037424285805261816,
+      "mean_pairwise_prediction_pcc": 0.9998799015327591,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.7393847063799035,
+        "cleaned_ccc": 0.6028854964709771,
+        "rmse": 0.12303852289915085,
+        "movement_rmse": 0.13956119120121002,
+        "rest_rms": 0.12623977661132812,
+        "movement_state_f1": 0.4395924308588064,
+        "velocity_pcc": 0.4759710779294082,
+        "prediction_to_target_sd_ratio": 1.0697977453523515,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 1.9860028479192517,
+        "raw_pcc": 0.7586461529855792
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_six_seed_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_six_seed_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_v1",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "paper_equations",
+        "little_event_decontamination": false,
+        "development_oof_pcc": 0.7224760699841841
+      },
+      "configuration": {
+        "decoder": "LARS-initialized paper_equations nonlinear gated LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11874046176671982,
-          "development_raw_pcc": 0.7559158340387122,
-          "released_test_pcc_descriptive": 0.7427867631580328
+          "development_prediction_sd": 0.13076865673065186,
+          "development_raw_pcc": 0.7859176843882524,
+          "released_test_pcc_descriptive": 0.7578853239746843
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11946902424097061,
-          "development_raw_pcc": 0.7560690212480872,
-          "released_test_pcc_descriptive": 0.7435501248746145
+          "development_prediction_sd": 0.13216155767440796,
+          "development_raw_pcc": 0.7863135473446892,
+          "released_test_pcc_descriptive": 0.7588856195567847
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11942048370838165,
-          "development_raw_pcc": 0.7559226728862999,
-          "released_test_pcc_descriptive": 0.7436820306285401
+          "development_prediction_sd": 0.1319049447774887,
+          "development_raw_pcc": 0.7861806411531814,
+          "released_test_pcc_descriptive": 0.7590273589203755
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11983602494001389,
-          "development_raw_pcc": 0.7555294216076429,
-          "released_test_pcc_descriptive": 0.7431211316520115
+          "development_prediction_sd": 0.13244205713272095,
+          "development_raw_pcc": 0.7861091995997708,
+          "released_test_pcc_descriptive": 0.7585162421318018
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11935042589902878,
-          "development_raw_pcc": 0.7560968969729982,
-          "released_test_pcc_descriptive": 0.7432547089833615
+          "development_prediction_sd": 0.13114172220230103,
+          "development_raw_pcc": 0.7862670790114372,
+          "released_test_pcc_descriptive": 0.7585056599951756
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.11903221905231476,
-          "development_raw_pcc": 0.7561444255537656,
-          "released_test_pcc_descriptive": 0.7436032298820033
+          "development_prediction_sd": 0.1311412900686264,
+          "development_raw_pcc": 0.7864016049640254,
+          "released_test_pcc_descriptive": 0.7588230856917786
         }
       ]
     },
     "S1_middle": {
       "subject": 1,
       "finger": "middle",
-      "ensemble_pcc": 0.22167058197392625,
-      "member_pcc_mean": 0.22144438030353344,
-      "member_pcc_sd": 0.0018337484464848051,
-      "mean_pairwise_prediction_pcc": 0.9976934304431457,
+      "ensemble_pcc": 0.26467246268447714,
+      "member_pcc_mean": 0.26443019019605735,
+      "member_pcc_sd": 0.0016591462925681926,
+      "mean_pairwise_prediction_pcc": 0.9978510143454269,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.2804016059759757,
+        "cleaned_ccc": 0.18136768342847898,
+        "rmse": 0.13861490786075592,
+        "movement_rmse": 0.22159147262573242,
+        "rest_rms": 0.13354282081127167,
+        "movement_state_f1": 0.2354080891256963,
+        "velocity_pcc": 0.28311356267323484,
+        "prediction_to_target_sd_ratio": 0.6392853992723533,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 2.1494167698749718,
+        "raw_pcc": 0.26467246268447714
+      },
+      "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_middle_tails2x2_ensemble_v1",
+      "route": {
+        "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_middle_tails2x2_ensemble_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_standard_s1_middle_tails2x2_v1",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "tails_2x2",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false,
+        "development_oof_pcc": 0.2321614723688206
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear gated LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.07791157066822052,
-          "development_raw_pcc": 0.5082191159828237,
-          "released_test_pcc_descriptive": 0.21950224046304131
+          "development_prediction_sd": 0.08088453859090805,
+          "development_raw_pcc": 0.5344557387101905,
+          "released_test_pcc_descriptive": 0.26243773140697474
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.07939504832029343,
-          "development_raw_pcc": 0.5081742647664705,
-          "released_test_pcc_descriptive": 0.2220793941048503
+          "development_prediction_sd": 0.08183065801858902,
+          "development_raw_pcc": 0.5354786000503887,
+          "released_test_pcc_descriptive": 0.2648646854450029
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.07995116710662842,
-          "development_raw_pcc": 0.509249922493291,
-          "released_test_pcc_descriptive": 0.22223988705390743
+          "development_prediction_sd": 0.0827573910355568,
+          "development_raw_pcc": 0.5366245712661453,
+          "released_test_pcc_descriptive": 0.26592793415809657
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.07773540914058685,
-          "development_raw_pcc": 0.510835702416612,
-          "released_test_pcc_descriptive": 0.22043235142988307
+          "development_prediction_sd": 0.08055494725704193,
+          "development_raw_pcc": 0.538134856434057,
+          "released_test_pcc_descriptive": 0.2651874100603759
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.07998210191726685,
-          "development_raw_pcc": 0.5112164077303921,
-          "released_test_pcc_descriptive": 0.22477358293198985
+          "development_prediction_sd": 0.08196842670440674,
+          "development_raw_pcc": 0.5390619008209453,
+          "released_test_pcc_descriptive": 0.26623789004078063
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.07980640232563019,
-          "development_raw_pcc": 0.5100376824440548,
-          "released_test_pcc_descriptive": 0.2196388258375288
+          "development_prediction_sd": 0.08186798542737961,
+          "development_raw_pcc": 0.538331255323989,
+          "released_test_pcc_descriptive": 0.2619254900651132
         }
       ]
     },
@@ -207,6 +460,82 @@
       "mean_pairwise_prediction_pcc": 0.99985579751153,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.5718030719672257,
+        "cleaned_ccc": 0.4155091231939671,
+        "rmse": 0.1493692249059677,
+        "movement_rmse": 0.25311484932899475,
+        "rest_rms": 0.09807241708040237,
+        "movement_state_f1": 0.5961251862891207,
+        "velocity_pcc": 0.32346112575416663,
+        "prediction_to_target_sd_ratio": 0.4398212315086284,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.6472517947221652,
+        "raw_pcc": 0.6159832835164203
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -255,54 +584,131 @@
     "S1_little": {
       "subject": 1,
       "finger": "little",
-      "ensemble_pcc": 0.3533388029857932,
-      "member_pcc_mean": 0.35328940503231937,
-      "member_pcc_sd": 0.0005876470789970207,
-      "mean_pairwise_prediction_pcc": 0.9997197798897773,
+      "ensemble_pcc": 0.4541623698136354,
+      "member_pcc_mean": 0.453393090133049,
+      "member_pcc_sd": 0.0025841048258187153,
+      "mean_pairwise_prediction_pcc": 0.9960360590401718,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.536432141792269,
+        "cleaned_ccc": 0.5109880086536611,
+        "rmse": 0.12113316357135773,
+        "movement_rmse": 0.28418809175491333,
+        "rest_rms": 0.07906141132116318,
+        "movement_state_f1": 0.424807903402854,
+        "velocity_pcc": 0.33799533744230215,
+        "prediction_to_target_sd_ratio": 0.7432791969489044,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 1.2309905222409507,
+        "raw_pcc": 0.4541623698136354
+      },
+      "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_little_tails4x4_ensemble_v1",
+      "route": {
+        "ensemble_root": "outputs/full_development_single_wavelet_1000hz_s1_little_tails4x4_ensemble_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_paper_s1_spatial_grid_v1",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "tails_4x4",
+        "recurrent_cell": "paper_equations",
+        "little_event_decontamination": true,
+        "development_oof_pcc": 0.4681942620814756
+      },
+      "configuration": {
+        "decoder": "LARS-initialized paper_equations nonlinear gated LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": true,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.10325422883033752,
-          "development_raw_pcc": 0.46861348554269444,
-          "released_test_pcc_descriptive": 0.3529119594645824
+          "development_prediction_sd": 0.15183819830417633,
+          "development_raw_pcc": 0.7256434634784513,
+          "released_test_pcc_descriptive": 0.4548655337652887
         },
         {
           "seed": 1,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.10758805274963379,
-          "development_raw_pcc": 0.46775563299572537,
-          "released_test_pcc_descriptive": 0.3542353130800202
+          "development_prediction_sd": 0.14704635739326477,
+          "development_raw_pcc": 0.7340474083692519,
+          "released_test_pcc_descriptive": 0.4529497610862291
         },
         {
           "seed": 2,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.10419811308383942,
-          "development_raw_pcc": 0.4705758249565603,
-          "released_test_pcc_descriptive": 0.35336022748747037
+          "development_prediction_sd": 0.15288046002388,
+          "development_raw_pcc": 0.7229947356369986,
+          "released_test_pcc_descriptive": 0.4577983768324978
         },
         {
           "seed": 3,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.1037161648273468,
-          "development_raw_pcc": 0.46944523462418125,
-          "released_test_pcc_descriptive": 0.35351273767062485
+          "development_prediction_sd": 0.15429647266864777,
+          "development_raw_pcc": 0.7268288282408736,
+          "released_test_pcc_descriptive": 0.4538771283646251
         },
         {
           "seed": 4,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.10282424837350845,
-          "development_raw_pcc": 0.4696177159140679,
-          "released_test_pcc_descriptive": 0.3523068161358011
+          "development_prediction_sd": 0.15057463943958282,
+          "development_raw_pcc": 0.7218144503603583,
+          "released_test_pcc_descriptive": 0.4499113052869354
         },
         {
           "seed": 5,
           "eligible_from_development_only": true,
-          "development_prediction_sd": 0.10666844248771667,
-          "development_raw_pcc": 0.4690123159185668,
-          "released_test_pcc_descriptive": 0.3534093763554172
+          "development_prediction_sd": 0.1449648141860962,
+          "development_raw_pcc": 0.7369597070930844,
+          "released_test_pcc_descriptive": 0.450956435462718
         }
       ]
     },
@@ -315,6 +721,82 @@
       "mean_pairwise_prediction_pcc": 0.9978555708707416,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.650218348079187,
+        "cleaned_ccc": 0.5498967889027373,
+        "rmse": 0.11446145176887512,
+        "movement_rmse": 0.2461376190185547,
+        "rest_rms": 0.09219940751791,
+        "movement_state_f1": 0.3648763853367434,
+        "velocity_pcc": 0.40702111815075354,
+        "prediction_to_target_sd_ratio": 0.6551066637328958,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.6213102031369482,
+        "raw_pcc": 0.5855658613217829
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -369,6 +851,82 @@
       "mean_pairwise_prediction_pcc": 0.9996565812310894,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.5606977595135001,
+        "cleaned_ccc": 0.4499244382377353,
+        "rmse": 0.13288253545761108,
+        "movement_rmse": 0.25491246581077576,
+        "rest_rms": 0.10203392803668976,
+        "movement_state_f1": 0.43402669978267616,
+        "velocity_pcc": 0.36369733345628996,
+        "prediction_to_target_sd_ratio": 0.5826703321660904,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 1.732326030097692,
+        "raw_pcc": 0.37722113522044143
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -423,6 +981,82 @@
       "mean_pairwise_prediction_pcc": 0.998832504917276,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.33885305993800746,
+        "cleaned_ccc": 0.266119756645146,
+        "rmse": 0.12269493192434311,
+        "movement_rmse": 0.26884889602661133,
+        "rest_rms": 0.10823294520378113,
+        "movement_state_f1": 0.18259935553168635,
+        "velocity_pcc": 0.22895086071698376,
+        "prediction_to_target_sd_ratio": 1.2054640834200354,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 2.4467558388883766,
+        "raw_pcc": 0.20969119259759947
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -477,6 +1111,82 @@
       "mean_pairwise_prediction_pcc": 0.9997507241785437,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.6140381380503224,
+        "cleaned_ccc": 0.5002209558195502,
+        "rmse": 0.14004042744636536,
+        "movement_rmse": 0.24281516671180725,
+        "rest_rms": 0.11082487553358078,
+        "movement_state_f1": 0.46722494946578114,
+        "velocity_pcc": 0.3809333927775203,
+        "prediction_to_target_sd_ratio": 0.6135230410923923,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.6321235719197976,
+        "raw_pcc": 0.5045309476226205
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -531,6 +1241,82 @@
       "mean_pairwise_prediction_pcc": 0.9962514712407583,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.5647578978239002,
+        "cleaned_ccc": 0.4644267261234196,
+        "rmse": 0.12819546461105347,
+        "movement_rmse": 0.3032093048095703,
+        "rest_rms": 0.07842286676168442,
+        "movement_state_f1": 0.49164926931106473,
+        "velocity_pcc": 0.30170973549478425,
+        "prediction_to_target_sd_ratio": 0.529186471458084,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.8540621656347418,
+        "raw_pcc": 0.3931564797422469
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -585,6 +1371,82 @@
       "mean_pairwise_prediction_pcc": 0.9998104288766743,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.6946185862429353,
+        "cleaned_ccc": 0.6173801274428331,
+        "rmse": 0.14943255484104156,
+        "movement_rmse": 0.1952822208404541,
+        "rest_rms": 0.14882010221481323,
+        "movement_state_f1": 0.3712055507372073,
+        "velocity_pcc": 0.33802405435871136,
+        "prediction_to_target_sd_ratio": 0.8903039300218158,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.9974793763327433,
+        "raw_pcc": 0.6628737593087752
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -639,6 +1501,82 @@
       "mean_pairwise_prediction_pcc": 0.9997109638557876,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.5703520365230647,
+        "cleaned_ccc": 0.510227012313453,
+        "rmse": 0.17718759179115295,
+        "movement_rmse": 0.20404115319252014,
+        "rest_rms": 0.16584962606430054,
+        "movement_state_f1": 0.6387277829747428,
+        "velocity_pcc": 0.3547967982914861,
+        "prediction_to_target_sd_ratio": 0.736584146006291,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 1.3787093854756867,
+        "raw_pcc": 0.5201641476876743
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -693,6 +1631,82 @@
       "mean_pairwise_prediction_pcc": 0.9997739906617509,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.7053691886780521,
+        "cleaned_ccc": 0.651638712819343,
+        "rmse": 0.15872961282730103,
+        "movement_rmse": 0.18796886503696442,
+        "rest_rms": 0.13867467641830444,
+        "movement_state_f1": 0.6744721689059501,
+        "velocity_pcc": 0.47116497197979934,
+        "prediction_to_target_sd_ratio": 0.717096639815178,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.8368125539548024,
+        "raw_pcc": 0.6189392065908712
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -747,6 +1761,82 @@
       "mean_pairwise_prediction_pcc": 0.9996794199360817,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.5907821020775926,
+        "cleaned_ccc": 0.5159430666536851,
+        "rmse": 0.18058645725250244,
+        "movement_rmse": 0.20427179336547852,
+        "rest_rms": 0.16979864239692688,
+        "movement_state_f1": 0.6484402383456012,
+        "velocity_pcc": 0.3262407206408566,
+        "prediction_to_target_sd_ratio": 0.6802243813155342,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 0.8743456723980122,
+        "raw_pcc": 0.55734125471054
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,
@@ -801,6 +1891,82 @@
       "mean_pairwise_prediction_pcc": 0.9999241884860993,
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
+      "morphology": {
+        "cleaned_pcc": 0.6143078734303246,
+        "cleaned_ccc": 0.5129972879567415,
+        "rmse": 0.1770840585231781,
+        "movement_rmse": 0.28758686780929565,
+        "rest_rms": 0.13257260620594025,
+        "movement_state_f1": 0.4874113908579809,
+        "velocity_pcc": 0.21297150367444379,
+        "prediction_to_target_sd_ratio": 0.5762444707817204,
+        "negative_prediction_fraction": 0.0,
+        "median_event_peak_ratio": 1.108981011224421,
+        "raw_pcc": 0.6077133604530476
+      },
+      "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+      "route": {
+        "ensemble_root": "outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1",
+        "selection_root": "outputs/single_wavelet_1000hz_tap5over2_nested_v2",
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "model_rate_hz": 1000,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard",
+        "little_event_decontamination": false
+      },
+      "configuration": {
+        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "frontend": {
+          "name": "single_wavelet_frequency_compressed_depth3",
+          "source_rate_hz": 1000,
+          "model_rate_hz": 1000,
+          "input_resampling": "none",
+          "tap_interpolation": {
+            "up": 5,
+            "down": 2,
+            "method": "polyphase_kaiser_8.6"
+          },
+          "wavelet": "bior6.8",
+          "levels": 3,
+          "leaf_count": 8,
+          "nominal_frequency_edges_hz": [
+            0,
+            25,
+            50,
+            75,
+            100,
+            125,
+            150,
+            175,
+            200
+          ],
+          "auxiliary_temporal_branches": [],
+          "lmp_branch": false,
+          "energy_pool_samples": 40
+        },
+        "training_objective": {
+          "trajectory": "normalized mean squared error",
+          "model_outputs": [
+            "trajectory"
+          ]
+        },
+        "target_policy": {
+          "little_event_decontamination": false,
+          "little_event_ratio_low": 0.8,
+          "little_event_ratio_high": 1.2
+        },
+        "output_activation": "softplus",
+        "softplus_beta": 10.0
+      },
       "members": [
         {
           "seed": 0,

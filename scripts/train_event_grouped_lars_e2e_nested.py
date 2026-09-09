@@ -48,9 +48,9 @@ def build_model(
     mean: np.ndarray, scale: np.ndarray, coefficients: np.ndarray,
     intercept: float, hidden_size: int, near_zero_std: float,
     output_activation: str, device: torch.device,
+    frontend: str,
     movement_fraction: float | None = None,
     candidate_scale: float = 1.0,
-    frontend: str = "asymmetric",
 ) -> ExactWindowFingerDecoder:
     model = ExactWindowFingerDecoder(
         input_channels=input_channels,

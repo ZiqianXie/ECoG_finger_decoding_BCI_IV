@@ -2,6 +2,7 @@
 # corresponding full-development refits inspect released-test labels.
 # Each subject/finger uses one spatial bank, one wavelet tree, and one LSTM.
 default:
+  frontend: asymmetric
   input_root: outputs/event_lars_e2e_ica_csp_1000hz_sevenband_ownany_lowlr_v1
   refit_root: outputs/full_development_ica_csp_sevenband_single_branch_v1
   spatial_cache_root: outputs/perfinger_ica_csp_wavelet_1000hz_sevenband_ownany_v1

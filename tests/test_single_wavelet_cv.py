@@ -8,6 +8,7 @@ from cross_validate_single_wavelet import (
     UniformGroupSampler,
     one_standard_error_selection,
     scoped_event_groups,
+    suppress_weak_little_events,
     validation_metrics,
 )
 
@@ -41,6 +42,31 @@ def test_scoped_groups_stay_inside_training_intervals() -> None:
     assert groups[0][0] == 0
     assert groups[-1][1] == 240
     assert all(stop <= 120 or start >= 130 for start, stop in groups)
+
+
+def test_little_event_decontamination_suppresses_only_dominated_events() -> None:
+    target = np.zeros((80, 5), dtype=np.float32)
+    target[10:20, 3] = 1.0
+    target[11:19, 4] = 0.2
+    target[40:50, 3] = 0.5
+    target[40:50, 4] = 1.0
+
+    cleaned = suppress_weak_little_events(target, [[0, 80]])
+
+    assert np.max(cleaned[11:19, 4]) == 0.0
+    np.testing.assert_allclose(cleaned[40:50, 4], target[40:50, 4])
+    np.testing.assert_allclose(cleaned[:, :4], target[:, :4])
+
+
+def test_little_event_decontamination_does_not_cross_interval_boundaries() -> None:
+    target = np.zeros((30, 5), dtype=np.float32)
+    target[11:15, 3] = 1.0
+    target[11:15, 4] = 0.2
+    target[15:21, 4] = 0.8
+
+    cleaned = suppress_weak_little_events(target, [[0, 15], [15, 30]])
+
+    np.testing.assert_allclose(cleaned[15:21, 4], target[15:21, 4])
 
 
 def test_uniform_sampler_visits_each_group_before_repeating() -> None:

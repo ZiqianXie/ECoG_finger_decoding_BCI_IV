@@ -433,6 +433,7 @@ def main() -> None:
         near_zero_std=near_zero_std,
         candidate_scale=candidate_scale,
         output_activation=str(options["output_activation"]),
+        frontend=str(options["frontend"]),
         device=device,
         movement_fraction=float(np.mean(target_train >= 0.08)),
     )

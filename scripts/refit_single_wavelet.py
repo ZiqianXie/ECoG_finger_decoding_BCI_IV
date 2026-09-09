@@ -179,6 +179,13 @@ def main() -> None:
     parser.add_argument("--tap-resample-down", type=int, default=2)
     parser.add_argument("--threshold", type=float, default=0.08)
     parser.add_argument("--movement-threshold", type=float, default=0.10)
+    parser.add_argument(
+        "--little-event-decontamination",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--little-event-ratio-low", type=float, default=0.8)
+    parser.add_argument("--little-event-ratio-high", type=float, default=1.2)
     parser.add_argument("--merge-gap-bins", type=int, default=12)
     parser.add_argument("--minimum-event-bins", type=int, default=3)
     parser.add_argument("--maximum-rest-group-bins", type=int, default=250)
@@ -284,7 +291,14 @@ def main() -> None:
         train_raw_full[OFFSET : OFFSET + train_rows], dtype=np.float64
     )
     train_target = make_subject_target(
-        train_raw, [[0, train_rows]], [], args.subject
+        train_raw,
+        [[0, train_rows]],
+        [],
+        args.subject,
+        finger_index=finger_index,
+        little_event_decontamination=args.little_event_decontamination,
+        little_event_ratio_low=args.little_event_ratio_low,
+        little_event_ratio_high=args.little_event_ratio_high,
     )
     groups, _, _ = scoped_event_groups(
         train_target,
@@ -474,6 +488,10 @@ def main() -> None:
         "subject": args.subject,
         "finger": args.finger,
         "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
+        "training_objective": {
+            "trajectory": "normalized mean squared error",
+            "model_outputs": ["trajectory"],
+        },
         "selected_schedule": schedule,
         "selection_metric": args.selection_metric,
         "selection_rule": args.selection_rule,
@@ -482,6 +500,11 @@ def main() -> None:
         "output_activation": args.output_activation,
         "softplus_beta": args.softplus_beta,
         "csp_mode": args.csp_mode,
+        "target_policy": {
+            "little_event_decontamination": args.little_event_decontamination,
+            "little_event_ratio_low": args.little_event_ratio_low,
+            "little_event_ratio_high": args.little_event_ratio_high,
+        },
         "released_test_used_for_selection": False,
         "released_test_pcc": pearson(test_prediction, test_raw),
         "output_calibration": {

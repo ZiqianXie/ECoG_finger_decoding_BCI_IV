@@ -172,6 +172,11 @@ def make_subject_target(
     training_intervals: list[list[int]],
     validation_intervals: list[list[int]],
     subject: int,
+    *,
+    finger_index: int | None = None,
+    little_event_decontamination: bool = False,
+    little_event_ratio_low: float = 0.8,
+    little_event_ratio_high: float = 1.2,
 ) -> np.ndarray:
     """Fit the established local glove baseline separately inside one split."""
     window_seconds, quantile = TARGET_POLICIES[subject]
@@ -187,6 +192,54 @@ def make_subject_target(
     result = np.full(raw.shape, np.nan, dtype=np.float32)
     result[training] = np.clip(train_corrected[training] / scale, 0.0, 2.0)
     result[validation] = np.clip(validation_corrected[validation] / scale, 0.0, 2.0)
+    if little_event_decontamination:
+        if finger_index != LITTLE:
+            raise ValueError("little-event decontamination is only valid for little-finger models")
+        result = suppress_weak_little_events(
+            result,
+            training_intervals + validation_intervals,
+            ratio_low=little_event_ratio_low,
+            ratio_high=little_event_ratio_high,
+        )
+    return result
+
+
+def suppress_weak_little_events(
+    target: np.ndarray,
+    intervals: list[list[int]],
+    *,
+    ratio_low: float = 0.8,
+    ratio_high: float = 1.2,
+    movement_threshold: float = 0.10,
+) -> np.ndarray:
+    """Attenuate only little-finger events dominated by another finger.
+
+    The rule is evaluated independently inside each supplied interval.  It is
+    intentionally not winner-take-all: events with comparable little-finger
+    and other-finger peaks are preserved, with a smooth transition between
+    ``ratio_low`` and ``ratio_high``.
+    """
+    if ratio_low < 0 or ratio_high <= ratio_low:
+        raise ValueError("little-event ratio bounds must satisfy 0 <= low < high")
+    result = np.asarray(target, dtype=np.float32).copy()
+    for start, stop in intervals:
+        if stop - start < 3:
+            continue
+        scoped = result[start:stop]
+        smooth = ndimage.gaussian_filter1d(scoped, sigma=1.0, axis=0, mode="nearest")
+        active = ndimage.binary_closing(
+            smooth[:, LITTLE] >= movement_threshold,
+            structure=np.ones(3, dtype=bool),
+        )
+        for event_start, event_stop in runs(active):
+            if event_stop - event_start < 3:
+                continue
+            peaks = np.nanmax(smooth[event_start:event_stop], axis=0)
+            other_peak = float(np.nanmax(peaks[:LITTLE]))
+            ratio = float(peaks[LITTLE] / max(other_peak, np.finfo(np.float32).eps))
+            phase = float(np.clip((ratio - ratio_low) / (ratio_high - ratio_low), 0.0, 1.0))
+            weight = phase * phase * (3.0 - 2.0 * phase)
+            result[start + event_start : start + event_stop, LITTLE] *= weight
     return result
 
 
@@ -1110,6 +1163,14 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=0.08)
     parser.add_argument("--movement-threshold", type=float, default=0.10)
     parser.add_argument("--rest-threshold", type=float, default=0.05)
+    parser.add_argument(
+        "--little-event-decontamination",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="softly suppress little-finger events dominated by another finger",
+    )
+    parser.add_argument("--little-event-ratio-low", type=float, default=0.8)
+    parser.add_argument("--little-event-ratio-high", type=float, default=1.2)
     parser.add_argument("--merge-gap-bins", type=int, default=12)
     parser.add_argument("--minimum-event-bins", type=int, default=3)
     parser.add_argument("--maximum-rest-group-bins", type=int, default=250)
@@ -1325,6 +1386,10 @@ def main() -> None:
             outer_training_intervals,
             outer_validation_intervals,
             args.subject,
+            finger_index=finger_index,
+            little_event_decontamination=args.little_event_decontamination,
+            little_event_ratio_low=args.little_event_ratio_low,
+            little_event_ratio_high=args.little_event_ratio_high,
         )
         splits, groups, assignment_objective = balanced_inner_splits(
             rows=rows,
@@ -1351,6 +1416,10 @@ def main() -> None:
                     split["training_intervals"],
                     split["validation_intervals"],
                     args.subject,
+                    finger_index=finger_index,
+                    little_event_decontamination=args.little_event_decontamination,
+                    little_event_ratio_low=args.little_event_ratio_low,
+                    little_event_ratio_high=args.little_event_ratio_high,
                 )
                 initialization, spatial, audit = fit_initialization(
                     ecog=ecog,
@@ -1584,6 +1653,9 @@ def main() -> None:
             "window_seconds": TARGET_POLICIES[args.subject][0],
             "baseline_quantile": TARGET_POLICIES[args.subject][1],
             "smoothing_seconds": 0.16,
+            "little_event_decontamination": args.little_event_decontamination,
+            "little_event_ratio_low": args.little_event_ratio_low,
+            "little_event_ratio_high": args.little_event_ratio_high,
         },
         "outer_validation_used_for_checkpoint_selection": False,
         "require_lstm_update": args.require_lstm_update,
@@ -1593,6 +1665,10 @@ def main() -> None:
             else None
         ),
         "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
+        "training_objective": {
+            "trajectory": "normalized mean squared error",
+            "model_outputs": ["trajectory"],
+        },
         "initialization_cache_root": (
             str(args.initialization_cache_root)
             if args.initialization_cache_root is not None

@@ -12,7 +12,7 @@ from train_event_grouped_lars_e2e_nested import (
 )
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FINGERS = ("thumb", "index", "middle", "ring", "little")
 
 
@@ -65,6 +65,7 @@ def test_final_decoder_has_no_parallel_or_beta_gate_branch() -> None:
         hidden_size=4,
         near_zero_std=1.0e-3,
         output_activation="softplus",
+        frontend="wavelet",
         device=torch.device("cpu"),
     )
 
@@ -97,7 +98,11 @@ def test_final_map_covers_all_fifteen_whole_models() -> None:
     result = json.loads(
         (REPOSITORY_ROOT / "docs/results/final-single-branch-six-seed.json").read_text()
     )
-    assert result["architecture"]["parallel_decoder_branches"] is False
-    assert result["architecture"]["output_stacking"] is False
-    assert result["ensemble"]["retained_members"] == 90
-    assert result["summary"]["subjects_beating_paper_macro5"] == 3
+    assert len(result["pairs"]) == 15
+    assert sum(pair["included_seed_count"] for pair in result["pairs"].values()) == 90
+    assert all(
+        pair["configuration"]["frontend"]["auxiliary_temporal_branches"] == []
+        and pair["configuration"]["frontend"]["lmp_branch"] is False
+        and "LSTM" in pair["configuration"]["decoder"]
+        for pair in result["pairs"].values()
+    )

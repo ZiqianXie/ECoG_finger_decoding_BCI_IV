@@ -39,7 +39,10 @@ from fit_oof_latent_movement_gate import (
     state_probabilities,
     temporal_features,
 )
-from train_beta_gamma_heads import BetaGammaHeads, transformed_energy
+from experiments.scripts.train_beta_gamma_heads import (
+    BetaGammaHeads,
+    transformed_energy,
+)
 from train_csp_residual_ssm import CSPResidualSSM, correlation_loss, initialize_ridge
 from train_event_grouped_lars_lstm import indices_from_intervals
 
