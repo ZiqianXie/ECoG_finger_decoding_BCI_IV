@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import numpy as np
 import pywt
 import torch
+from scipy import signal
 from sklearn.decomposition import FastICA
 from torch import nn
 from torch.nn import functional as F
@@ -280,6 +281,8 @@ class WaveletPacketEnergy(nn.Module):
         energy_window_samples: int = 40,
         energy_stride_samples: int = 40,
         log_epsilon: float = 0.0,
+        tap_resample_up: int = 1,
+        tap_resample_down: int = 1,
     ) -> None:
         super().__init__()
         if levels < 1:
@@ -288,6 +291,8 @@ class WaveletPacketEnergy(nn.Module):
             raise ValueError("energy window and stride must be positive")
         if log_epsilon < 0:
             raise ValueError("log_epsilon must be nonnegative")
+        if tap_resample_up < 1 or tap_resample_down < 1:
+            raise ValueError("tap resampling factors must be positive integers")
         if padding_mode not in {"constant", "reflect", "replicate", "circular"}:
             raise ValueError(f"unsupported padding mode {padding_mode!r}")
 
@@ -301,16 +306,71 @@ class WaveletPacketEnergy(nn.Module):
             "decomposition_highpass",
             kernel_size,
         )
-        low_initial = torch.tensor(lowpass, dtype=torch.float32)
-        high_initial = torch.tensor(highpass, dtype=torch.float32)
+        base_lowpass = np.asarray(lowpass, dtype=np.float32)
+        base_highpass = np.asarray(highpass, dtype=np.float32)
+        layer_specs: list[tuple[np.ndarray, np.ndarray, int]] = []
+        if tap_resample_up != tap_resample_down:
+            scale = float(tap_resample_up) / float(tap_resample_down)
+            if scale <= 1.0:
+                raise ValueError("tap interpolation currently requires a stretch above 1")
+            target_size = int(round((kernel_size - 1) * scale)) + 1
+
+            def stretch(values: np.ndarray, *, zero_dc: bool) -> np.ndarray:
+                stretched = signal.resample_poly(
+                    np.asarray(values, dtype=np.float64),
+                    up=tap_resample_up,
+                    down=tap_resample_down,
+                    window=("kaiser", 8.6),
+                    padtype="constant",
+                )
+                excess = stretched.size - target_size
+                if excess > 0:
+                    left = excess // 2
+                    stretched = stretched[left : left + target_size]
+                elif excess < 0:
+                    left = (-excess) // 2
+                    stretched = np.pad(stretched, (left, -excess - left))
+                if zero_dc:
+                    stretched = stretched - stretched.mean()
+                    original_norm = np.linalg.norm(values)
+                    stretched_norm = np.linalg.norm(stretched)
+                    if stretched_norm > 0:
+                        stretched *= original_norm / stretched_norm
+                else:
+                    stretched_sum = stretched.sum()
+                    if abs(stretched_sum) > np.finfo(np.float64).eps:
+                        stretched *= np.sum(values) / stretched_sum
+                return stretched.astype(np.float32)
+
+            # Only the first split needs an anti-imaged fractional dilation.
+            # Deeper packet splits use exact integer dilations of the original
+            # taps.  Stretching every layer would suppress the spectral images
+            # that split the higher-frequency parent paths.
+            layer_specs.append(
+                (stretch(base_lowpass, zero_dc=False), stretch(base_highpass, zero_dc=True), 1)
+            )
+            for level in range(1, levels):
+                requested = scale * (2**level)
+                dilation = int(round(requested))
+                if not np.isclose(requested, dilation):
+                    raise ValueError(
+                        "tap stretch must give integer dilations after the first level"
+                    )
+                layer_specs.append((base_lowpass, base_highpass, dilation))
+        else:
+            layer_specs = [
+                (base_lowpass, base_highpass, 2**level) for level in range(levels)
+            ]
         self.layers = nn.ModuleList()
-        for level in range(levels):
+        for level, (level_lowpass, level_highpass, dilation) in enumerate(layer_specs):
             parent_count = 2**level
+            low_initial = torch.tensor(level_lowpass, dtype=torch.float32)
+            high_initial = torch.tensor(level_highpass, dtype=torch.float32)
             layer = nn.Conv1d(
                 parent_count,
                 2 * parent_count,
-                kernel_size=kernel_size,
-                dilation=2**level,
+                kernel_size=low_initial.numel(),
+                dilation=dilation,
                 padding=0,
                 bias=True,
             )
@@ -325,12 +385,15 @@ class WaveletPacketEnergy(nn.Module):
             self.layers.append(layer)
         self.wavelet = wavelet
         self.levels = int(levels)
-        self.kernel_size = int(kernel_size)
-        self.dilations = tuple(2**level for level in range(levels))
+        self.kernel_size = int(self.layers[0].kernel_size[0])
+        self.layer_kernel_sizes = tuple(int(layer.kernel_size[0]) for layer in self.layers)
+        self.dilations = tuple(int(layer.dilation[0]) for layer in self.layers)
         self.padding_mode = padding_mode
         self.energy_window_samples = int(energy_window_samples)
         self.energy_stride_samples = int(energy_stride_samples)
         self.log_epsilon = float(log_epsilon)
+        self.tap_resample_up = int(tap_resample_up)
+        self.tap_resample_down = int(tap_resample_down)
 
     @property
     def band_names(self) -> tuple[str, ...]:
@@ -342,7 +405,10 @@ class WaveletPacketEnergy(nn.Module):
     @property
     def effective_kernel_size(self) -> int:
         """Receptive-field width in input samples for a complete tree path."""
-        return 1 + (self.kernel_size - 1) * sum(self.dilations)
+        return 1 + sum(
+            (kernel_size - 1) * dilation
+            for kernel_size, dilation in zip(self.layer_kernel_sizes, self.dilations)
+        )
 
     def _same_filter(
         self, x: torch.Tensor, layer: nn.Conv1d

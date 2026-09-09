@@ -4,6 +4,11 @@ This directory preserves ablations, alternative decoders, diagnostic scripts,
 compact result records, and historical figures. They document the research
 process but are not required to reproduce the result in the main README.
 
+The main release uses the same single 1 kHz interpolated-wavelet model for all
+15 subject/finger pairs. Some archived models score better for individual
+fingers, but they were developed under heterogeneous or test-informed
+diagnostic protocols and are not mixed into the headline result.
+
 ```text
 configs/    settings for alternative and diagnostic runs
 scripts/    ablations, benchmarks, and superseded pipelines

@@ -16,6 +16,8 @@ from ecog_decoding.models import WaveletPacketEnergy
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sampling-rate", type=float, default=1000.0)
+    parser.add_argument("--tap-resample-up", type=int, default=1)
+    parser.add_argument("--tap-resample-down", type=int, default=1)
     parser.add_argument("--fft-size", type=int, default=16384)
     parser.add_argument("--response-points", type=int, default=513)
     parser.add_argument("--output", default="outputs/audit/wavelet_frequency_response.json")
@@ -23,7 +25,11 @@ def main() -> None:
     if args.fft_size < 1024 or args.fft_size % 2:
         raise ValueError("fft-size must be an even integer of at least 1024")
 
-    frontend = WaveletPacketEnergy(trainable=False).eval()
+    frontend = WaveletPacketEnergy(
+        trainable=False,
+        tap_resample_up=args.tap_resample_up,
+        tap_resample_down=args.tap_resample_down,
+    ).eval()
     amplitude = 1.0e-4
     impulse = torch.zeros(1, 1, args.fft_size, dtype=torch.float32)
     impulse[..., args.fft_size // 2] = amplitude
@@ -62,6 +68,11 @@ def main() -> None:
 
     result = {
         "sampling_rate_hz": args.sampling_rate,
+        "tap_interpolation": {
+            "up": args.tap_resample_up,
+            "down": args.tap_resample_down,
+            "method": "polyphase_kaiser_8.6",
+        },
         "fft_size": args.fft_size,
         "impulse_amplitude": amplitude,
         "method": "actual three-layer initialized PyTorch cascade with scaled tanh in its linear regime",

@@ -1,325 +1,181 @@
 # ECoG finger-trajectory decoding
 
 In 2018, we published a CNN-LSTM model for continuous finger-trajectory
-decoding from ECoG:
+decoding from electrocorticography (ECoG):
 
 > Z. Xie, O. Schwartz, and A. Prasad, “Decoding of finger trajectory from
 > ECoG using deep learning,” *Journal of Neural Engineering*, 15(3), 036009,
 > 2018. [doi:10.1088/1741-2552/aa9dbe](https://doi.org/10.1088/1741-2552/aa9dbe)
 
-Several people have asked me for the source code since then. Unfortunately, the
-original code was lost when my laptop hard drive failed during a move. I began
-this repository in 2026 because those requests deserved a better answer than
-“the code is gone.”
+Several people have asked me for the source code. Unfortunately, the original
+code was lost when my laptop hard drive failed during a move. I began this
+repository in 2026 because those requests deserved a better answer than “the
+code is gone.”
 
-This is not a recovered copy of the old Theano project. I rebuilt the method
-from the paper, the public BCI Competition IV data, and my recollection of the
-original experiments. I also used the opportunity to revisit decisions that
-were constrained by the software and compute available at the time. The result
-is both a late reimplementation and a continuation of the original work.
+This is a late reimplementation, not a recovered copy of the old Theano/Keras
+project. I rebuilt the method from the paper, the public BCI Competition IV
+data, and my recollection of the original experiments. The reconstruction was
+developed with substantial help from OpenAI Codex using GPT-5.6 Sol for code,
+experiment orchestration, diagnostics, and documentation. I remain responsible
+for the scientific decisions and interpretation.
 
-I developed this reconstruction with substantial assistance from
-[OpenAI Codex](https://openai.com/codex/) using GPT-5.6 Sol for code
-reconstruction, experiment orchestration, quantitative and visual diagnostics,
-and documentation. I remain responsible for the scientific decisions and
-interpretation.
+The released implementation deliberately uses one understandable model for all
+15 subject/finger pairs. It keeps the original 1 kHz signal, initializes one
+trainable wavelet tree to spend its eight outputs below 200 Hz, and uses neither
+an auxiliary low-frequency branch nor a mixture of separately trained models.
 
-The [project report](docs/project-report.md) contains the complete experimental
-record. This README explains what the released pipeline does, why its
-less obvious choices were made, and how to reproduce it.
+## The model
 
-## Overview
+One model is trained for each subject and each of the five fingers. Every model
+has the same signal path:
 
-The task is BCI Competition IV, Data Set 4: continuous reconstruction of five
-glove trajectories from ECoG in three subjects. The model is trained separately
-for each subject and finger.
+1. Remove the documented bad channel(s), notch 60, 120, and 180 Hz line noise,
+   and standardize ECoG with statistics fitted on the training split.
+2. Initialize a 1x1 spatial convolution with FastICA components and one
+   finger-specific CSP component. CSP (common spatial patterns) contrasts
+   movement of the decoded finger with common rest.
+3. Pass every spatial component through one three-level, undecimated
+   `bior6.8` wavelet-packet tree. “Undecimated” means that the convolutions do
+   not discard time samples.
+4. Convert each of the eight terminal wavelet signals to log energy in
+   non-overlapping 40 ms bins, giving a 25 Hz feature sequence aligned with the
+   glove trajectory.
+5. Use LARS, a sparse linear regression, to select spatial-frequency histories
+   and initialize a nonlinear LSTM in a near-linear operating regime.
+6. Train the LSTM with the spatial/wavelet stem frozen, then fine-tune the full
+   differentiable path at a smaller learning rate. A Softplus output represents
+   nonnegative flexion.
 
-All fifteen subject/finger models use one signal path:
+The LSTM is initialized from LARS; it is not a residual model with a frozen
+linear skip. Weights that should initially be near zero are randomized at about
+`1e-3`, preserving nonlinear capacity while starting from a stable linear
+decoder.
 
-1. The broadband ECoG is notch-filtered at 60, 120, and 180 Hz.
-2. FastICA and CSP initialize rows of one trainable spatial convolution.
-3. A three-level, dilated `bior6.8` wavelet-packet tree produces eight spectral
-   outputs without temporal decimation.
-4. Squared activation is accumulated in non-overlapping 40 ms bins.
-5. LARS selects a sparse set of spatial-spectral features.
-6. A nonlinear LSTM models the temporal history and predicts a nonnegative
-   trajectory through a Softplus output.
+### Why interpolate the wavelet filters?
 
-The wavelet tree is literal: one signal is split into low/high children at the
-first level, those two are split into four at the second, and the four are split
-into eight at the third. Every node starts from the same low/high `bior6.8`
-prototype pair, but each copy is an independent trainable filter. Dilations of
-1, 2, and 4 replace temporal downsampling, so all eight paths retain the original
-time grid. Coefficients that are zero in the initialization remain trainable.
+The competition ECoG is stored at 1 kHz, so an ordinary three-level wavelet
+packet divides the 0–500 Hz Nyquist range. The useful acquisition range is
+concentrated below approximately 200 Hz. Allocating five of eight initial
+wavelet leaves above that range wastes the initialization.
 
-The LARS solution is more than a pruning step. It gives the recurrent decoder a
-working regression function before nonlinear optimization begins. Parameters
-that should initially contribute little are randomized at approximately
-`1e-3`, rather than fixed at zero, so the LSTM starts in a near-linear regime
-without losing nonlinear capacity. LARS is not retained as a frozen skip path,
-and the LSTM is not trained merely as a residual correction. Training first
-fits the recurrent head with the spatial and spectral stem frozen, then
-fine-tunes the complete differentiable model at a smaller learning rate.
+The released model keeps the 1 kHz samples and changes the filters rather than
+resampling the input. The first `bior6.8` low/high pair is stretched by 5/2 with
+polyphase Kaiser interpolation. The next two levels use the original taps at
+dilations 5 and 10. This preserves the 1 kHz time grid while giving eight
+measured response centroids at approximately 13.6, 40.3, 63.7, 91.9, 110.2,
+137.4, 159.3, and 186.7 Hz. The path labels are Gray-coded after high-pass
+splits, so `H` and `L` strings should not be read as a simple left-to-right
+frequency order.
 
-Eleven pairs use a spatial initialization containing FastICA rows plus CSP rows
-fitted separately in seven conventional frequency ranges. S1 index and little,
-S2 ring, and S3 middle instead use FastICA plus high-gamma CSP because that
-choice performed better in cross-fold validation. Relative to the paper's
-FastICA-initialized spatial filter, both variants add movement-informed CSP rows
-before end-to-end fine-tuning. This is per-finger model selection, not a
-mixture of signal branches: after initialization, every spatial row operates on
-the same notched broadband ECoG and enters the same wavelet tree, LARS selector,
-and LSTM.
+![Measured frequency-compressed wavelet initialization](docs/figures/frequency-compressed-wavelet-initialization.png)
 
-The original four-second minibatches were largely a Theano static-graph
-constraint, not a physiological assumption. The current implementation can use
-longer histories, caches reconstructed windows, and keeps the small dataset in
-GPU memory.
+The [machine-readable frequency audit](docs/results/frequency-compressed-wavelet-initialization.json)
+comes from the implemented PyTorch cascade, including its nonlinearities—not
+from idealized textbook band edges.
 
-## Method choices and motivation
+### Spatial initialization
 
-### Glove baseline correction
+FastICA supplies label-free spatial components. The additional CSP component is
+fitted separately inside every subject/finger training split. It uses the two
+initialized wavelet paths covering roughly 100–150 Hz, aggregated before the
+CSP covariance calculation. The resulting single CSP weight vector is then
+applied to the same notched broadband ECoG as the ICA rows. It is not a second
+temporal branch, and it is not one of seven conventional bandpass inputs.
 
-The raw glove channels have a slowly varying baseline. A single baseline for an
-entire recording leaves long segments with different resting levels; aggressive
-event-level correction, on the other hand, can distort the movement itself.
-The target pipeline estimates a local lower envelope and subtracts it
-before normalization.
+LARS sees the eight wavelet energies from every retained spatial row and keeps
+only the useful histories. Thus the complete decoder remains one spatial
+convolution, one wavelet tree, and one LSTM.
 
-The fitted envelope is subtracted completely, but it remains an estimate: a
-smooth baseline cannot always distinguish sensor drift from a sustained finger
-position. Slow upward changes can therefore remain in the movement target. They
-can still be decoded from ECoG because the model uses the slowly varying power
-envelopes of its higher-frequency bands, rather than trying to match the glove
-frequency directly.
+## Target and validation
 
-Crucially, that envelope is refitted inside every training fold. “Split-safe
-target” in this repository means that neither the baseline nor the normalization
-for a held-out interval was estimated from that interval. This matters because
-the target preprocessing is part of the fitted model, even though it occurs on
-the glove rather than the ECoG.
+The glove trajectories have slowly changing rest levels. A local lower-envelope
+baseline is therefore fitted and subtracted separately inside each split. The
+window is subject-specific because the glove drift differs across recordings.
+Hard winner-take-all assignment is not used: ring/little and other finger pairs
+can genuinely co-move, and forced reassignment can fabricate movement on the
+wrong finger.
 
-### Cross-finger movement
+Random bin splits would leak nearly identical ECoG histories across train and
+validation. Model selection instead uses three folds made from complete
+movement/rest events. A 95-bin (3.8 s) margin is removed around every held-out
+interval. Target baselines, normalization, FastICA, CSP, and LARS are refitted
+inside every fold.
 
-Ring and little finger trajectories often contain genuine co-movement. Assigning
-each event to whichever finger has the largest corrected trajectory produces
-visually clean targets, but the winner-take-all rule can move small deflections
-from one finger to another and create apparent movement where none existed.
+The complete 400,000-sample competition training file is the development set.
+After cross-fold selection, six seeds are refitted on all development samples.
+The separate 200,000-sample released test file is used only for the final score.
 
-The released trajectories are therefore preserved for scoring, and the cleaned
-targets use conservative baseline subtraction rather than hard finger
-assignment. Separate per-finger models allow spatial and spectral filters to
-specialize without pretending that the biomechanics are independent.
+## Results: no test peek during selection
 
-### Event-grouped validation
+The reported metric is Pearson correlation coefficient (PCC) against the
+unmodified released test glove trajectory, matching the competition convention.
+`Macro-5` is the unweighted mean over five independently decoded fingers.
 
-Every 40 ms prediction uses several seconds of preceding ECoG. Randomly
-splitting adjacent bins would put strongly overlapping input histories on both
-sides of the split and give an optimistic validation score. The cross-validation
-code instead keeps complete movement/rest events together and removes 95 bins
-(3.8 s) around each held-out boundary.
-
-The competition training file contains 400,000 labeled samples per subject. The
-selection uses all of it as development data and builds three
-folds separately for every subject and finger, because their movement-event
-distributions differ. Each fold holds out complete events from across the
-recording rather than one contiguous time block. Target baselines, CSP filters,
-and LARS selection are refitted inside each fold.
-
-### Notch filtering and trainable filters
-
-The ECoG is notch-filtered at 60, 120, and 180 Hz before the learned filter bank.
-This explicitly removes narrow power-line components instead of asking the
-network to suppress them from limited data.
-
-For every route, the spatial and wavelet filters are initialized from
-FastICA/CSP and the biorthogonal tree, then trained during the second stage.
-The wavelet tree begins as eight overlapping views ordered from low to high
-frequency; gradient descent can then adjust both spatial and temporal filters.
-The measured responses and implementation checks are kept in the
-[project report](docs/project-report.md), where they can be read with the
-corresponding validation details.
-
-### Why seven CSP initialization bands?
-
-The wavelet tree gives a principled multiresolution initialization. The seven
-designed bands give CSP several familiar ECoG views. They are conventional
-Butterworth carrier bands, not outputs of the wavelet tree:
-
-| Band | What it is intended to expose |
-|---|---|
-| 4–8 Hz | Slow/theta-range movement modulation |
-| 8–12 Hz | Mu/alpha rhythm |
-| 12–30 Hz | Beta rhythm and movement-related desynchronization |
-| 30–55 Hz | Low gamma below the strongest 60 Hz line component |
-| 65–95 Hz | Lower high gamma above the 60 Hz component |
-| 105–145 Hz | A middle high-gamma scale |
-| 155–195 Hz | An upper high-gamma scale |
-
-The bands are produced with fourth-order zero-phase Butterworth filters after
-the 60, 120, and 180 Hz notch stage, but only while fitting CSP. They are not
-parallel inputs to the decoder. Separating 30–55 from 65–95 Hz avoids burying
-the strongest power-line region inside one broad gamma feature, while three
-high-gamma ranges let CSP find spatial patterns at different scales.
-
-For each band and training fold, I fit two CSP problems: movement of the decoded
-finger versus common rest, and movement of any finger versus common rest. From
-each problem I retain the two filters at both ends of the generalized
-eigenspectrum. This produces eight spatial projections per band, or 56 CSP
-rows. The weight vectors are concatenated with the FastICA rows in one spatial
-convolution. All rows are then applied to the same notched broadband recording
-and pass through one shared wavelet tree. Fold-local LARS selects useful
-spatial-wavelet energy histories before initializing the LSTM. CSP,
-normalization, and LARS are all refitted without the held-out event; the stem is
-frozen during LSTM warm-up and then fine-tuned end to end at a smaller learning
-rate.
-
-## Results: no test peek
-
-The primary comparison is Pearson correlation with the released,
-unmodified test glove trajectory. `Macro-5` is the mean across all five fingers.
-The paper values below are calculated from its rounded per-finger CNN-LSTM
-numbers, so they should not be interpreted as more precise versions of the
-paper's rounded aggregate.
-
-| Subject | 2018 paper | Cross-fold-validated six-seed refit |
+| Subject | 2018 paper | 2026 single-tree refit |
 |---|---:|---:|
-| S1 | 0.556 | **0.558** |
-| S2 | 0.408 | **0.438** |
-| S3 | 0.582 | **0.676** |
+| S1 | 0.556 | **0.525** |
+| S2 | 0.408 | **0.414** |
+| S3 | 0.582 | **0.593** |
 
-| Subject | Finger | 2018 paper | Selected final refit | Difference |
+| Subject | Finger | 2018 paper | 2026 refit | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.693 | -0.057 |
-| S1 | Index | 0.79 | 0.812 | +0.022 |
-| S1 | Middle | 0.17 | 0.200 | +0.030 |
-| S1 | Ring | 0.60 | 0.660 | +0.060 |
-| S1 | Little | 0.47 | 0.426 | -0.044 |
-| S2 | Thumb | 0.62 | 0.573 | -0.047 |
-| S2 | Index | 0.38 | 0.411 | +0.031 |
-| S2 | Middle | 0.27 | 0.283 | +0.013 |
-| S2 | Ring | 0.47 | 0.531 | +0.061 |
-| S2 | Little | 0.30 | 0.389 | +0.089 |
-| S3 | Thumb | 0.74 | 0.787 | +0.047 |
-| S3 | Index | 0.55 | 0.569 | +0.019 |
-| S3 | Middle | 0.46 | 0.650 | +0.190 |
-| S3 | Ring | 0.41 | 0.661 | +0.251 |
-| S3 | Little | 0.75 | 0.715 | -0.035 |
+| S1 | Thumb | 0.75 | 0.691 | -0.059 |
+| S1 | Index | 0.79 | 0.743 | -0.047 |
+| S1 | Middle | 0.17 | 0.222 | +0.052 |
+| S1 | Ring | 0.60 | 0.616 | +0.016 |
+| S1 | Little | 0.47 | 0.353 | -0.117 |
+| S2 | Thumb | 0.62 | 0.586 | -0.034 |
+| S2 | Index | 0.38 | 0.377 | -0.003 |
+| S2 | Middle | 0.27 | 0.210 | -0.060 |
+| S2 | Ring | 0.47 | 0.505 | +0.035 |
+| S2 | Little | 0.30 | 0.393 | +0.093 |
+| S3 | Thumb | 0.74 | 0.663 | -0.077 |
+| S3 | Index | 0.55 | 0.520 | -0.030 |
+| S3 | Middle | 0.46 | 0.619 | +0.159 |
+| S3 | Ring | 0.41 | 0.557 | +0.147 |
+| S3 | Little | 0.75 | 0.608 | -0.142 |
 
-All three subject aggregates exceed the rounded paper values. Visual inspection
-supports the strongest event-timing results, especially for S2 little and the
-S3 models. S1/S2 middle still overproduce low-amplitude activity during rest,
-and some trajectories retain cross-finger ambiguity.
-
-The exact unrounded scores, per-finger spatial-initialization routes, ensemble
-membership, and single-branch invariant are recorded in
+S2 and S3 exceed the paper’s rounded aggregate; S1 does not. Six of the 15
+individual finger scores exceed the rounded paper values. The exact scores and
+all six member audits are in
 [`docs/results/final-single-branch-six-seed.json`](docs/results/final-single-branch-six-seed.json).
-Across the 15 subject/finger models, the median sample SD of individual-member
-test PCC over six seeds is 0.0027; the largest is 0.0106. This supports stable
-retraining on the documented software and hardware stack, although exact
-bit-for-bit equality is not expected across GPU or PyTorch versions.
 
-The panels below show the complete 200-second released-test trajectories from
-the released models. Black is the baseline-corrected glove trajectory used
-only for visual diagnosis; blue is the exact saved Softplus prediction. No
-test-fitted gain or display normalization is applied.
+All 90 members passed a collapse screen based only on development predictions.
+Seed variation is small: the largest standard deviation of member test PCC is
+0.0039. The members are also highly correlated with one another, so the
+six-seed mean adds stability but little ensemble gain.
 
-![Subject 1 final five-finger trajectories](docs/figures/final-single-branch-s1-full-trajectory.png)
+The figure below is the visual verdict, not a decorative score plot. Black is a
+post-hoc baseline-corrected glove trace used only for diagnosis. Blue is the
+exact mean of the six nonnegative Softplus outputs; it is not rescaled with test
+labels. The PCC printed above each panel is still computed against the raw
+competition target.
 
-![Subject 2 final five-finger trajectories](docs/figures/final-single-branch-s2-full-trajectory.png)
+![Released-test trajectories for all 15 models](docs/figures/final-single-wavelet-test-trajectories.png)
 
-![Subject 3 final five-finger trajectories](docs/figures/final-single-branch-s3-full-trajectory.png)
+The model captures clear event timing for S1 thumb/index/ring and for most S3
+fingers. It also shows the remaining failure plainly: S1/S2 middle have weak
+movement selectivity and excessive low-amplitude activity during rest, while
+S2 little misses several large events. S3 little tracks several episodes but
+does not reproduce the paper’s unusually high score. PCC alone should therefore
+not be read as a complete measure of trajectory quality.
 
-This label describes how I selected the reported result. It does not mean I had
-never seen the released labels. Before I fixed this protocol, I used them to
-diagnose earlier models and compare saved runs. Looking back, I also think the
-exploratory workflow behind my 2018 result was probably influenced by repeated
-test feedback. Because the old code and logs were lost, I cannot quantify that
-influence. I therefore treat the paper numbers as a historical reference, not a
-prospectively sealed benchmark.
+I had inspected released labels during the broader reconstruction before fixing
+this protocol, and the original 2018 exploration may also have been influenced
+by repeated test feedback. The result above is called “no test peek” because
+the architecture, preprocessing, schedules, and seeds for this refit were fixed
+from development folds before these test scores were read—not because the
+labels were historically unknown to me.
 
-### How the final refit is produced
+The [experimental archive](experiments/README.md) contains alternative models,
+including models that score better for some individual fingers. They are not
+substituted into this table because they were developed under different or
+test-informed diagnostic protocols.
 
-Before the final refit, the preprocessing, architecture, history length, and
-epoch rule are fixed using separate event-grouped cross-validation for every
-subject and finger. The folds cover the complete competition training file.
-The network weights are then initialized anew and trained on that complete
-development recording.
-
-| Phase | Data used | Purpose |
-|---|---|---|
-| Model selection | All 400,000 samples, held out by fold | Three event-grouped folds choose the configuration separately for every subject and finger. |
-| Final refit | All 400,000 development samples | Reinitialize six members and train the selected configuration. |
-| Final test | Separate 200,000-sample released test file | Compute the reported test PCC; test labels are not used for fitting or selection. |
-
-Here, “complete development recording” means the full 400,000-sample labeled
-competition training file; it never includes the released test recording.
-
-The released result uses the final-refit pipeline above and exceeds the rounded
-paper mean for all three subjects.
-Cross-validation selected the seven-band CSP spatial initialization for eleven
-pairs and the high-gamma CSP spatial initialization for S1 index/little, S2
-ring, and S3 middle. Both choices augment the paper-derived FastICA
-initialization and feed the same single wavelet-LSTM path.
-The largest gaps are not explained by a global finger permutation or a simple
-temporal lag. They are concentrated in particular fingers and recording
-periods, consistent with target-regime and ECoG nonstationarity.
-
-## PCC and trajectory quality
-
-PCC is invariant to affine scaling. A prediction can therefore correlate well
-with the glove while having almost no visible amplitude, or it can follow the
-main events while producing unacceptable motion during rest. PCC is retained
-for comparison with the paper, but model diagnosis also includes derivative
-PCC, rest RMS, movement-state F1, peak amplitude, and event-aligned plots.
-
-The plots use the exact saved decoder output. No test-fitted rescaling
-or nonnegative display correction is applied. Softplus makes the trajectories
-nonnegative, while also making low-amplitude false movement during rest easy to
-see. S3 little reaches PCC 0.715 and follows the major movement episodes, though
-some individual peaks are compressed.
-
-### Cross-finger ambiguity remains
-
-The weakest morphology is now S1 and S2 middle finger. Their predictions recover
-some movement timing but also respond to index or ring events and produce diffuse
-low-amplitude activity during rest. The decoders do not share outputs, so this is
-not caused by branch mixing. It is consistent with similar ECoG patterns,
-biomechanical co-movement in the glove targets, and temporal nonstationarity.
-Hard winner-take-all target correction is still rejected because it can move a
-real deflection from one finger label to another.
-
-## Final model summary
-
-- The seven-band CSP spatial initialization was selected for 11 of 15
-  subject/finger pairs. Four use the high-gamma-CSP initialization instead.
-- Every selected model uses one spatial-wavelet-LSTM signal path. Designed-band
-  signals initialize CSP rows; they are not parallel decoder inputs or a gated
-  mixture of outputs.
-- A LARS-initialized LSTM, frozen-stem warm-up, and low-learning-rate end-to-end
-  fine-tuning improve stability while keeping the spatial and temporal filters
-  differentiable.
-- Six seeds were refitted for every pair. All 90 members passed the
-  training-only collapse screen and are included in their respective ensemble.
-- The final Macro-5 PCC is 0.558, 0.438, and 0.676 for S1--S3, above the rounded
-  paper values for all three subjects. Eleven of 15 individual fingers also
-  exceed the paper values.
-- Hard winner-take-all target correction is rejected because it can transfer
-  movement between fingers.
-- PCC remains a proxy rather than the sole goal: S1 and S2 middle-finger
-  morphology still shows cross-finger and rest-state errors despite the improved
-  aggregate result.
-
-The [experimental archive](experiments/README.md) includes alternative models
-that score better for some individual fingers. They are not substituted into
-the headline table because they were developed or selected under different,
-often test-informed diagnostic protocols. Detailed comparisons and visual
-diagnoses are available in the [project report](docs/project-report.md).
-
-## Data
+## Reproduce the release
 
 Download [BCI Competition IV, Data Set 4](https://www.bbci.de/competition/iv/)
-and arrange the competition files and released labels as follows:
+and arrange it as follows:
 
 ```text
 data/raw/bci_competition_iv_ds4/
@@ -333,135 +189,91 @@ data/raw/bci_competition_iv_ds4/
     └── sub3_testlabels.mat
 ```
 
-The competition data are not redistributed here. The loader validates the
-expected shapes before an experiment begins.
-
-## Installation
-
-Python 3.10 or newer is required.
+The competition data are not redistributed. Python 3.10 or newer is required.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-```
-
-## Reproduce the core pipeline
-
-```bash
 export PYTHONPATH=scripts:src
 
 python scripts/audit_dataset.py
 python scripts/preprocess_dataset.py --subjects 1 2 3
-python scripts/prepare_split_safe_targets.py --subjects 1 2 3
-python scripts/audit_wavelet_frequency_response.py
-
-# Fit the paper-derived, label-free FastICA spatial initialization.
-python scripts/fit_full_training_fastica.py --subjects 1 2 3 --backend torch \
-  --output-root outputs/paper_ica_lars_v1
-
-# Cache the seven carrier bands used only to fit CSP initialization rows.
-python scripts/cache_csp_band_signals.py --subjects 1 2 3
-
-# Build per-subject/per-finger folds over the complete development recording.
-python scripts/build_event_stratified_folds.py --subjects 1 2 3 \
-  --fingers thumb index middle ring little --purge-bins 95 \
-  --selection-scope full-development \
+python scripts/build_event_stratified_folds.py \
+  --subjects 1 2 3 --fingers thumb index middle ring little \
+  --purge-bins 95 --selection-scope full-development \
   --target-map configs/targetsafe_conservative_targets.yaml \
   --output-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1
 
-# Prepare both candidate spatial initializations. The seven-band signals are
-# used only to fit CSP rows; both models consume the same broadband ECoG.
-python scripts/run_prepare_perfinger_ica_csp_wavelet_all.py \
-  --subjects 1 2 3 --fingers thumb index middle ring little --gpus 0 \
-  --csp-source high_gamma --csp-mode tails_2x2 \
-  --no-include-any-movement-csp \
-  --output-root outputs/perfinger_ica_csp_wavelet_1000hz_all_tails2x2_hg_v1
+python scripts/audit_wavelet_frequency_response.py \
+  --sampling-rate 1000 --tap-resample-up 5 --tap-resample-down 2 \
+  --fft-size 32768 \
+  --output outputs/single_wavelet_1000hz_tap5over2_v1/frequency_response.json
 
-python scripts/run_prepare_perfinger_ica_csp_wavelet_all.py \
-  --subjects 1 2 3 --fingers thumb index middle ring little --gpus 0 \
-  --csp-source seven_band --csp-mode tails_2x2 \
-  --include-any-movement-csp \
-  --output-root outputs/perfinger_ica_csp_wavelet_1000hz_sevenband_ownany_v1
-
-# Cross-fold the high-gamma spatial initialization.
-python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
-  --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 \
-  --gpus 0 --target-map configs/targetsafe_conservative_targets.yaml \
+python scripts/run_single_wavelet_cv.py \
+  --subjects 1 2 3 --fingers thumb index middle ring little \
+  --gpus 0 1 2 3 4 5 6 7 \
   --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
-  --spatial-cache-root outputs/perfinger_ica_csp_wavelet_1000hz_all_tails2x2_hg_v1 \
-  --output-root outputs/event_lars_e2e_ica_csp_1000hz_all_tails2x2_hg_v1 \
-  --warmup-epochs 8 --max-epochs 48 --learning-rate 1e-4 \
-  --spatial-learning-rate 3e-6 --wavelet-learning-rate 3e-6 \
-  --output-activation softplus --sequence-steps 100 \
-  --batch-size 24 --unfrozen-batch-size 4
+  --output-root outputs/single_wavelet_1000hz_tap5over2_nested_v2 \
+  --model-rate 1000 --tap-resample-up 5 --tap-resample-down 2 \
+  --head-learning-rate 1e-4 --spatial-learning-rate 3e-6 \
+  --wavelet-learning-rate 3e-6 --lars-candidate-scale 1 \
+  --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
+  --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
+  --sampler-mode dense_sequences --selection-metric raw_pcc \
+  --selection-rule best --require-lstm-update --compile
 
-# Cross-fold the larger seven-band spatial initialization.
-python scripts/run_event_lars_e2e_nested_cv.py --subjects 1 2 3 \
-  --fingers thumb index middle ring little --folds 0 1 2 --seeds 0 \
-  --gpus 0 --target-map configs/targetsafe_conservative_targets.yaml \
-  --fold-root outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1 \
-  --spatial-cache-root outputs/perfinger_ica_csp_wavelet_1000hz_sevenband_ownany_v1 \
-  --output-root outputs/event_lars_e2e_ica_csp_1000hz_sevenband_ownany_lowlr_v1 \
-  --max-features 1024 --warmup-epochs 8 --max-epochs 48 \
-  --learning-rate 3e-5 --spatial-learning-rate 1e-6 \
-  --wavelet-learning-rate 1e-6 --output-activation softplus \
-  --sequence-steps 100 --batch-size 24 --unfrozen-batch-size 4
+python scripts/run_single_wavelet_refits.py \
+  --selection-root outputs/single_wavelet_1000hz_tap5over2_nested_v2 \
+  --output-root outputs/single_wavelet_1000hz_tap5over2_full_refit_v1 \
+  --model-rate 1000 --tap-resample-up 5 --tap-resample-down 2 \
+  --head-learning-rate 1e-4 --spatial-learning-rate 3e-6 \
+  --wavelet-learning-rate 3e-6 --lars-candidate-scale 1 \
+  --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
+  --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
+  --sampler-mode dense_sequences --selection-metric raw_pcc \
+  --selection-rule best --gpus 0 1 2 3 4 5 6 7 --compile
 
-# Compare the two complete single-path models using fold predictions only.
-python scripts/summarize_single_branch_oof.py \
-  --input-root outputs/event_lars_e2e_ica_csp_1000hz_sevenband_ownany_lowlr_v1 \
-  --baseline-root outputs/event_lars_e2e_ica_csp_1000hz_all_tails2x2_hg_v1 \
-  --seeds 0 --output outputs/final_single_branch_oof_comparison.json
+python scripts/run_single_wavelet_ensemble.py \
+  --selection-root outputs/single_wavelet_1000hz_tap5over2_nested_v2 \
+  --initialization-root outputs/single_wavelet_1000hz_tap5over2_full_refit_v1 \
+  --output-root outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1 \
+  --seeds 0 1 2 3 4 5 --gpus 0 1 2 3 4 5 6 7 \
+  --model-rate 1000 --tap-resample-up 5 --tap-resample-down 2 \
+  --head-learning-rate 1e-4 --spatial-learning-rate 3e-6 \
+  --wavelet-learning-rate 3e-6 --lars-candidate-scale 1 \
+  --sequence-steps 100 --sequence-stride 25 --batch-size 24 \
+  --csp-mode movement_1 --output-activation softplus --softplus-beta 10 \
+  --sampler-mode dense_sequences --selection-metric raw_pcc \
+  --selection-rule best --compile
 
-# Refit six seeds for the four selected high-gamma-CSP models.
-python scripts/run_frozen_event_refits.py --gpus 0 \
-  --pairs 1:index 1:little 2:ring 3:middle \
-  --ensemble-map configs/final_single_branch_oof_selected.yaml \
-  --output-root outputs/full_development_ica_csp_single_branch_all_v1 \
-  --selection-cache-root outputs/full_development_ica_csp_single_branch_all_lars_v1
-
-# Refit six seeds for the eleven selected seven-band models.
-python scripts/run_frozen_event_refits.py --gpus 0 \
-  --pairs 1:thumb 1:middle 1:ring \
-          2:thumb 2:index 2:middle 2:little \
-          3:thumb 3:index 3:ring 3:little \
-  --ensemble-map configs/sevenband_single_branch_selected.yaml \
-  --output-root outputs/full_development_ica_csp_sevenband_single_branch_v1 \
-  --selection-cache-root outputs/full_development_ica_csp_sevenband_single_branch_lars_v1
-
-# Average seeds only within each selected whole model and render the final result.
-python scripts/summarize_frozen_full_refit.py \
-  --input-root outputs/full_development_ica_csp_sevenband_single_branch_v1 \
-  --ensemble-map configs/final_single_branch_oof_selected.yaml \
-  --output-root outputs/final_single_branch_oof_selected_v1/ensemble
+python scripts/summarize_single_wavelet_ensemble.py \
+  --root outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
 
 python -m pytest -q
 ```
 
-The temporary CSP carrier-band cache defaults to `/dev/shm`, so each preparation
-run must stay on one host. All selected models use a 100-step history at 25 Hz
-(four seconds). List every available GPU after `--gpus` to parallelize the 15
-independent finger models. Historical and negative-control recipes are in the
-[experimental archive](experiments/README.md) and the
-[project report](docs/project-report.md#reproduction-recipes).
+The code caches reconstructed wavelet leaves in `/dev/shm` and uses
+`torch.compile(mode="reduce-overhead")` for repeated training calls. On the H100
+server, a complete full-development refit took roughly 10–45 seconds after the
+shared cache was prepared.
 
 ## Repository layout
 
 ```text
-configs/                 settings for the selected 15-model pipeline
-docs/                    project report and released result artifacts
-scripts/                 primary preprocessing, selection, training, and rendering
-src/ecog_decoding/       reusable implementation used by the primary pipeline
-tests/                   tests for the primary pipeline
-experiments/             ablations, alternatives, diagnostics, and historical artifacts
+configs/                 target and split settings
+docs/                    detailed report, figures, and machine-readable results
+scripts/                 release preprocessing, validation, training, and rendering
+src/ecog_decoding/       reusable model and preprocessing components
+tests/                   release-path tests
+experiments/             alternatives, negative controls, and historical diagnostics
 data/                    local competition files (ignored)
-outputs/                 predictions, checkpoints, and logs (ignored)
+outputs/                 checkpoints and generated outputs (ignored)
 ```
 
-## Citation
-
-If this reimplementation is useful, please cite the 2018 paper above. The
-included [`CITATION.cff`](CITATION.cff) distinguishes this software repository
-from the original publication and from the lost historical source code.
+See the [project report](docs/project-report.md) for the full protocol, matched
+400/1000 Hz comparison, visual interpretation, and a concise record of rejected
+alternatives. If this reimplementation is useful, please cite the 2018 paper;
+[`CITATION.cff`](CITATION.cff) distinguishes the software release from the
+original publication and lost historical source.
