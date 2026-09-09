@@ -1,0 +1,85 @@
+{
+  "name": "final-single-branch-six-seed",
+  "protocol": "per-finger selection from purged complete-event development folds, followed by six-seed full-development refit",
+  "released_test_used_for_route_selection": false,
+  "architecture": {
+    "one_complete_model_per_subject_finger": true,
+    "parallel_decoder_branches": false,
+    "output_stacking": false,
+    "path": [
+      "60/120/180 Hz notch",
+      "one trainable spatial convolution",
+      "one three-level undecimated bior6.8 wavelet tree",
+      "40 ms energy bins",
+      "LARS selection and initialization",
+      "nonlinear LSTM",
+      "Softplus output"
+    ],
+    "seven_designed_bands_role": "fit CSP initialization rows only; bandpass signals are not decoder inputs"
+  },
+  "ensemble": {
+    "seeds_per_subject_finger": 6,
+    "candidate_members": 90,
+    "retained_members": 90,
+    "collapse_screen_uses_training_only": true
+  },
+  "spatial_initialization_routes": {
+    "fastica_plus_seven_band_csp": [
+      "S1-thumb",
+      "S1-middle",
+      "S1-ring",
+      "S2-thumb",
+      "S2-index",
+      "S2-middle",
+      "S2-little",
+      "S3-thumb",
+      "S3-index",
+      "S3-ring",
+      "S3-little"
+    ],
+    "fastica_plus_high_gamma_csp": [
+      "S1-index",
+      "S1-little",
+      "S2-ring",
+      "S3-middle"
+    ]
+  },
+  "raw_test_pcc": {
+    "S1": {
+      "thumb": 0.6933764012111971,
+      "index": 0.8116273460357291,
+      "middle": 0.20043821248214422,
+      "ring": 0.6595162105078419,
+      "little": 0.4256813800636783,
+      "macro5": 0.5581279100601181,
+      "paper_macro5": 0.556
+    },
+    "S2": {
+      "thumb": 0.5734694885032336,
+      "index": 0.4113140591429025,
+      "middle": 0.2829741421442613,
+      "ring": 0.5306343773260545,
+      "little": 0.3893855287587582,
+      "macro5": 0.43755551917504204,
+      "paper_macro5": 0.408
+    },
+    "S3": {
+      "thumb": 0.7873958614973101,
+      "index": 0.569081187391645,
+      "middle": 0.650302880309744,
+      "ring": 0.6606262362502295,
+      "little": 0.7148711901826101,
+      "macro5": 0.6764554711263078,
+      "paper_macro5": 0.582
+    }
+  },
+  "summary": {
+    "subjects_beating_paper_macro5": 3,
+    "subject_count": 3,
+    "fingers_beating_paper": 11,
+    "finger_count": 15,
+    "mean_finger_delta_vs_paper": 0.0420463001204893
+  },
+  "authoritative_generated_summary": "outputs/final_single_branch_oof_selected_v1/ensemble/summary.json",
+  "selection_config": "configs/final_single_branch_oof_selected.yaml"
+}

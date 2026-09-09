@@ -34,15 +34,16 @@ The task is BCI Competition IV, Data Set 4: continuous reconstruction of five
 glove trajectories from ECoG in three subjects. The model is trained separately
 for each subject and finger.
 
-Ten of the fifteen current subject/finger models follow the main signal path
-of the 2018 model:
+All fifteen current subject/finger models use one signal path:
 
-1. FastICA initializes a trainable spatial convolution.
-2. A three-level, dilated `bior6.8` wavelet-packet tree produces eight spectral
+1. The broadband ECoG is notch-filtered at 60, 120, and 180 Hz.
+2. FastICA and CSP initialize rows of one trainable spatial convolution.
+3. A three-level, dilated `bior6.8` wavelet-packet tree produces eight spectral
    outputs without temporal decimation.
-3. Squared activation is accumulated in non-overlapping 40 ms bins.
-4. LARS selects a sparse set of spatial-spectral features.
-5. A nonlinear LSTM models the temporal history and predicts the trajectory.
+4. Squared activation is accumulated in non-overlapping 40 ms bins.
+5. LARS selects a sparse set of spatial-spectral features.
+6. A nonlinear LSTM models the temporal history and predicts a nonnegative
+   trajectory through a Softplus output.
 
 The wavelet tree is literal: one signal is split into low/high children at the
 first level, those two are split into four at the second, and the four are split
@@ -59,15 +60,14 @@ without losing nonlinear capacity. Training first fits the recurrent head with
 the spatial and spectral stem frozen, then fine-tunes the complete differentiable
 model at a smaller learning rate.
 
-Four subject/finger pairs selected a broader fixed dictionary during the same
-out-of-fold comparison: S1 middle and S3 thumb, middle, and ring. These models
-concatenate the ICA-wavelet energies with seven conventional frequency bands and
-movement-versus-rest CSP features. LARS chooses useful atoms from both families
-before initializing the same nonlinear LSTM. S3 little uses a focused
-state-aware reconstruction: the paper-style baseline without winner-take-all,
-the seven-band CSP representation, a beta/high-gamma head blended with a
-temporal state model, and a soft rest-versus-finger gate that preserves learned
-co-movement. The exact bands and their purpose are described below.
+Eleven pairs use a larger spatial initialization containing FastICA rows plus
+CSP rows fitted separately in seven conventional frequency ranges. The other
+four—S1 index and little, S2 ring, and S3 middle—retain the earlier FastICA plus
+high-gamma-CSP initialization because the larger bank did not improve their
+cross-fold trajectory quality. This is per-finger model selection, not a
+mixture of signal branches: after initialization, every spatial row operates on
+the same notched broadband ECoG and enters the same wavelet tree, LARS selector,
+and LSTM.
 
 The original four-second minibatches were largely a Theano static-graph
 constraint, not a physiological assumption. The current implementation can use
@@ -136,20 +136,18 @@ The ECoG is notch-filtered at 60, 120, and 180 Hz before the learned filter bank
 This explicitly removes narrow power-line components instead of asking the
 network to suppress them from limited data.
 
-For the ten ICA-wavelet routes, the spatial and wavelet filters are
-initialized from FastICA and the biorthogonal tree, then trained during the
-second stage. The four joint-dictionary routes keep both their ICA-wavelet and
-CSP/designed-band atoms fixed and train only the selected nonlinear temporal
-head. The wavelet tree begins as eight overlapping views ordered from low to
-high frequency; gradient descent can then adjust their filters. The measured
-responses and implementation checks are kept in the
+For every current route, the spatial and wavelet filters are initialized from
+FastICA/CSP and the biorthogonal tree, then trained during the second stage.
+The wavelet tree begins as eight overlapping views ordered from low to high
+frequency; gradient descent can then adjust both spatial and temporal filters.
+The measured responses and implementation checks are kept in the
 [project report](docs/project-report.md), where they can be read with the
 corresponding validation details.
 
-### Why seven additional frequency bands?
+### Why seven CSP initialization bands?
 
 The wavelet tree gives a principled multiresolution initialization. The seven
-designed bands give the sparse selector a second, familiar ECoG vocabulary:
+designed bands give CSP several familiar ECoG views:
 
 | Band | What it is intended to expose |
 |---|---|
@@ -162,20 +160,22 @@ designed bands give the sparse selector a second, familiar ECoG vocabulary:
 | 155–195 Hz | An upper high-gamma scale |
 
 The bands are produced with fourth-order zero-phase Butterworth filters after
-the 60, 120, and 180 Hz notch stage. Separating 30–55 from 65–95 Hz avoids
-burying the strongest power-line region inside one broad gamma feature, while
-three high-gamma ranges let the data choose the useful scale instead of averaging
-all broadband activity together.
+the 60, 120, and 180 Hz notch stage, but only while fitting CSP. They are not
+parallel inputs to the decoder. Separating 30–55 from 65–95 Hz avoids burying
+the strongest power-line region inside one broad gamma feature, while three
+high-gamma ranges let CSP find spatial patterns at different scales.
 
 For each band and training fold, I fit two CSP problems: movement of the decoded
 finger versus common rest, and movement of any finger versus common rest. From
 each problem I retain the two filters at both ends of the generalized
 eigenspectrum. This produces eight spatial projections per band, or 56 CSP
-energy channels per 40 ms bin. Their `log1p` L2 energies and one-second histories
-are combined with the ICA-wavelet histories. Fold-local LARS then decides which
-atoms survive. CSP, normalization, and LARS are all refitted without the held-out
-event, and the selected carrier/CSP filters remain fixed during the final LSTM
-training.
+rows. The weight vectors are concatenated with the FastICA rows in one spatial
+convolution. All rows are then applied to the same notched broadband recording
+and pass through one shared wavelet tree. Fold-local LARS selects useful
+spatial-wavelet energy histories before initializing the LSTM. CSP,
+normalization, and LARS are all refitted without the held-out event; the stem is
+frozen during LSTM warm-up and then fine-tuned end to end at a smaller learning
+rate.
 
 ## Current results: no test peek
 
@@ -187,27 +187,37 @@ paper's rounded aggregate.
 
 | Subject | 2018 paper | Cross-fold-validated six-seed refit | Test-informed best of runs* |
 |---|---:|---:|---:|
-| S1 | 0.556 | 0.540 | **0.652** |
-| S2 | 0.408 | **0.423** | **0.512** |
-| S3 | 0.582 | **0.601** | **0.699** |
+| S1 | 0.556 | **0.558** | **0.652** |
+| S2 | 0.408 | **0.438** | **0.512** |
+| S3 | 0.582 | **0.676** | **0.699** |
 
 | Subject | Finger | 2018 paper | Selected final refit | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.678 | -0.072 |
-| S1 | Index | 0.79 | 0.793 | +0.003 |
-| S1 | Middle | 0.17 | 0.268 | +0.098 |
-| S1 | Ring | 0.60 | 0.589 | -0.011 |
-| S1 | Little | 0.47 | 0.374 | -0.096 |
-| S2 | Thumb | 0.62 | 0.587 | -0.033 |
-| S2 | Index | 0.38 | 0.399 | +0.019 |
-| S2 | Middle | 0.27 | 0.337 | +0.067 |
-| S2 | Ring | 0.47 | 0.544 | +0.074 |
-| S2 | Little | 0.30 | 0.250 | -0.050 |
-| S3 | Thumb | 0.74 | 0.772 | +0.032 |
-| S3 | Index | 0.55 | 0.340 | -0.210 |
-| S3 | Middle | 0.46 | 0.566 | +0.106 |
-| S3 | Ring | 0.41 | 0.657 | +0.247 |
-| S3 | Little | 0.75 | 0.669 | -0.081 |
+| S1 | Thumb | 0.75 | 0.693 | -0.057 |
+| S1 | Index | 0.79 | 0.812 | +0.022 |
+| S1 | Middle | 0.17 | 0.200 | +0.030 |
+| S1 | Ring | 0.60 | 0.660 | +0.060 |
+| S1 | Little | 0.47 | 0.426 | -0.044 |
+| S2 | Thumb | 0.62 | 0.573 | -0.047 |
+| S2 | Index | 0.38 | 0.411 | +0.031 |
+| S2 | Middle | 0.27 | 0.283 | +0.013 |
+| S2 | Ring | 0.47 | 0.531 | +0.061 |
+| S2 | Little | 0.30 | 0.389 | +0.089 |
+| S3 | Thumb | 0.74 | 0.787 | +0.047 |
+| S3 | Index | 0.55 | 0.569 | +0.019 |
+| S3 | Middle | 0.46 | 0.650 | +0.190 |
+| S3 | Ring | 0.41 | 0.661 | +0.251 |
+| S3 | Little | 0.75 | 0.715 | -0.035 |
+
+All three subject aggregates exceed the rounded paper values. Visual inspection
+supports the strongest event-timing results, especially for S2 little and the
+S3 models, but it also shows that S1/S2 middle still overproduce low-amplitude
+activity during rest and retain cross-finger ambiguity. Closing the aggregate
+paper gap is therefore not the same as solving every trajectory.
+
+The exact unrounded scores, per-finger spatial-initialization routes, ensemble
+membership, and single-branch invariant are recorded in
+[`docs/results/final-single-branch-six-seed.json`](docs/results/final-single-branch-six-seed.json).
 
 This label describes how I selected the current result. It does not mean I had
 never seen the released labels. Before I fixed this protocol, I used them to
@@ -235,11 +245,11 @@ Here, “complete development recording” means the full 400,000-sample labeled
 competition training file; it never includes the released test recording.
 
 This final-refit result is the one to use when evaluating the reproducible
-pipeline. It exceeds the rounded paper mean for S2 and S3, but not yet for S1.
-For S1 middle and S3 thumb, middle, and ring, cross-validation selected a joint
-ICA-wavelet and designed-band CSP representation; the other fingers retain the
-paper-derived ICA-wavelet route except for the state-aware S3-little model
-described above.
+pipeline. It exceeds the rounded paper mean for all three subjects.
+Cross-validation selected the larger seven-band CSP spatial initialization for
+eleven pairs and retained the earlier high-gamma spatial initialization for S1
+index/little, S2 ring, and S3 middle. Both choices feed the same single wavelet-
+LSTM path.
 The largest gaps are not explained by a global finger permutation or a simple
 temporal lag. They are concentrated in particular fingers and recording
 periods, consistent with target-regime and ECoG nonstationarity.
@@ -277,68 +287,42 @@ main events while producing unacceptable motion during rest. PCC is retained
 for comparison with the paper, but model diagnosis also includes derivative
 PCC, rest RMS, movement-state F1, peak amplitude, and event-aligned plots.
 
-This distinction is especially important for S3 little finger. That decoder
-reliably finds broad movement episodes but smooths some individual flexion
-cycles. Its PCC should therefore be read as evidence for movement-state and
-envelope reconstruction, not equally precise recovery of every peak.
+The current plots use the exact saved decoder output. No test-fitted rescaling
+or nonnegative display correction is applied. Softplus makes the trajectories
+nonnegative, while also making low-amplitude false movement during rest easy to
+see. S3 little reaches PCC 0.715 and follows the major movement episodes, though
+some individual peaks are compressed.
 
-The visualization uses a label-free display transform: a development-derived
-baseline is removed, a smooth nonnegative projection is applied, and gain is
-matched to the development target distribution. This makes amplitude failures
-visible without altering the raw-coordinate PCC or fitting a scale to the test
-labels.
+### Cross-finger ambiguity remains
 
-![Representative current-model movement windows](docs/figures/heterogeneous-six-seed-comparison.png)
-
-The current comparison shows why the four fixed-dictionary replacements were
-accepted. S1 middle recovers more movement timing and suppresses several large
-false bursts, although strong trains remain under-amplitude and movement-state
-precision is still poor. S3 thumb, middle, and ring show clearer timing and
-better scale; middle still compresses some long events and ring retains some
-rest leakage. S2 often recovers onset while missing individual peaks, and its
-weak middle and little-finger routes remain an open problem. These observations,
-not PCC alone, motivate the cross-finger and velocity experiments in the report.
-
-### Why S3 little finger needs a state model
-
-S3 contains unusually strong little/ring co-movement. Treating every small
-deflection as intended little-finger motion makes the target ambiguous, while
-hard winner-take-all cleaning can erase genuine coupled movement or assign it
-to the wrong finger. The S3 little-finger decoder therefore combines evidence
-from all five finger decoders to estimate a soft rest-versus-movement state.
-The gate can suppress activity that looks like rest, but it never transfers a
-trajectory from one finger to another.
-
-This extra state model is subject-specific because the little/ring ambiguity is
-much stronger in S3 than in S1 or S2. Its validation and event-level diagnostics
-are kept in the
-[project report](docs/project-report.md#development-only-little-finger-target-audit).
+The weakest morphology is now S1 and S2 middle finger. Their predictions recover
+some movement timing but also respond to index or ring events and produce diffuse
+low-amplitude activity during rest. The decoders do not share outputs, so this is
+not caused by branch mixing. It is consistent with similar ECoG patterns,
+biomechanical co-movement in the glove targets, and temporal nonstationarity.
+Hard winner-take-all target correction is still rejected because it can move a
+real deflection from one finger label to another.
 
 ## Main experimental conclusions
 
-- Direct raw-target training improved the first final S1-thumb refit from
-  0.647 to 0.714. An 80-unit, three-seed LSTM ensemble reached 0.698 and had
-  better velocity and amplitude behavior, but did not improve on the best
-  single-model PCC.
-- Seed ensembles can reduce variance, provided collapsed seeds are excluded
-  using training-only evidence. They did not eliminate the chronological
-  distribution shift.
-- Simply duplicating and perturbing biorthogonal atoms lost PCC on 11 of 15
-  subject/finger combinations. In contrast, a heterogeneous dictionary with
-  genuinely different inductive biases—ICA-wavelet plus designed-band CSP—won
-  the development-fold comparison for four pairs and raised the final S1 and S3
-  means. Overcompleteness alone was not useful; complementary atoms sometimes
-  were.
-- Latent movement-state gating did not help uniformly, but a soft co-movement
-  gate selected independently in all three S3-little folds raised its final
-  six-seed PCC from 0.423 to 0.669.
+- The larger seven-band CSP spatial initialization was selected for 11 of 15
+  subject/finger pairs. Four retain the simpler high-gamma-CSP initialization.
+- Every selected model uses one spatial-wavelet-LSTM signal path. Designed-band
+  signals initialize CSP rows; they are not parallel decoder inputs or a gated
+  mixture of outputs.
+- A LARS-initialized LSTM, frozen-stem warm-up, and low-learning-rate end-to-end
+  fine-tuning improve stability while keeping the spatial and temporal filters
+  differentiable.
+- Six seeds were refitted for every pair. All 90 final members passed the
+  training-only collapse screen and were retained in their respective ensemble.
+- The final Macro-5 PCC is 0.558, 0.438, and 0.676 for S1--S3, above the rounded
+  paper values for all three subjects. Eleven of 15 individual fingers also
+  exceed the paper values.
 - Hard winner-take-all target correction is rejected because it can transfer
   movement between fingers.
-- Training-only evidence isolates substantial little/ring ambiguity in S3, but
-  fixed little-only subtraction and dominance attenuation both reduce held-out
-  decoding. The paper baseline helps without winner-take-all, and the nested
-  learned event-attribution model turns that diagnosis into a reproducible S3
-  improvement while retaining genuine co-movement.
+- PCC remains a proxy rather than the sole goal: S1 and S2 middle-finger
+  morphology still shows cross-finger and rest-state errors despite the improved
+  aggregate result.
 
 These are conclusions from this reconstruction, not claims about what was or
 was not tried in the original unpublished code. Full tables, unsuccessful

@@ -20,11 +20,29 @@ from refit_frozen_event_model import plot_events, plot_full_trajectory, resolve_
 from summarize_event_lars_lstm_cv import morphology_metrics, pearson
 
 
+def training_only_collapse(
+    summary: dict[str, object], maximum_pcc_drop: float | None
+) -> tuple[bool, float]:
+    """Return a test-blind collapse decision and the training-PCC change."""
+    initialized = float(summary["initialized_full_train_raw_pcc"])
+    fitted = float(summary["fitted_full_train_raw_pcc"])
+    change = fitted - initialized
+    collapsed = bool(
+        maximum_pcc_drop is not None and change < -float(maximum_pcc_drop)
+    )
+    return collapsed, change
+
+
 PAPER_PCC = {
     1: (0.750, 0.790, 0.170, 0.600, 0.470),
     2: (0.620, 0.380, 0.270, 0.470, 0.300),
     3: (0.740, 0.550, 0.460, 0.410, 0.750),
 }
+
+
+def resolve_refit_root(options: dict[str, object], fallback: Path) -> Path:
+    """Resolve one model family's outputs without combining model branches."""
+    return Path(str(options.get("refit_root", fallback)))
 
 
 def plot_subject_overview(
@@ -121,12 +139,31 @@ def main() -> None:
     parser.add_argument("--target-map", type=Path, default=Path("configs/targetsafe_conservative_targets.yaml"))
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/frozen_event_full_refit_v1/ensemble"))
+    parser.add_argument(
+        "--collapse-train-pcc-drop",
+        type=float,
+        default=None,
+        help=(
+            "Exclude a seed when fine-tuning lowers its full-training raw-target "
+            "PCC by more than this amount relative to its LARS initialization. "
+            "This screen never uses released-test metrics."
+        ),
+    )
     args = parser.parse_args()
 
     ensemble_map = yaml.safe_load(args.ensemble_map.read_text())
     target_map = yaml.safe_load(args.target_map.read_text())
     report: dict[str, object] = {
-        "protocol": "OOF-selected per-finger six-seed ensemble after full-development refit",
+        "protocol": "OOF-selected per-finger seed ensemble after full-development refit",
+        "collapse_screen": (
+            None
+            if args.collapse_train_pcc_drop is None
+            else {
+                "metric": "fitted_full_train_raw_pcc - initialized_full_train_raw_pcc",
+                "exclude_below": -float(args.collapse_train_pcc_drop),
+                "released_test_used": False,
+            }
+        ),
         "official_final_validation_incorporated_into_training": True,
         "released_test_touched": True,
         "released_test_role": "retrospective paper-comparison evaluation",
@@ -147,22 +184,41 @@ def main() -> None:
         for finger_index, finger in enumerate(FINGER_NAMES):
             options = resolve_options(ensemble_map, subject, finger)
             seeds = options["seeds"]
+            refit_root = resolve_refit_root(options, args.input_root)
             members = []
+            retained_members = []
             member_reports = []
             for seed in seeds:
-                root = args.input_root / f"sub{subject}" / finger / f"seed{seed}"
+                root = refit_root / f"sub{subject}" / finger / f"seed{seed}"
                 member = np.load(root / "released_test_prediction.npy")
                 members.append(member)
                 summary = json.loads((root / "summary.json").read_text())
+                initialized_train_pcc = float(summary["initialized_full_train_raw_pcc"])
+                fitted_train_pcc = float(summary["fitted_full_train_raw_pcc"])
+                collapsed, training_pcc_change = training_only_collapse(
+                    summary, args.collapse_train_pcc_drop
+                )
+                if not collapsed:
+                    retained_members.append(member)
                 member_reports.append({
                     "seed": seed,
                     "selected_epoch": summary["selected_epoch"],
+                    "initialized_full_train_raw_pcc": initialized_train_pcc,
+                    "fitted_full_train_raw_pcc": fitted_train_pcc,
+                    "full_train_raw_pcc_change": training_pcc_change,
+                    "excluded_as_collapsed": collapsed,
                     "raw_pcc": summary["released_test_metrics"]["raw_pcc"],
                     "cleaned_pcc": summary["released_test_metrics"]["cleaned_pcc"],
                     "prediction_sd": float(np.std(member)),
                 })
-            stacked = np.stack(members)
+            if not retained_members:
+                raise RuntimeError(
+                    f"collapse screen excluded every S{subject} {finger} seed"
+                )
+            all_stacked = np.stack(members)
+            stacked = np.stack(retained_members)
             prediction = np.mean(stacked, axis=0)
+            all_seed_prediction = np.mean(all_stacked, axis=0)
             target_policy = str(subject_targets[finger]).removesuffix("_split_safe")
             cleaned = np.load(prepared / f"test_glove_{target_policy}.npy")[24:, finger_index]
             raw = raw_all[:, finger_index]
@@ -174,15 +230,26 @@ def main() -> None:
                 for first in range(stacked.shape[0])
                 for second in range(first + 1, stacked.shape[0])
             ]
-            member_raw = [float(item["raw_pcc"]) for item in member_reports]
+            retained_reports = [
+                item for item in member_reports if not item["excluded_as_collapsed"]
+            ]
+            retained_member_raw = [float(item["raw_pcc"]) for item in retained_reports]
             paper_value = PAPER_PCC[subject][finger_index]
             per_finger[finger] = {
+                "refit_root": str(refit_root),
                 "target_policy": target_policy,
-                "seeds": list(seeds),
+                "candidate_seeds": list(seeds),
+                "retained_seeds": [int(item["seed"]) for item in retained_reports],
+                "excluded_seeds": [
+                    int(item["seed"])
+                    for item in member_reports
+                    if item["excluded_as_collapsed"]
+                ],
                 "metrics": metrics,
+                "all_seed_raw_pcc": pearson(all_seed_prediction, raw),
                 "members": member_reports,
                 "mean_pairwise_seed_prediction_pcc": float(np.mean(diversity)) if diversity else None,
-                "ensemble_gain_over_best_seed_raw_pcc": metrics["raw_pcc"] - max(member_raw),
+                "ensemble_gain_over_best_seed_raw_pcc": metrics["raw_pcc"] - max(retained_member_raw),
                 "paper_raw_pcc": paper_value,
                 "delta_vs_paper": metrics["raw_pcc"] - paper_value,
                 "beats_paper": bool(metrics["raw_pcc"] > paper_value),
@@ -195,7 +262,7 @@ def main() -> None:
                 raw,
                 cleaned,
                 prediction,
-                f"S{subject} {finger}: full-development six-seed ensemble",
+                f"S{subject} {finger}: full-development seed ensemble",
             )
             plot_events(
                 subject_output / f"{finger}_strongest_events.png",

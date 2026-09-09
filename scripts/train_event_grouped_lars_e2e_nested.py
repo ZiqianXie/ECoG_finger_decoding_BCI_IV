@@ -78,6 +78,77 @@ def build_model(
     return model
 
 
+def resolve_perfinger_cache_root(
+    root: Path, subject: int, finger: str
+) -> Path:
+    """Resolve an all-model cache root while preserving legacy single-model roots."""
+    candidate = root / f"sub{subject}" / finger
+    return candidate if candidate.is_dir() else root
+
+
+def load_perfinger_cached_features(
+    cache: Path,
+    shared_ica_features: Path,
+    *,
+    rows: int,
+    combined_name: str = "features.npy",
+    csp_name: str = "csp_features.npy",
+) -> np.ndarray:
+    """Load a legacy combined cache or join a compact CSP cache to shared ICA features."""
+    combined = cache / combined_name
+    if combined.exists():
+        return np.load(combined, mmap_mode="r")[:rows]
+    compact = cache / csp_name
+    if not compact.exists():
+        raise FileNotFoundError(
+            f"neither {combined.name} nor {compact.name} exists under {cache}"
+        )
+    ica = np.load(shared_ica_features, mmap_mode="r")[:rows]
+    csp = np.load(compact, mmap_mode="r")[:rows]
+    if ica.shape[0] != csp.shape[0]:
+        raise ValueError(
+            f"ICA/CSP feature row mismatch: {ica.shape[0]} versus {csp.shape[0]}"
+        )
+    return np.concatenate(
+        (np.asarray(ica, dtype=np.float32), np.asarray(csp, dtype=np.float32)),
+        axis=1,
+    )
+
+
+def compact_spatial_dictionary(
+    spatial_weights: np.ndarray,
+    selected_indices: np.ndarray,
+    full_feature_count: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Remove spatial rows that cannot contribute to selected features.
+
+    Wavelet features are flattened spatial-row first. Remapping the selected
+    indices after slicing the spatial matrix therefore preserves the exact
+    initialized features while avoiding convolution of unused ICA/CSP rows.
+    """
+    weights = np.asarray(spatial_weights)
+    selected = np.asarray(selected_indices, dtype=np.int64)
+    if weights.ndim != 2 or weights.shape[0] < 1:
+        raise ValueError("spatial_weights must have shape (row, channel)")
+    if full_feature_count % weights.shape[0] != 0:
+        raise ValueError("feature count is not divisible by the spatial row count")
+    features_per_row = full_feature_count // weights.shape[0]
+    if selected.size == 0 or selected.min() < 0 or selected.max() >= full_feature_count:
+        raise ValueError("selected_indices must be nonempty and in range")
+    used_rows = np.unique(selected // features_per_row)
+    row_map = np.full(weights.shape[0], -1, dtype=np.int64)
+    row_map[used_rows] = np.arange(used_rows.size, dtype=np.int64)
+    remapped = (
+        row_map[selected // features_per_row] * features_per_row
+        + selected % features_per_row
+    )
+    return (
+        np.asarray(weights[used_rows], dtype=np.float32),
+        remapped.astype(np.int64, copy=False),
+        used_rows,
+    )
+
+
 def event_grouped_cv_splits(
     intervals: list[list[int]], training_indices: np.ndarray, folds: int = 3
 ) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -114,15 +185,26 @@ def fit_or_load_inner_lars(
     training_intervals: list[list[int]],
     cache: Path,
     max_features: int,
+    allowed_source: np.ndarray | None = None,
 ) -> dict[str, np.ndarray | float | str]:
     cache.parent.mkdir(parents=True, exist_ok=True)
     with cache.with_suffix(".lock").open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         if not cache.exists():
             training_indices = indices_from_intervals(training_intervals)
-            prescreen = correlation_order(
-                np.asarray(features_all[training_indices]), target_all[training_indices]
+            if allowed_source is None:
+                allowed = np.arange(features_all.shape[1], dtype=np.int64)
+            else:
+                allowed = np.unique(np.asarray(allowed_source, dtype=np.int64))
+                if allowed.size == 0:
+                    raise ValueError("allowed_source must contain at least one feature")
+                if allowed[0] < 0 or allowed[-1] >= features_all.shape[1]:
+                    raise ValueError("allowed_source contains an out-of-range feature")
+            local_order = correlation_order(
+                np.asarray(features_all[training_indices][:, allowed]),
+                target_all[training_indices],
             )[:max_features]
+            prescreen = allowed[local_order]
             scaler = StandardScaler()
             selected_training = scaler.fit_transform(
                 np.asarray(features_all[training_indices][:, prescreen])
@@ -519,7 +601,7 @@ def train_with_validation(
         }
     ]
     for epoch in range(1, args.max_epochs + 1):
-        use_raw = epoch > args.warmup_epochs
+        use_raw = (not args.cached_only) and epoch > args.warmup_epochs
         if epoch == args.warmup_epochs + 1:
             optimizer.param_groups[0]["lr"] = args.spatial_learning_rate
             optimizer.param_groups[1]["lr"] = args.wavelet_learning_rate
@@ -608,7 +690,7 @@ def train_fixed_epochs(
     rng = np.random.default_rng(seed)
     losses: list[float] = []
     for epoch in range(1, epochs + 1):
-        use_raw = epoch > args.warmup_epochs
+        use_raw = (not args.cached_only) and epoch > args.warmup_epochs
         if epoch == args.warmup_epochs + 1:
             optimizer.param_groups[0]["lr"] = args.spatial_learning_rate
             optimizer.param_groups[1]["lr"] = args.wavelet_learning_rate
@@ -738,6 +820,17 @@ def main() -> None:
     parser.add_argument("--max-epochs", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--gate-learning-rate", type=float, default=1.0e-3)
+    parser.add_argument(
+        "--spatial-cache-root",
+        "--shared-beta-csp-cache-root",
+        dest="spatial_cache_root",
+        type=Path,
+        default=None,
+        help=(
+            "optional split-local per-finger spatial/filter cache; the legacy "
+            "option name is accepted as an alias"
+        ),
+    )
     parser.add_argument("--spatial-learning-rate", type=float, default=1.0e-5)
     parser.add_argument("--wavelet-learning-rate", type=float, default=1.0e-5)
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
@@ -759,9 +852,14 @@ def main() -> None:
     parser.add_argument("--correlation-weight", type=float, default=0.1)
     parser.add_argument("--prediction-chunk-steps", type=int, default=512)
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--cached-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="train only the recurrent head on a fixed cached feature dictionary",
+    )
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
-
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -789,10 +887,31 @@ def main() -> None:
     raw_all = np.load(prepared / "train_glove_25hz_raw.npy")[24 : 24 + row_count, finger_index]
     target = torch.as_tensor(target_all, dtype=torch.float32, device=device)
 
-    all_fixed = np.load(
-        args.feature_root / f"sub{args.subject}" / "train_initialized_window_features.npy",
-        mmap_mode="r",
-    )[:row_count]
+    spatial_cache_root = (
+        resolve_perfinger_cache_root(
+            args.spatial_cache_root, args.subject, args.finger
+        )
+        if args.spatial_cache_root is not None
+        else None
+    )
+    if spatial_cache_root is None:
+        all_fixed = np.load(
+            args.feature_root / f"sub{args.subject}" / "train_initialized_window_features.npy",
+            mmap_mode="r",
+        )[:row_count]
+        ica = np.load(args.ica_root / f"sub{args.subject}" / "fastica_unmixing.npy")
+    else:
+        outer_shared = (
+            spatial_cache_root / f"outer{args.fold}" / "outer"
+        )
+        all_fixed = load_perfinger_cached_features(
+            outer_shared,
+            args.feature_root
+            / f"sub{args.subject}"
+            / "train_initialized_window_features.npy",
+            rows=row_count,
+        )
+        ica = np.load(outer_shared / "spatial_weights.npy")
     if args.target is None:
         selection_path = (
             args.selection_cache_root
@@ -830,13 +949,17 @@ def main() -> None:
     cached_features = torch.as_tensor(
         np.asarray(all_fixed[:, selected], dtype=np.float32), device=device
     )
-    ica = np.load(args.ica_root / f"sub{args.subject}" / "fastica_unmixing.npy")
+    outer_model_ica, outer_model_selected, outer_used_spatial_rows = (
+        compact_spatial_dictionary(ica, selected, all_fixed.shape[1])
+    )
 
     inner_records: list[dict[str, object]] = []
     selected_epochs: list[int] = []
     torch.manual_seed(args.seed)
     audit_model = build_model(
-        input_channels=ecog.shape[1], ica=ica, selected=selected,
+        input_channels=ecog.shape[1],
+        ica=outer_model_ica,
+        selected=outer_model_selected,
         mean=mean, scale=scale, coefficients=coefficients,
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
@@ -847,20 +970,27 @@ def main() -> None:
             np.mean(target_all[outer_training_mask] >= args.movement_threshold)
         ),
     )
-    audit_indices = torch.linspace(
-        0, row_count - 1, steps=min(row_count, 64), device=device
-    ).round().long()
-    with torch.inference_mode():
-        raw_initial_features = audit_model.extract(raw_windows[audit_indices][None])[0]
-    cached_initial_features = cached_features[audit_indices]
-    feature_difference = raw_initial_features - cached_initial_features
-    feature_audit = {
-        "sample_count": int(audit_indices.numel()),
-        "rmse": float(feature_difference.square().mean().sqrt().cpu()),
-        "max_abs_error": float(feature_difference.abs().max().cpu()),
-        "reference_rms": float(cached_initial_features.square().mean().sqrt().cpu()),
-    }
-    del audit_model, raw_initial_features, cached_initial_features, feature_difference
+    if args.cached_only:
+        feature_audit = {
+            "skipped": True,
+            "reason": "fixed cached dictionary may contain auxiliary features absent from the raw wavelet module",
+        }
+        del audit_model
+    else:
+        audit_indices = torch.linspace(
+            0, row_count - 1, steps=min(row_count, 64), device=device
+        ).round().long()
+        with torch.inference_mode():
+            raw_initial_features = audit_model.extract(raw_windows[audit_indices][None])[0]
+        cached_initial_features = cached_features[audit_indices]
+        feature_difference = raw_initial_features - cached_initial_features
+        feature_audit = {
+            "sample_count": int(audit_indices.numel()),
+            "rmse": float(feature_difference.square().mean().sqrt().cpu()),
+            "max_abs_error": float(feature_difference.abs().max().cpu()),
+            "reference_rms": float(cached_initial_features.square().mean().sqrt().cpu()),
+        }
+        del audit_model, raw_initial_features, cached_initial_features, feature_difference
     torch.cuda.empty_cache()
     for inner_fold in range(3):
         if inner_fold == args.fold:
@@ -874,8 +1004,23 @@ def main() -> None:
         validation_mask &= outer_training_mask
         training_intervals = intervals_from_mask(training_mask)
         validation_intervals = intervals_from_mask(validation_mask)
+        if spatial_cache_root is None:
+            inner_all_fixed = all_fixed
+            inner_ica = ica
+        else:
+            inner_shared = (
+                spatial_cache_root / f"outer{args.fold}" / f"inner{inner_fold}"
+            )
+            inner_all_fixed = load_perfinger_cached_features(
+                inner_shared,
+                args.feature_root
+                / f"sub{args.subject}"
+                / "train_initialized_window_features.npy",
+                rows=row_count,
+            )
+            inner_ica = np.load(inner_shared / "spatial_weights.npy")
         inner_selection = fit_or_load_inner_lars(
-            features_all=all_fixed,
+            features_all=inner_all_fixed,
             target_all=target_all,
             training_intervals=training_intervals,
             cache=(
@@ -889,11 +1034,16 @@ def main() -> None:
         )
         inner_selected = np.asarray(inner_selection["selected_source"], dtype=np.int64)
         inner_cached_features = torch.as_tensor(
-            np.asarray(all_fixed[:, inner_selected], dtype=np.float32), device=device
+            np.asarray(inner_all_fixed[:, inner_selected], dtype=np.float32), device=device
+        )
+        inner_model_ica, inner_model_selected, _ = compact_spatial_dictionary(
+            inner_ica, inner_selected, inner_all_fixed.shape[1]
         )
         torch.manual_seed(args.seed)
         model = build_model(
-            input_channels=ecog.shape[1], ica=ica, selected=inner_selected,
+            input_channels=ecog.shape[1],
+            ica=inner_model_ica,
+            selected=inner_model_selected,
             mean=np.asarray(inner_selection["feature_mean"]),
             scale=np.asarray(inner_selection["feature_scale"]),
             coefficients=np.asarray(inner_selection["coefficients"]),
@@ -938,7 +1088,9 @@ def main() -> None:
     selected_epoch = int(np.rint(np.median(selected_epochs)))
     torch.manual_seed(args.seed)
     final_model = build_model(
-        input_channels=ecog.shape[1], ica=ica, selected=selected,
+        input_channels=ecog.shape[1],
+        ica=outer_model_ica,
+        selected=outer_model_selected,
         mean=mean, scale=scale, coefficients=coefficients,
         intercept=intercept, hidden_size=args.hidden_size,
         near_zero_std=args.near_zero_std,
@@ -959,7 +1111,7 @@ def main() -> None:
         training_intervals=outer_training_intervals,
         epochs=selected_epoch, args=args, seed=args.seed,
     )
-    use_raw = selected_epoch > args.warmup_epochs
+    use_raw = (not args.cached_only) and selected_epoch > args.warmup_epochs
     outer_order, prediction = predict_intervals(
         final_model, cached_features, raw_windows, outer_validation_intervals,
         use_raw, args.prediction_chunk_steps,
@@ -1014,14 +1166,21 @@ def main() -> None:
         {
             "model_state_dict": copy.deepcopy(final_model.state_dict()),
             "feature_indices": selected,
+            "source_feature_indices": selected,
+            "model_feature_indices": outer_model_selected,
+            "source_spatial_rows": outer_used_spatial_rows,
             "selected_epoch": selected_epoch,
         },
         output / "model.pt",
     )
     report = {
         "protocol": (
-            "nested per-finger event folds; frozen LARS-LSTM then end-to-end "
-            f"ICA/bior6.8 {args.frontend} fine-tuning"
+            "nested per-finger event folds; fixed cached dictionary plus LARS-LSTM"
+            if args.cached_only
+            else (
+                "nested per-finger event folds; frozen LARS-LSTM then end-to-end "
+                f"ICA/bior6.8 {args.frontend} fine-tuning"
+            )
         ),
         "subject": args.subject,
         "finger": args.finger,
@@ -1030,6 +1189,9 @@ def main() -> None:
         "official_final_validation_touched": False,
         "released_test_touched": False,
         "feature_count": int(selected.size),
+        "source_spatial_row_count": int(ica.shape[0]),
+        "active_spatial_row_count": int(outer_model_ica.shape[0]),
+        "source_spatial_rows": outer_used_spatial_rows.tolist(),
         "cached_vs_raw_initial_feature_audit": feature_audit,
         "inner_folds": inner_records,
         "selected_epoch": selected_epoch,
@@ -1045,6 +1207,15 @@ def main() -> None:
             "max_epochs": args.max_epochs,
             "learning_rate": args.learning_rate,
             "gate_learning_rate": args.gate_learning_rate,
+            "spatial_cache_root": (
+                str(args.spatial_cache_root)
+                if args.spatial_cache_root is not None
+                else None
+            ),
+            "resolved_spatial_cache_root": (
+                str(spatial_cache_root) if spatial_cache_root is not None else None
+            ),
+            "cached_only": args.cached_only,
             "spatial_learning_rate": args.spatial_learning_rate,
             "wavelet_learning_rate": args.wavelet_learning_rate,
             "loss": args.loss,
