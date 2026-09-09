@@ -210,17 +210,26 @@ The reconstructed front end follows the paper's core structure:
 - L2 energy followed by `log1p` in non-overlapping 40 ms bins.
 
 The output rate is therefore 25 Hz, matching the downsampled glove trajectory.
-Each decoded step sees the preceding 25 energy bins, corresponding to one second
-of history. A dedicated frequency-response audit measures every initialized
-branch before training; this is necessary because correct coefficient values can
-still be wired into an incorrect tree or dilation pattern.
+Each feature vector is extracted from a one-second ECoG window, and the final
+LSTM is trained on sequences of 100 such 40 ms steps (four seconds). A dedicated
+frequency-response audit measures every initialized branch before training;
+this is necessary because correct coefficient values can still be wired into an
+incorrect tree or dilation pattern.
 
-The 100-step/four-second block in the legacy implementation was a Theano
-static-graph limitation. It is not retained as a biological context limit. The
-modern code can train over complete contiguous sequences or use chunks only to
-manage memory.
+The original 100-step block was partly a Theano static-graph constraint rather
+than a biological claim. The modern implementation can accept other sequence
+lengths, but complete-event cross-validation retained 100 steps for the final
+models.
 
 ## Seven-band CSP spatial initialization
+
+The seven CSP carrier bands in the final run are conventional Butterworth
+passbands, **not outputs of the wavelet-packet tree**. This is an important
+implementation distinction. CSP is fitted on each carrier-band signal to obtain
+spatial weight rows; those signals are then discarded. The rows are applied to
+the notched broadband ECoG, and only then does the resulting spatial projection
+enter the shared trainable wavelet tree. A CSP-on-wavelet-node initialization
+would be a different model and was not used for the reported scores.
 
 The larger spatial bank is initialized from CSP solutions fitted in seven
 conventional passbands:
@@ -252,8 +261,9 @@ asks where activity is most specific to the requested output; the second offers
 a shared movement detector that can still be useful when finger-specific labels
 are noisy or fingers co-move. From each generalized eigenspectrum, the two
 smallest- and two largest-eigenvalue filters are retained. Thus each band
-contributes four decoded-finger and four any-movement spatial projections, or 56
-CSP energy channels per 40 ms bin across seven bands.
+contributes four decoded-finger and four any-movement spatial projections, for
+56 CSP spatial rows across seven carrier bands. These are weights, not retained
+band-energy channels.
 
 The bandpass signals are discarded after CSP fitting. The 56 resulting spatial
 rows are concatenated with the FastICA rows, compacted to the rows actually used
@@ -267,8 +277,8 @@ refitted without the held-out event.
 
 This section records the broad architecture search and the earlier
 validation-routed system. It provides experimental provenance; the split-safe
-event-fold reconstruction in the Results section supersedes it as the primary
-frozen protocol.
+event-fold reconstruction in the Results section supersedes it as the final
+reported protocol.
 
 The following families were implemented or benchmarked:
 
@@ -307,7 +317,7 @@ In that historical routing, S1 little was the sole mixed case: its validation st
 trainable-wavelet little-finger candidate with standardized coefficient 0.0465.
 S1 thumb also considered a trainable-wavelet candidate, but its selected
 coefficient was exactly zero. These statements describe the earlier
-chronological-validation system, not the current OOF-routed refit.
+chronological-validation system, not the final single-branch refit.
 
 The table describes that historical frozen routing rather than claiming that only
 those fingers benefited during development. A later S2-thumb end-to-end run
@@ -350,11 +360,11 @@ LARS fitting. Macro-5 for ICA-wavelet/CSP/joint was 0.448/0.464/0.474 for S1,
 0.381/0.291/0.323 for S2, and 0.418/0.527/0.529 for S3. The joint dictionary's
 main complementary gain was S1 middle (0.194 to 0.391); it did not improve S2,
 and S3 was already largely explained by CSP. Thus the experiment confirms
-subject- and finger-specific complementarity without supporting a larger
-universal feature set for the current refit.
+subject- and finger-specific complementarity, but it was superseded by the
+later single-path spatial-initialization comparison across all 15 pairs.
 
-The six-seed follow-up promoted only the four joint-dictionary wins over the
-better individual family. Released-test PCC changed from 0.128 to 0.268 for S1
+That intermediate six-seed follow-up promoted only the four joint-dictionary
+wins over the better individual family. Released-test PCC changed from 0.128 to 0.268 for S1
 middle and from 0.724/0.441/0.513 to 0.772/0.566/0.657 for S3
 thumb/middle/ring. The LSTM duration was inherited from each pair's matched
 OOF-selected ICA-wavelet model rather than retuned on the released test. This
@@ -368,14 +378,17 @@ For S1, gamma-only and beta-gated variants reached Macro-5 0.470 and 0.410; for
 S2 they reached 0.346 and 0.316. No individual finger exceeded its selected
 S1/S2 result. In particular, S2 middle reached at most 0.183 versus 0.208, and
 S1 little reached at most 0.328 versus 0.420. These candidates are retained as
-negative controls rather than added to the final ensembles.
+negative controls rather than added to the intermediate ensembles or the final
+single-branch system.
 
 Separate per-subject models are mandatory because channel geometry differs.
 Separate per-finger models were also allowed: sharing one spatial and spectral
 representation across all five outputs can cause competition, especially when
 their signal-to-noise ratios and useful bands differ.
 
-For the latest S1 PCC-leading candidate, thumb and little-finger predictions
+### Earlier chronological-validation ensembles and calibration
+
+For an intermediate S1 PCC-leading candidate, thumb and little-finger predictions
 from the fixed-feature, end-to-end, CSP, SPoC, and ridge families are combined
 with a nonnegative ridge stack. Its ridge penalty is selected by blocked
 `TimeSeriesSplit` folds entirely inside the chronological validation partition;
@@ -415,13 +428,19 @@ candidate sweeps.
 
 ## Model selection and metrics
 
-The retrospective systems made model and ensemble choices independently for
-each finger using one chronological validation partition. The blocked-CV
-follow-up uses three rolling folds inside the official training partition and
-reserves the chronological validation partition for one final evaluation.
-Candidate family, ensemble membership, calibration, and refit epochs are all
-fixed before that evaluation. A missing finger prediction is represented as
-`NaN` and cannot win selection.
+The final protocol uses all 400,000 labeled development samples to construct
+three folds separately for every subject and finger. Complete movement events,
+together with surrounding rest, remain intact within a fold; 95 bins are purged
+around each held-out interval so that the four-second decoder context cannot
+cross the split. Target-baseline fitting, CSP estimation, feature
+standardization, and LARS selection are repeated using only the fitting portion
+of each fold. Spatial-initialization choice and training duration are selected
+from these cross-fold predictions. Six models are then reinitialized and fitted
+on all development samples, and the released test labels are read only for the
+terminal score. Earlier chronological-validation and rolling-fold protocols
+are retained below as historical diagnostics, not as the source of the headline
+result. A missing finger prediction is represented as `NaN` and cannot win
+selection.
 
 Primary reporting uses:
 
@@ -469,15 +488,17 @@ initialization and four retain the earlier FastICA plus high-gamma-CSP
 initialization. Both choices feed one trainable bior6.8 tree and one nonlinear
 LSTM. The LSTM is optimized first with the stem frozen and then with the spatial
 and wavelet filters unfrozen at a smaller learning rate. LARS supplies the
-sparse starting function in either case. Six random-initialization members are
+sparse starting function by initializing one unit of the standard nonlinear
+LSTM near its linear regime. It is not kept as a separate frozen predictor, and
+the LSTM does not merely learn a residual. Six random-initialization members are
 retained unless a training-only integrity audit finds numerical or near-constant
 collapse.
 
 | Evaluation | S1 Macro-5 | S2 Macro-5 | S3 Macro-5 |
 |---|---:|---:|---:|
-| **Current full-development OOF, 50-step, two seeds** | **0.480** | **0.415** | **0.398** |
-| Current full-development OOF, 100-step, two seeds | 0.472 | 0.402 | 0.390 |
-| Descriptive per-finger history choice on the same OOF data | 0.485 | 0.416 | 0.400 |
+| Earlier full-development fold screen, 50-step, two seeds | 0.480 | 0.415 | 0.398 |
+| Earlier full-development fold screen, 100-step, two seeds | 0.472 | 0.402 | 0.390 |
+| Earlier descriptive per-finger history choice on the same fold predictions | 0.485 | 0.416 | 0.400 |
 | Older model-fitting-only event-fold OOF selection | 0.488 | 0.444 | 0.373 |
 | Older one-time chronological validation | 0.496 | 0.388 | 0.452 |
 | **Current cross-fold-validated six-seed refit, released test** | **0.558** | **0.438** | **0.676** |
@@ -543,6 +564,8 @@ diffuse rest activity and sometimes correlate more strongly with an adjacent
 finger. S2 little improves substantially but still compresses or misses some
 large events. These failures cannot be attributed to output-branch mixing,
 because every finger is decoded by an independent single-path model.
+
+### Earlier train-plus-validation refit
 
 For provenance, the previous selection procedure added the chronological
 validation segment to the model-fitting data after its choices were fixed. Each
@@ -686,6 +709,10 @@ and several errors are shape or duration errors rather than finger identity.
 
 ### Overcomplete dictionary and latent-state experiments
 
+Everything in this section is a historical diagnostic. Neither a heterogeneous
+feature dictionary nor a latent-state gate is part of the final single-branch
+model.
+
 The overcomplete experiment duplicated and perturbed the paper's bior atoms so
 that sparse selection could activate a learned subset. It won on 4/15 fingers,
 lost on 11/15, and changed mean PCC by -0.0036. The extra dictionary capacity is
@@ -709,7 +736,7 @@ families survived sparse selection. The contrast with the perturbed-wavelet
 experiment suggests that diversity of inductive bias matters more here than
 the raw number of atoms.
 
-![Current fixed-dictionary replacements in representative movement windows](figures/heterogeneous-six-seed-comparison.png)
+![Intermediate fixed-dictionary replacements in representative movement windows](figures/heterogeneous-six-seed-comparison.png)
 
 Visual review agrees with the aggregate improvement but also limits the claim.
 S1 middle suppresses several false bursts and follows more movement timing, yet
@@ -729,9 +756,16 @@ promoted into the frozen path.
 
 ### Development-only little-finger target audit
 
+This section records a superseded diagnosis and is retained to show why several
+plausible cleaning and gating ideas were rejected. The final S3-little decoder
+is the same single-branch architecture used elsewhere, with the seven-band CSP
+spatial initialization; it uses no state gate or decoder blend and reaches
+released-test PCC 0.715.
+
 The earlier per-finger table made S3 little an outlier. The paper reported 0.64
 for LARS, 0.68 for the conventional linear decoder, and 0.75 for LSTM; the
-initial OOF-routed six-seed refit reached 0.423. Figure 8 of the paper shows
+initial cross-fold-validated six-seed refit reached 0.423. Figure 8 of the paper
+shows
 decoded trajectories for S1 only, so it does not supply an S3 trace for visual
 comparison. A retrospectively routed model in this repository reaches 0.759 on
 S3 little and visually follows the three strongest released-test events. This
@@ -1047,7 +1081,7 @@ conservative and the middle trace remains noisy.
 
 ![Subject 3 movement windows](figures/s3-movement-windows.png)
 
-### Seed stability
+### Earlier seed-stability experiments
 
 Repeated fixed-feature LSTM runs showed small aggregate seed variation: S1
 `Macro-5` SD 0.0047 and `Hist-4` SD 0.0053 across three seeds; S2 `Macro-5` SD
@@ -1067,15 +1101,16 @@ still finds a false-positive rest excursion. The ensemble therefore remains an
 experimental single-finger result pending purged blocked confirmation and is
 not included in the primary table above.
 
-### Context-length and partition-robustness audit
+### Earlier context-length and partition-robustness audit
 
-The current weak-finger results are locally saturated with respect to recurrent
+The intermediate weak-finger results were locally saturated with respect to recurrent
 context length. Keeping the frontend and feature selection fixed, S1 little
 scored 0.353, 0.366, 0.413, and 0.405 with 10 s, 20 s, a smaller 10 s model, and
-an almost-contiguous recurrent sequence, respectively; none exceeded the frozen
-0.420 result. The corresponding S2 middle scores were 0.142, 0.124, 0.207, and
-0.111 versus the frozen 0.208. A five-fold purged chronological ridge refit on
-all 400 s also fell to 0.341 for S1 little and 0.114 for S2 middle. These are
+an almost-contiguous recurrent sequence, respectively; none exceeded the
+intermediate 0.420 result. The corresponding S2 middle scores were 0.142, 0.124,
+0.207, and 0.111 versus the intermediate 0.208. A five-fold purged chronological
+ridge refit on all 400 s also fell to 0.341 for S1 little and 0.114 for S2
+middle. These are
 rejected diagnostic candidates, not additions to the reported ensemble.
 
 Fitting the label-free ICA spatial transform across the complete 400 s training
@@ -1113,21 +1148,24 @@ from the final paths.
 
 An explicit movement-state target can help a recurrent network recognize
 stationary-to-moving transitions, but hard gating created unnatural step-to-zero
-artifacts. Soft state-aware objectives and gates were retained only when they
-improved the validation morphology score.
+artifacts. Soft state-aware objectives and gates were useful diagnostics, but
+none is retained in the final single-branch system.
 
 ### Post-hoc amplitude gain
 
 Increasing gain reduced some peak-amplitude errors and could improve RMSE, but
 it also amplified uncertain bumps during rest. A lower-RMSE S3 calibration was
-rejected as primary because the plots showed worse rest leakage.
+rejected from the final system because the plots showed worse rest leakage.
 
-### One architecture for every subject and finger
+### One shared five-output decoder
 
-The same SSM, LSTM, or CSP configuration did not win everywhere. S3 responds
-well to CSP plus a TCN, whereas S1/S2 are better served by finger-specific fixed
-features and selective end-to-end refinement. The final selector therefore does
-not force architectural uniformity for its own sake.
+Sharing one learned spatial-spectral representation across all five outputs can
+make strong fingers dominate weak ones. The final system therefore uses 15
+separately fitted models. Their topology is uniform—one spatial convolution,
+one wavelet tree, LARS-initialized LSTM, and Softplus output—but each finger has
+its own fitted weights and selects between the larger seven-band or simpler
+high-gamma CSP spatial initialization. Earlier CSP+TCN and blended decoders were
+superseded by this cleaner single-path comparison.
 
 ### Unregularized 100-epoch full-data refit
 
@@ -1143,7 +1181,7 @@ the present optimizer and full-data protocol; this candidate was rejected.
 
 Removing the old 4 s Theano sequence constraint did not improve the weak S1/S2
 fingers. Ten-second, 20-second, and nearly contiguous sequences all remained at
-or below the current frozen scores. Likewise, selecting ridge regularization
+or below those intermediate scores. Likewise, selecting ridge regularization
 over purged chronological folds and refitting on the complete training recording
 produced high internal cross-validation scores but poor released-test transfer.
 This rules out the simple explanations that the 4 s context or the position of
@@ -1152,12 +1190,12 @@ one validation boundary is the main remaining bottleneck.
 ### PCC-only selection
 
 S1 ring demonstrated the failure mode: scale-invariant correlation remained
-high even when movement amplitude and state recall collapsed. Explicit
-validation morphology constraints repaired ring. The first thumb/little stack
-showed the complementary failure: better PCC and timing coexisted with excessive
-gain and rest drift. Positive affine normalization corrected that scale mismatch
-without altering PCC. Morphology remains an acceptance constraint, not a
-secondary narrative.
+high even when movement amplitude and state recall collapsed. Historical
+validation-constrained repairs and stacks showed that amplitude could be made
+more readable without changing PCC, but they are not part of the final output.
+The final system reports the direct Softplus prediction. Morphology remains an
+acceptance constraint and a guide to unresolved errors, not a secondary
+narrative.
 
 ## Reproduction recipes
 
@@ -1374,31 +1412,33 @@ late reconstruction:
 - the clean-conscience event configuration was frozen from development-only
   folds, but the project is not historically equivalent to a prospectively
   sealed benchmark; and
-- S1 middle, S2 middle/little, and S3 index still show important timing,
-  amplitude, or rest-leakage failures despite some high PCC values; S3 little
-  is substantially improved but still smooths cycles and retains rest activity.
+- S1 and S2 middle remain the clearest failures, with diffuse rest activity and
+  cross-finger confusion; S2 little improves but still compresses or misses
+  some peaks; S3 index retains adjacent-finger ambiguity; and S3 little reaches
+  0.715 in the final single-path model but still smooths individual cycles.
 
 For these reasons, the project should be cited as a reimplementation and
 extension, not as the official source code accompanying the 2018 publication.
 
 ## Recommended next work
 
-1. Repeat the full-development event split with several group assignments and a
-   nested outer comparison of ICA-wavelet versus joint dictionaries. This tests
-   whether the four heterogeneous route choices are stable rather than fortunate
-   for one event partition.
-2. Concentrate modeling work on the visually unresolved S1 middle, S2
-   middle/little, and S3 index routes. Measure label-free changes in ECoG
+1. Repeat the complete-event split with several group assignments and test the
+   stability of the eleven seven-band versus four high-gamma spatial-
+   initialization choices. This addresses dependence on one event partition
+   without changing the final single-branch topology.
+2. Concentrate modeling work on the visually unresolved S1 and S2 middle
+   fingers, then on S2 little peak shape and S3 index attribution. Measure
+   label-free changes in ECoG
    covariance, spectral power, and decoder-feature marginals across recording
    blocks before increasing model capacity.
 3. Jointly model flexion and velocity under one coherent likelihood or
    multi-output regression objective. Velocity is a plausible more immediate
    neural consequence, but it should be an auxiliary target rather than another
    ad hoc loss term.
-4. Extend the successful soft S3-little attribution model only after testing
-   synthetic cross-talk injection and alternative event partitions. An explicit
-   subject-specific switching/state-space model may improve within-event cycles,
-   but should retain soft co-movement emissions and the zero-gate ablation.
+4. Improve within-event cycle shape in the current single-branch models with a
+   development-selected velocity or curvature auxiliary objective. Do not
+   reintroduce output gates or decoder blending unless complete-event folds show
+   a repeatable benefit.
 5. On a future dataset or hidden-label evaluation server, register the complete
    selection rule before scoring. That is the only way to turn the current
    clean-conscience procedure into a genuinely prospective benchmark. Also add

@@ -56,9 +56,10 @@ The LARS solution is more than a pruning step. It gives the recurrent decoder a
 working regression function before nonlinear optimization begins. Parameters
 that should initially contribute little are randomized at approximately
 `1e-3`, rather than fixed at zero, so the LSTM starts in a near-linear regime
-without losing nonlinear capacity. Training first fits the recurrent head with
-the spatial and spectral stem frozen, then fine-tunes the complete differentiable
-model at a smaller learning rate.
+without losing nonlinear capacity. LARS is not retained as a frozen skip path,
+and the LSTM is not trained merely as a residual correction. Training first
+fits the recurrent head with the spatial and spectral stem frozen, then
+fine-tunes the complete differentiable model at a smaller learning rate.
 
 Eleven pairs use a larger spatial initialization containing FastICA rows plus
 CSP rows fitted separately in seven conventional frequency ranges. The other
@@ -147,7 +148,8 @@ corresponding validation details.
 ### Why seven CSP initialization bands?
 
 The wavelet tree gives a principled multiresolution initialization. The seven
-designed bands give CSP several familiar ECoG views:
+designed bands give CSP several familiar ECoG views. They are conventional
+Butterworth carrier bands, not outputs of the wavelet tree:
 
 | Band | What it is intended to expose |
 |---|---|
