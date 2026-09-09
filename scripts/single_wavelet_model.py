@@ -12,6 +12,65 @@ from ecog_decoding.models import WaveletPacketEnergy
 from single_wavelet_support import FREQUENCY_ORDER, HISTORY, SAMPLES_PER_BIN
 
 
+class PaperEquationLSTM(nn.Module):
+    """Single-layer gated recurrence using the equations printed in the paper.
+
+    The input, forget, and output gates are sigmoid nonlinearities.  Unlike a
+    standard PyTorch LSTM, the candidate state and exposed cell state do not
+    pass through tanh: ``g_t`` is affine and ``h_t = o_t * c_t``.  The model is
+    therefore still nonlinear and context dependent through its gates.
+    """
+
+    def __init__(self, input_size: int, hidden_size: int, batch_first: bool = True) -> None:
+        super().__init__()
+        self.input_size = int(input_size)
+        self.hidden_size = int(hidden_size)
+        self.batch_first = bool(batch_first)
+        self.weight_ih_l0 = nn.Parameter(torch.empty(4 * hidden_size, input_size))
+        self.weight_hh_l0 = nn.Parameter(torch.empty(4 * hidden_size, hidden_size))
+        self.bias_ih_l0 = nn.Parameter(torch.empty(4 * hidden_size))
+        self.bias_hh_l0 = nn.Parameter(torch.empty(4 * hidden_size))
+        self.reset_parameters()
+
+    @torch.no_grad()
+    def reset_parameters(self) -> None:
+        bound = self.hidden_size**-0.5
+        for parameter in self.parameters():
+            parameter.uniform_(-bound, bound)
+
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        state: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        if inputs.ndim != 3:
+            raise ValueError("paper-equation LSTM input must be three-dimensional")
+        sequence = inputs if self.batch_first else inputs.transpose(0, 1)
+        batch = sequence.shape[0]
+        if state is None:
+            hidden = sequence.new_zeros(batch, self.hidden_size)
+            cell = sequence.new_zeros(batch, self.hidden_size)
+        else:
+            hidden, cell = state
+            hidden = hidden[0]
+            cell = cell[0]
+
+        outputs = []
+        for step in range(sequence.shape[1]):
+            gates = F.linear(
+                sequence[:, step], self.weight_ih_l0, self.bias_ih_l0
+            ) + F.linear(hidden, self.weight_hh_l0, self.bias_hh_l0)
+            input_gate, forget_gate, candidate, output_gate = gates.chunk(4, dim=-1)
+            cell = torch.sigmoid(forget_gate) * cell + torch.sigmoid(input_gate) * candidate
+            hidden = torch.sigmoid(output_gate) * cell
+            outputs.append(hidden)
+
+        output = torch.stack(outputs, dim=1)
+        if not self.batch_first:
+            output = output.transpose(0, 1)
+        return output, (hidden.unsqueeze(0), cell.unsqueeze(0))
+
+
 class SingleWaveletDecoder(nn.Module):
     """One spatial convolution, one wavelet tree, and one nonlinear LSTM.
 
@@ -31,6 +90,7 @@ class SingleWaveletDecoder(nn.Module):
         forget_gate_bias: float = -5.0,
         output_activation: str = "softplus",
         softplus_beta: float = 10.0,
+        recurrent_cell: str = "standard",
         energy_window_samples: int = SAMPLES_PER_BIN,
         tap_resample_up: int = 5,
         tap_resample_down: int = 2,
@@ -79,7 +139,13 @@ class SingleWaveletDecoder(nn.Module):
 
         feature_count = int(self.selected_indices.numel())
         self.direct = nn.Linear(feature_count, 1)
-        self.lstm = nn.LSTM(feature_count, hidden_size, batch_first=True)
+        if recurrent_cell == "standard":
+            self.lstm = nn.LSTM(feature_count, hidden_size, batch_first=True)
+        elif recurrent_cell == "paper_equations":
+            self.lstm = PaperEquationLSTM(feature_count, hidden_size, batch_first=True)
+        else:
+            raise ValueError(f"unsupported recurrent cell {recurrent_cell!r}")
+        self.recurrent_cell = recurrent_cell
         self.output = nn.Linear(hidden_size, 1)
         with torch.no_grad():
             self.direct.weight.copy_(

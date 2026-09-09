@@ -202,6 +202,11 @@ def main() -> None:
     parser.add_argument("--lars-open-gate-bias", type=float, default=5.0)
     parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
     parser.add_argument(
+        "--recurrent-cell",
+        choices=("standard", "paper_equations"),
+        default="standard",
+    )
+    parser.add_argument(
         "--selection-metric",
         choices=("event_macro_nmse", "raw_pcc"),
         default="raw_pcc",
@@ -468,7 +473,7 @@ def main() -> None:
         },
         "subject": args.subject,
         "finger": args.finger,
-        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
         "selected_schedule": schedule,
         "selection_metric": args.selection_metric,
         "selection_rule": args.selection_rule,

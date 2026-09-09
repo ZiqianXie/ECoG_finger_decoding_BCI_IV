@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from single_wavelet_model import SingleWaveletDecoder
+from single_wavelet_model import PaperEquationLSTM, SingleWaveletDecoder
 
 
 def make_initialization(coefficients: np.ndarray) -> dict[str, np.ndarray]:
@@ -60,3 +60,39 @@ def test_release_topology_and_nonnegative_output() -> None:
     assert not hasattr(model, "movement_gate")
     prediction = model.decode_features(torch.randn(2, 12, 2))
     assert torch.all(prediction >= 0)
+
+
+def test_paper_equation_cell_keeps_gate_nonlinearity_without_state_tanh() -> None:
+    cell = PaperEquationLSTM(input_size=1, hidden_size=1)
+    with torch.no_grad():
+        cell.weight_ih_l0.zero_()
+        cell.weight_hh_l0.zero_()
+        cell.bias_ih_l0.zero_()
+        cell.bias_hh_l0.zero_()
+        # PyTorch gate order is input, forget, candidate, output.  With all
+        # gates at sigmoid(0)=0.5 and candidate=2, c1=1 and h1=0.5.
+        cell.bias_ih_l0[2] = 2.0
+    output, (hidden, state) = cell(torch.zeros(1, 2, 1))
+    torch.testing.assert_close(output[0, :, 0], torch.tensor([0.5, 0.75]))
+    torch.testing.assert_close(hidden[0, 0, 0], torch.tensor(0.75))
+    torch.testing.assert_close(state[0, 0, 0], torch.tensor(1.5))
+
+
+def test_decoder_can_use_paper_equation_cell_with_lars_initialization() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=4,
+        recurrent_cell="paper_equations",
+        lars_candidate_scale=0.1,
+        near_zero_std=1.0e-3,
+        open_gate_bias=3.0,
+        forget_gate_bias=-3.0,
+        output_activation="linear",
+    )
+    assert isinstance(model.lstm, PaperEquationLSTM)
+    expected = model.direct_features(torch.zeros(2, 5, 2)).detach()
+    observed = model.decode_features(torch.zeros(2, 5, 2)).detach()
+    assert torch.isfinite(observed).all()
+    assert torch.sqrt(torch.mean((expected - observed).square())) < 2.0e-2

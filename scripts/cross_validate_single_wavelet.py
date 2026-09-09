@@ -655,6 +655,7 @@ def make_model(
         forget_gate_bias=args.lars_forget_gate_bias,
         output_activation=args.output_activation,
         softplus_beta=args.softplus_beta,
+        recurrent_cell=args.recurrent_cell,
         energy_window_samples=args.samples_per_bin,
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
@@ -1134,6 +1135,12 @@ def main() -> None:
     parser.add_argument("--lars-open-gate-bias", type=float, default=5.0)
     parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
     parser.add_argument(
+        "--recurrent-cell",
+        choices=("standard", "paper_equations"),
+        default="standard",
+        help="standard PyTorch LSTM or the sigmoid-gated identity-state equations printed in the paper",
+    )
+    parser.add_argument(
         "--output-activation", choices=("linear", "softplus"), default="softplus"
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
@@ -1533,7 +1540,8 @@ def main() -> None:
         "protocol": (
             "one single-path subject/finger model; five event-balanced inner folds per "
             "outer-training scope; split-local target, "
-            "ICA, joint HHL/HHH CSP and LARS refits; standard nonlinear LSTM decoder "
+            "ICA, joint HHL/HHH CSP and LARS refits; "
+            f"{args.recurrent_cell} nonlinear gated LSTM decoder "
             f"with {args.head_initialization}; {args.sampler_mode} minibatches; "
             f"optimizer-update checkpoints; {args.selection_rule} selection on "
             f"{args.selection_metric}; outer fold evaluated once; released test untouched"
@@ -1584,7 +1592,7 @@ def main() -> None:
             if args.reuse_inner_metrics_from is not None
             else None
         ),
-        "decoder": "LARS-initialized standard nonlinear LSTM",
+        "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
         "initialization_cache_root": (
             str(args.initialization_cache_root)
             if args.initialization_cache_root is not None
@@ -1595,6 +1603,7 @@ def main() -> None:
             "near_zero_std": args.lars_near_zero_std,
             "open_gate_bias": args.lars_open_gate_bias,
             "forget_gate_bias": args.lars_forget_gate_bias,
+            "recurrent_cell": args.recurrent_cell,
         },
         "schedule_candidates": schedule_order(),
         "outer_folds": outer_records,

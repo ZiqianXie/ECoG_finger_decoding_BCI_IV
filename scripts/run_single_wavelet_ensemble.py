@@ -51,6 +51,14 @@ def main() -> None:
     parser.add_argument("--spatial-learning-rate", type=float, default=None)
     parser.add_argument("--wavelet-learning-rate", type=float, default=None)
     parser.add_argument("--lars-candidate-scale", type=float, default=1.0)
+    parser.add_argument("--lars-near-zero-std", type=float, default=1.0e-3)
+    parser.add_argument("--lars-open-gate-bias", type=float, default=5.0)
+    parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
+    parser.add_argument(
+        "--recurrent-cell",
+        choices=("standard", "paper_equations"),
+        default="standard",
+    )
     parser.add_argument("--sequence-steps", type=int, default=100)
     parser.add_argument(
         "--output-activation", choices=("linear", "softplus"), default="softplus"
@@ -118,6 +126,8 @@ def main() -> None:
                             "--seed-subdirectory",
                             "--head-initialization",
                             args.head_initialization,
+                            "--recurrent-cell",
+                            args.recurrent_cell,
                             "--sequence-steps",
                             str(args.sequence_steps),
                             "--output-activation",
@@ -138,6 +148,12 @@ def main() -> None:
                             str(args.batch_size),
                             "--lars-candidate-scale",
                             str(args.lars_candidate_scale),
+                            "--lars-near-zero-std",
+                            str(args.lars_near_zero_std),
+                            "--lars-open-gate-bias",
+                            str(args.lars_open_gate_bias),
+                            "--lars-forget-gate-bias",
+                            str(args.lars_forget_gate_bias),
                         ],
                     )
                 )

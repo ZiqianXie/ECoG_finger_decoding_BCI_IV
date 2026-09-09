@@ -58,10 +58,18 @@ def command(args: argparse.Namespace, subject: int, finger: str) -> list[str]:
         str(args.wavelet_learning_rate),
         "--head-initialization",
         args.head_initialization,
+        "--recurrent-cell",
+        args.recurrent_cell,
         "--csp-mode",
         args.csp_mode,
         "--lars-candidate-scale",
         str(args.lars_candidate_scale),
+        "--lars-near-zero-std",
+        str(args.lars_near_zero_std),
+        "--lars-open-gate-bias",
+        str(args.lars_open_gate_bias),
+        "--lars-forget-gate-bias",
+        str(args.lars_forget_gate_bias),
         "--sequence-steps",
         str(args.sequence_steps),
         "--sequence-stride",
@@ -206,6 +214,14 @@ def main() -> None:
     )
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument("--lars-candidate-scale", type=float, default=1.0)
+    parser.add_argument("--lars-near-zero-std", type=float, default=1.0e-3)
+    parser.add_argument("--lars-open-gate-bias", type=float, default=5.0)
+    parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
+    parser.add_argument(
+        "--recurrent-cell",
+        choices=("standard", "paper_equations"),
+        default="standard",
+    )
     parser.add_argument("--sequence-steps", type=int, default=100)
     parser.add_argument("--sequence-stride", type=int, default=25)
     parser.add_argument(
