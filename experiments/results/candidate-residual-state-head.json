@@ -5,9 +5,21 @@
   "primary_metric": "stitched out-of-fold raw-target PCC",
   "requested_gain_threshold": 0.1,
   "screened_pairs": [
+    "S1 thumb",
     "S1 index",
+    "S1 middle",
+    "S1 ring",
+    "S1 little",
+    "S2 thumb",
+    "S2 index",
     "S2 middle",
-    "S3 thumb"
+    "S2 ring",
+    "S2 little",
+    "S3 thumb",
+    "S3 index",
+    "S3 middle",
+    "S3 ring",
+    "S3 little"
   ],
   "primary_screen_pair": "S2 middle",
   "initialization_pcc": 0.364738224,
@@ -648,6 +660,98 @@
     "visual_finding": "The LSTM more reliably detects movement state, suppresses most resting offset, and raises the flexion envelope. It still smooths across within-event extension valleys, compresses peak amplitude, and retains one conspicuous resting false-positive episode.",
     "decision": "The transferred recipe meets the requested numerical threshold at +0.1034 PCC and improves every stitched morphology summary reported above. Count it as a numerical pass, but not as a solved trajectory: fine movement dynamics remain underfit."
   },
+  "all_pair_gain_screen": {
+    "description": "The S1-selected current-bin, batch-48 residual-LSTM recipe was frozen before transfer to the twelve previously unscreened subject-finger pairs. Each pair refits its own split-local target baseline, CSP, and LARS; only full-rank split-local FastICA rows are reused. S2-middle retains its separately inner-selected correlation/velocity objective, and S3-thumb is the earlier unchanged transfer run.",
+    "data_scope": "event-grouped nested cross-validation on released competition training data",
+    "released_test_touched": false,
+    "gain_threshold": 0.1,
+    "completed_pairs": 15,
+    "passing_pairs": [
+      "S2_middle",
+      "S3_thumb"
+    ],
+    "pairs": {
+      "S1_thumb": {
+        "initialization_pcc": 0.571389293,
+        "tuned_pcc": 0.617527615,
+        "gain": 0.046138322
+      },
+      "S1_index": {
+        "initialization_pcc": 0.725545068,
+        "tuned_pcc": 0.78482521,
+        "gain": 0.059280142
+      },
+      "S1_middle": {
+        "initialization_pcc": 0.2161467,
+        "tuned_pcc": 0.157226885,
+        "gain": -0.058919815
+      },
+      "S1_ring": {
+        "initialization_pcc": 0.493492559,
+        "tuned_pcc": 0.386952437,
+        "gain": -0.106540122
+      },
+      "S1_little": {
+        "initialization_pcc": 0.369507854,
+        "tuned_pcc": 0.353064696,
+        "gain": -0.016443158
+      },
+      "S2_thumb": {
+        "initialization_pcc": 0.577508105,
+        "tuned_pcc": 0.563993931,
+        "gain": -0.013514174
+      },
+      "S2_index": {
+        "initialization_pcc": 0.349420727,
+        "tuned_pcc": 0.347645923,
+        "gain": -0.001774804
+      },
+      "S2_middle": {
+        "initialization_pcc": 0.364738224,
+        "tuned_pcc": 0.46779307,
+        "gain": 0.103054846,
+        "finger_specific_change": "movement-state plus within-sequence level and velocity correlation objective"
+      },
+      "S2_ring": {
+        "initialization_pcc": 0.446083223,
+        "tuned_pcc": 0.429599543,
+        "gain": -0.01648368
+      },
+      "S2_little": {
+        "initialization_pcc": 0.326494256,
+        "tuned_pcc": 0.339951519,
+        "gain": 0.013457263
+      },
+      "S3_thumb": {
+        "initialization_pcc": 0.629314796,
+        "tuned_pcc": 0.732715192,
+        "gain": 0.103400396
+      },
+      "S3_index": {
+        "initialization_pcc": 0.579112281,
+        "tuned_pcc": 0.569436567,
+        "gain": -0.009675714
+      },
+      "S3_middle": {
+        "initialization_pcc": 0.590355891,
+        "tuned_pcc": 0.567901008,
+        "gain": -0.022454883
+      },
+      "S3_ring": {
+        "initialization_pcc": 0.404704309,
+        "tuned_pcc": 0.416945469,
+        "gain": 0.012241159
+      },
+      "S3_little": {
+        "initialization_pcc": 0.631937483,
+        "tuned_pcc": 0.595102295,
+        "gain": -0.036835188
+      }
+    },
+    "fixed_transfer_summary": "None of the twelve newly screened pairs reaches +0.1. S1-thumb is the strongest new positive gain at +0.046; S2-little and S3-ring are small positives; seven transfers reduce PCC. The full diagnostic table is generated at outputs/candidate_residual_current_bin_batch48_oof_all_v1/screen_summary.json.",
+    "morphology_pattern": "Several PCC failures still reduce resting RMS and raise amplitude slope or movement-state accuracy. The recurrent head is learning a smoother movement envelope, but often loses within-event timing or movement amplitude sufficiently to reduce raw PCC.",
+    "decision": "Reject the batch-48 current-bin recipe as a universal decoder. Preserve S2-middle and S3-thumb as numerical passes, retain S1-index as the best sub-threshold residual result, and use finger-specific spectral-spatial initialization or objectives for the remaining pairs."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. Two of the three screened subject-finger pairs now meet the requested +0.1 PCC gain: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 when the S1-selected current-bin, batch-48 recipe is transferred unchanged. S1-index remains below the goal at +0.059. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM, so closing the remaining S1 gap likely requires a better information or target representation rather than another optimizer sweep. The other twelve subject-finger pairs have not yet been evaluated under this gain criterion."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The complete 15-pair screen has only two numerical passes: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 with the current-bin, batch-48 recipe. S1-index remains the best sub-threshold result at +0.059. None of the twelve fixed-recipe transfers reaches +0.1, and seven reduce raw PCC despite often improving rest suppression or movement-state accuracy. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat generic optimizer, batch-size, or wavelet-path sweeps."
 }
