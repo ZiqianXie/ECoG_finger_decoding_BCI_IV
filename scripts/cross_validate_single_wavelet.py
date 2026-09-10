@@ -79,6 +79,7 @@ CSP_MODES = {
     "tails_2x2": (0, 1, -2, -1),
     "tails_4x4": (0, 1, 2, 3, -4, -3, -2, -1),
 }
+CSP_BAND_MODES = ("joint_hhl_hhh", "separate_hhl_hhh")
 
 
 def split_intervals(
@@ -426,6 +427,42 @@ def grouped_lars_subfolds(
     return result
 
 
+def fit_csp_band_rows(
+    *,
+    joint_bins: np.ndarray,
+    hhl_bins: np.ndarray | None,
+    hhh_bins: np.ndarray | None,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    csp_band_mode: str,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit joint or leaf-specific gamma CSP rows for one spatial layer."""
+    if csp_band_mode not in CSP_BAND_MODES:
+        raise ValueError(f"unsupported CSP band mode {csp_band_mode!r}")
+    if csp_band_mode == "joint_hhl_hhh":
+        weights, audit = finger_csp_bank(
+            joint_bins, target, training, finger_index, component_indices
+        )
+        return weights, {"band_mode": csp_band_mode, **audit}
+    if hhl_bins is None or hhh_bins is None:
+        raise ValueError("separate_hhl_hhh requires HHL and HHH bins")
+    hhl_weights, hhl_audit = finger_csp_bank(
+        hhl_bins, target, training, finger_index, component_indices
+    )
+    hhh_weights, hhh_audit = finger_csp_bank(
+        hhh_bins, target, training, finger_index, component_indices
+    )
+    weights = np.concatenate((hhl_weights, hhh_weights), axis=0)
+    return weights, {
+        "band_mode": csp_band_mode,
+        "spatial_rows": int(weights.shape[0]),
+        "hhl_100_125_hz": hhl_audit,
+        "hhh_125_150_hz": hhh_audit,
+    }
+
+
 def fit_initialization(
     *,
     ecog: np.ndarray,
@@ -439,6 +476,9 @@ def fit_initialization(
     component_chunk: int,
     finger_index: int = LITTLE,
     csp_mode: str = "movement_1",
+    csp_band_mode: str = "joint_hhl_hhh",
+    hhl_bins: np.ndarray | None = None,
+    hhh_bins: np.ndarray | None = None,
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
     include_candidate_pool: bool = False,
@@ -460,8 +500,15 @@ def fit_initialization(
     )
     if ica.shape != (ecog.shape[1], ecog.shape[1]):
         raise ValueError("FastICA weights must contain one row per retained channel")
-    joint_weights, csp_audit = finger_csp_bank(
-        joint_bins, target, training, finger_index, CSP_MODES[csp_mode]
+    joint_weights, csp_audit = fit_csp_band_rows(
+        joint_bins=joint_bins,
+        hhl_bins=hhl_bins,
+        hhh_bins=hhh_bins,
+        target=target,
+        training=training,
+        finger_index=finger_index,
+        component_indices=CSP_MODES[csp_mode],
+        csp_band_mode=csp_band_mode,
     )
     normalized_rows = []
     csp_stds = []
@@ -592,6 +639,7 @@ def fit_initialization(
         "selection_method": selection_method,
         "selection_alpha": fitted_alpha,
         "csp_mode": csp_mode,
+        "csp_band_mode": csp_band_mode,
         "csp": {**csp_audit, "pre_normalization_std": csp_stds},
         **candidate_audit,
     }
@@ -1585,6 +1633,9 @@ def main() -> None:
     parser.add_argument("--component-chunk", type=int, default=16)
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument(
+        "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
+    )
+    parser.add_argument(
         "--ica-cache-root",
         type=Path,
         default=None,
@@ -1926,13 +1977,13 @@ def main() -> None:
         )
         return
     bins = ecog.shape[0] // args.samples_per_bin
-    joint_bins = np.concatenate(
-        (
-            hhl[: bins * args.samples_per_bin].reshape(bins, args.samples_per_bin, -1),
-            hhh[: bins * args.samples_per_bin].reshape(bins, args.samples_per_bin, -1),
-        ),
-        axis=1,
+    hhl_bins = hhl[: bins * args.samples_per_bin].reshape(
+        bins, args.samples_per_bin, -1
     )
+    hhh_bins = hhh[: bins * args.samples_per_bin].reshape(
+        bins, args.samples_per_bin, -1
+    )
+    joint_bins = np.concatenate((hhl_bins, hhh_bins), axis=1)
     ecog_t = torch.from_numpy(ecog.copy()).to(device)
     context = frontend.effective_kernel_size // 2
     padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
@@ -2002,6 +2053,9 @@ def main() -> None:
                     component_chunk=args.component_chunk,
                     finger_index=finger_index,
                     csp_mode=args.csp_mode,
+                    csp_band_mode=args.csp_band_mode,
+                    hhl_bins=hhl_bins,
+                    hhh_bins=hhh_bins,
                     ica_weights=load_cached_ica(
                         args.ica_cache_root,
                         args.subject,
@@ -2102,6 +2156,9 @@ def main() -> None:
                 component_chunk=args.component_chunk,
                 finger_index=finger_index,
                 csp_mode=args.csp_mode,
+                csp_band_mode=args.csp_band_mode,
+                hhl_bins=hhl_bins,
+                hhh_bins=hhh_bins,
                 ica_weights=load_cached_ica(
                     args.ica_cache_root,
                     args.subject,
@@ -2203,7 +2260,7 @@ def main() -> None:
         "protocol": (
             "one single-path subject/finger model; five event-balanced inner folds per "
             "outer-training scope; split-local target, "
-            "ICA, joint HHL/HHH CSP and LARS refits; "
+            "ICA, configured HHL/HHH CSP and LARS refits; "
             f"{args.recurrent_cell} nonlinear gated LSTM decoder with "
             f"{args.residual_input} residual input "
             f"with {args.head_initialization}; {args.sampler_mode} minibatches; "

@@ -51,6 +51,7 @@ def build_command(
     output_root: Path,
     initialization_root: Path,
     ica_cache_root: Path,
+    csp_band_mode: str = "joint_hhl_hhh",
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -108,6 +109,8 @@ def build_command(
         "16",
         "--csp-mode",
         "movement_1",
+        "--csp-band-mode",
+        csp_band_mode,
         "--hidden-size",
         "64",
         "--head-initialization",
@@ -192,6 +195,11 @@ def main() -> None:
         type=Path,
         default=Path("outputs/single_wavelet_1000hz_tap5over2_nested_v2"),
     )
+    parser.add_argument(
+        "--csp-band-mode",
+        choices=("joint_hhl_hhh", "separate_hhl_hhh"),
+        default="joint_hhl_hhh",
+    )
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
         "--script", type=Path, default=Path("scripts/cross_validate_single_wavelet.py")
@@ -214,6 +222,7 @@ def main() -> None:
             args.output_root,
             args.initialization_root,
             args.ica_cache_root,
+            args.csp_band_mode,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

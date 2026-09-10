@@ -25,6 +25,7 @@ from single_wavelet_support import (
     resample_ecog,
 )
 from cross_validate_single_wavelet import (
+    CSP_BAND_MODES,
     CSP_MODES,
     fit_initialization,
     make_model,
@@ -192,6 +193,9 @@ def main() -> None:
     parser.add_argument("--ica-prescreen", type=int, default=512)
     parser.add_argument("--component-chunk", type=int, default=16)
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
+    parser.add_argument(
+        "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
+    )
     parser.add_argument(
         "--ica-initialization-root",
         type=Path,
@@ -373,17 +377,13 @@ def main() -> None:
         audit = source_report["initialization_audit"]
     else:
         bins = train_ecog.shape[0] // args.samples_per_bin
-        joint_bins = np.concatenate(
-            (
-                hhl[: bins * args.samples_per_bin].reshape(
-                    bins, args.samples_per_bin, -1
-                ),
-                hhh[: bins * args.samples_per_bin].reshape(
-                    bins, args.samples_per_bin, -1
-                ),
-            ),
-            axis=1,
+        hhl_bins = hhl[: bins * args.samples_per_bin].reshape(
+            bins, args.samples_per_bin, -1
         )
+        hhh_bins = hhh[: bins * args.samples_per_bin].reshape(
+            bins, args.samples_per_bin, -1
+        )
+        joint_bins = np.concatenate((hhl_bins, hhh_bins), axis=1)
         initialization, spatial, audit = fit_initialization(
             ecog=train_ecog,
             joint_bins=joint_bins,
@@ -396,6 +396,9 @@ def main() -> None:
             component_chunk=args.component_chunk,
             finger_index=finger_index,
             csp_mode=args.csp_mode,
+            csp_band_mode=args.csp_band_mode,
+            hhl_bins=hhl_bins,
+            hhh_bins=hhh_bins,
             samples_per_bin=args.samples_per_bin,
             ica_weights=(
                 np.load(
@@ -505,6 +508,7 @@ def main() -> None:
         "output_activation": args.output_activation,
         "softplus_beta": args.softplus_beta,
         "csp_mode": args.csp_mode,
+        "csp_band_mode": args.csp_band_mode,
         "target_policy": {
             "little_event_decontamination": args.little_event_decontamination,
             "little_event_ratio_low": args.little_event_ratio_low,

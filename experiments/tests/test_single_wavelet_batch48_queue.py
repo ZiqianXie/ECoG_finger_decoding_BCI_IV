@@ -42,5 +42,21 @@ def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
     assert "--residual-input current_candidate" in joined
     assert "--residual-include-direct" in command
     assert "--frozen-only" in command
+    assert "--csp-band-mode joint_hhl_hhh" in joined
     assert "--wavelet-interlevel-skip" not in command
     assert "--wavelet-interlevel-normalization" not in command
+
+
+def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "middle",
+        2,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        "separate_hhl_hhh",
+    )
+    assert "--csp-band-mode separate_hhl_hhh" in " ".join(command)
