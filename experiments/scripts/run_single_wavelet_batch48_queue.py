@@ -52,6 +52,7 @@ def build_command(
     initialization_root: Path,
     ica_cache_root: Path,
     csp_band_mode: str = "joint_hhl_hhh",
+    residual_input_width: int = 64,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -132,7 +133,7 @@ def build_command(
         "--residual-history-bins",
         "1",
         "--residual-input-width",
-        "64",
+        str(residual_input_width),
         "--residual-include-direct",
         "--softplus-beta",
         "10.0",
@@ -200,6 +201,7 @@ def main() -> None:
         choices=("joint_hhl_hhh", "separate_hhl_hhh"),
         default="joint_hhl_hhh",
     )
+    parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
         "--script", type=Path, default=Path("scripts/cross_validate_single_wavelet.py")
@@ -223,6 +225,7 @@ def main() -> None:
             args.initialization_root,
             args.ica_cache_root,
             args.csp_band_mode,
+            args.residual_input_width,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
