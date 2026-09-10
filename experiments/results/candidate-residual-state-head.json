@@ -947,9 +947,9 @@
     "decision": "The existing frozen representation lacks enough stable residual signal to support +0.1 on these pairs. Stop tuning only the recurrent head or its loss; change the spectral-spatial evidence while preserving the single branch."
   },
   "lower_high_gamma_csp_single_branch": {
-    "description": "The same single spatial layer adds one target-finger CSP row fitted jointly on the initialized 50--75 and 75--100 Hz wavelet leaves, alongside the separate 100--125 and 125--150 Hz CSP rows. All FastICA and CSP rows still enter one depth-3 wavelet tree and one residual LSTM.",
+    "description": "The same single spatial layer adds target-finger CSP rows fitted jointly on the initialized 50--75 and 75--100 Hz wavelet leaves, alongside CSP rows fitted separately on the 100--125 and 125--150 Hz leaves. All FastICA and CSP rows still enter one depth-3 wavelet tree and one residual LSTM.",
     "released_test_touched": false,
-    "S3_ring": {
+    "S3_ring_movement_1_per_band": {
       "initialization_pcc": 0.513604969,
       "tuned_pcc": 0.495895641,
       "gain": -0.017709328,
@@ -971,7 +971,36 @@
         "movement_balanced_accuracy": 0.723214247
       }
     },
-    "decision": "Keep the 50--100 Hz CSP row as useful S3-ring evidence: it raises the split-local sparse baseline by 0.0617 PCC. Do not count the residual decoder as a pass because tuning reduces PCC and worsens event NMSE and movement RMSE despite better rest suppression and movement-state accuracy."
+    "S3_ring_movement_2_per_band": {
+      "initialization_pcc": 0.531178596,
+      "tuned_pcc": 0.530623365,
+      "gain": -0.000555231,
+      "selected_schedules": ["frozen_25", "frozen_50", "frozen_25"],
+      "initialized_morphology": {
+        "event_macro_nmse": 0.710295,
+        "rest_false_positive_rms": 0.175476,
+        "movement_rmse": 0.302042,
+        "amplitude_slope": 0.26805,
+        "velocity_pcc": 0.187362,
+        "movement_balanced_accuracy": 0.64787
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.708507,
+        "rest_false_positive_rms": 0.152756,
+        "movement_rmse": 0.312227,
+        "amplitude_slope": 0.304297,
+        "velocity_pcc": 0.192712,
+        "movement_balanced_accuracy": 0.720785
+      },
+      "frozen_feature_capacity": {
+        "lars_pcc": 0.531178599,
+        "ridge_all_lags_pcc": 0.544330246,
+        "ridge_all_lags_gain": 0.013151648,
+        "ridge_current_temporal_pcc": 0.533569731,
+        "ridge_current_temporal_gain": 0.002391132
+      }
+    },
+    "decision": "Keep the 50--100 Hz CSP evidence because it materially raises the S3-ring split-local sparse baseline. A second CSP component raises initialization again, but neither the residual LSTM nor split-local ridge probes find a stable gain remotely close to +0.1. Stop head-only S3-ring sweeps and change the representation before revisiting this pair."
   },
   "gpu_lasso_backend_benchmark": {
     "description": "A batched PyTorch FISTA path solves the same split-local Lasso objective on a GPU Gram matrix. CPU LARS remains available for exact historical reproduction; new batch-48 experiment queues use the GPU backend.",
@@ -1000,6 +1029,64 @@
     },
     "decision": "Use GPU FISTA for new experiment queues: it is numerically interchangeable for this split and reduces total runtime by about 21%. Keep sklearn LARS as the core default until a caller explicitly opts into the approximate GPU path."
   },
+  "gpu_ridge_probe_backend": {
+    "description": "Residual-capacity audits can standardize features and solve a ridge-alpha path from one GPU eigendecomposition per outer fold. This replaces repeated CPU factorizations without changing the production decoder.",
+    "S3_ring_lower_high_gamma_ridge_only_runtime_seconds": 6.2,
+    "decision": "Use the GPU ridge backend for linear residual-capacity screens. It makes negative representation checks cheap enough to run before expensive recurrent sweeps."
+  },
+  "S1_thumb_residual_diagnostics": {
+    "released_test_touched": false,
+    "frozen_feature_capacity": {
+      "lars_pcc": 0.57138929,
+      "ridge_all_lags_pcc": 0.557285363,
+      "ridge_current_temporal_pcc": 0.579596626,
+      "best_linear_gain": 0.008207337,
+      "runtime_seconds": 20.45,
+      "diagnostic": "Linear probes find little residual capacity, while the nonlinear residual LSTM gains substantially more. The remaining S1-thumb residual is nonlinear rather than a missed linear recombination of the frozen bank."
+    },
+    "state_only_extended_schedule": {
+      "initialization_pcc": 0.571389293,
+      "tuned_pcc": 0.609421973,
+      "gain": 0.038032681,
+      "selected_schedules": ["frozen_400", "frozen_200", "frozen_200"],
+      "decision": "Reject: extending the state-only schedule below its earlier 0.617528 result exposes inner-to-outer partition mismatch rather than useful optimization reserve."
+    },
+    "level_plus_velocity_correlation_objective": {
+      "weights": {
+        "within_sequence_level_correlation": 0.1,
+        "within_sequence_velocity_correlation": 0.1
+      },
+      "maximum_updates_200": {
+        "tuned_pcc": 0.624619085,
+        "gain": 0.053229793
+      },
+      "maximum_updates_400": {
+        "initialization_pcc": 0.571389293,
+        "tuned_pcc": 0.628730425,
+        "gain": 0.057341132,
+        "selected_schedules": ["frozen_400", "frozen_200", "frozen_200"],
+        "outer_tuned_pcc": [0.65806222, 0.631177795, 0.609632838],
+        "runtime_seconds": 243.151951,
+        "initialized_morphology": {
+          "event_macro_nmse": 0.799122169,
+          "rest_false_positive_rms": 0.109982083,
+          "movement_rmse": 0.394069135,
+          "amplitude_slope": 0.295746028,
+          "velocity_pcc": 0.252820499,
+          "movement_balanced_accuracy": 0.824894631
+        },
+        "tuned_morphology": {
+          "event_macro_nmse": 0.656577343,
+          "rest_false_positive_rms": 0.070925714,
+          "movement_rmse": 0.373471419,
+          "amplitude_slope": 0.496486336,
+          "velocity_pcc": 0.31204628,
+          "movement_balanced_accuracy": 0.90622154
+        }
+      },
+      "decision": "Keep as the best S1-thumb residual result: it improves PCC and every recorded morphology metric. Do not count it as a pass because +0.0573 remains well below the requested +0.1."
+    }
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, and GPU FISTA experiment backend. Three of fifteen subject-finger models now exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold result at +0.0589 after its corrected six-seed mean. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, and raw-movement-shape changes do not close the other gaps. The added 50--100 Hz CSP row materially raises the S3-ring sparse baseline, but the residual LSTM still degrades it. The next attempt must preserve and extend that finger-specific spectral-spatial evidence inside the single branch rather than repeat head-only tuning."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, and GPU ridge capacity screen. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, and longer-schedule changes do not close the other gaps. Additional 50--100 Hz CSP components raise the S3-ring sparse baseline, but linear probes and the residual LSTM find no stable +0.1 residual. The next attempt must change finger-specific spectral-spatial evidence inside the single branch rather than repeat head-only tuning."
 }

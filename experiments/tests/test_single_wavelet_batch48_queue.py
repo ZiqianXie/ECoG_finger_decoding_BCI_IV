@@ -50,6 +50,9 @@ def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
     assert "--raw-movement-correlation-weight 0.0" in joined
     assert "--raw-movement-derivative-correlation-weight 0.0" in joined
     assert "--lasso-backend torch_fista" in joined
+    assert "--frozen-update-grid 10 25 50 100 200" in joined
+    assert "--wavelet-interlevel-skip" not in command
+    assert "--wavelet-interlevel-normalization" not in command
 
 
 def test_command_can_request_two_csp_components_per_band(tmp_path) -> None:
@@ -68,8 +71,22 @@ def test_command_can_request_two_csp_components_per_band(tmp_path) -> None:
     joined = " ".join(command)
     assert "--csp-mode movement_2" in joined
     assert "--csp-band-mode separate_50_100_hhl_hhh" in joined
-    assert "--wavelet-interlevel-skip" not in command
-    assert "--wavelet-interlevel-normalization" not in command
+
+
+def test_command_can_extend_the_frozen_training_schedule(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "thumb",
+        2,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        frozen_update_grid=(10, 25, 50, 100, 200, 400, 800),
+    )
+    joined = " ".join(command)
+    assert "--frozen-update-grid 10 25 50 100 200 400 800" in joined
 
 
 def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:

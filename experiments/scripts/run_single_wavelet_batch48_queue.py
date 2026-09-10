@@ -59,6 +59,7 @@ def build_command(
     raw_movement_derivative_correlation_weight: float = 0.0,
     lasso_backend: str = "torch_fista",
     csp_mode: str = "movement_1",
+    frozen_update_grid: tuple[int, ...] = (10, 25, 50, 100, 200),
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -156,11 +157,7 @@ def build_command(
         "--head-learning-rate",
         "0.0003",
         "--frozen-update-grid",
-        "10",
-        "25",
-        "50",
-        "100",
-        "200",
+        *(str(update) for update in frozen_update_grid),
         "--frozen-only",
         "--weight-decay",
         "0.0001",
@@ -223,6 +220,12 @@ def main() -> None:
         default="movement_1",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
+    parser.add_argument(
+        "--frozen-update-grid",
+        type=int,
+        nargs="+",
+        default=(10, 25, 50, 100, 200),
+    )
     parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
     parser.add_argument("--derivative-correlation-weight", type=float, default=0.0)
     parser.add_argument("--raw-movement-correlation-weight", type=float, default=0.0)
@@ -264,6 +267,7 @@ def main() -> None:
             args.raw_movement_derivative_correlation_weight,
             args.lasso_backend,
             args.csp_mode,
+            tuple(args.frozen_update_grid),
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
