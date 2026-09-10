@@ -180,6 +180,63 @@ def test_candidate_pool_residual_starts_exactly_at_selected_lars() -> None:
     assert model.direct.in_features == 2
 
 
+def test_candidate_direct_path_is_fixed_width_and_matches_selected_scaling() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    initialization = make_candidate_initialization(coefficients)
+    initialization["feature_mean"] = np.asarray([2.0, -1.0], dtype=np.float32)
+    initialization["feature_scale"] = np.asarray([0.5, 4.0], dtype=np.float32)
+    initialization["candidate_feature_mean"] = np.asarray(
+        [1.5, -2.0, 3.0, 4.0], dtype=np.float32
+    )
+    initialization["candidate_feature_scale"] = np.asarray(
+        [2.0, 0.25, 5.0, 6.0], dtype=np.float32
+    )
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        output_activation="linear",
+    )
+    features = torch.randn(2, 12, 4)
+    selected = features[..., :2]
+    expected = torch.nn.functional.linear(
+        (selected - model.feature_mean) / model.feature_scale,
+        model.direct.weight,
+        model.direct.bias,
+    ).squeeze(-1)
+
+    torch.testing.assert_close(model.direct_features(features), expected)
+    assert model.candidate_direct_weight.shape == (1, 4)
+    assert torch.count_nonzero(model.candidate_direct_weight[..., 2:]).item() == 0
+    assert "candidate_direct_weight" not in model.state_dict()
+
+
+def test_near_zero_residual_initialization_trains_recurrent_weights_immediately() -> None:
+    torch.manual_seed(19)
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        residual_output_init_std=1.0e-3,
+        output_activation="linear",
+    )
+    features = torch.randn(2, 12, 4)
+    direct = model.direct_features(features).detach()
+    prediction = model.decode_features(features)
+
+    delta = torch.sqrt(torch.mean((prediction.detach() - direct).square()))
+    assert 0 < delta < 1.0e-2
+    assert model.head_initialization == "near_zero_residual_on_lars"
+
+    prediction.square().mean().backward()
+    assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
 def test_candidate_pool_residual_can_use_a_feature_excluded_by_lars() -> None:
     coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
     model = SingleWaveletDecoder(

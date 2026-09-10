@@ -100,6 +100,7 @@ class SingleWaveletDecoder(nn.Module):
         wavelet_final_normalization: bool = True,
         residual_input: str = "selected",
         movement_head: bool = False,
+        residual_output_init_std: float = 0.0,
     ) -> None:
         super().__init__()
         components, channels = spatial_weights.shape
@@ -212,15 +213,51 @@ class SingleWaveletDecoder(nn.Module):
         self.recurrent_cell = recurrent_cell
         self.output = nn.Linear(hidden_size, 1)
         self.movement_output = nn.Linear(hidden_size, 1) if movement_head else None
+        if residual_output_init_std < 0:
+            raise ValueError("residual output initialization scale must be nonnegative")
         with torch.no_grad():
             self.direct.weight.copy_(
                 torch.as_tensor(initialization["coefficients"])[None]
             )
             self.direct.bias.fill_(float(initialization["intercept"]))
         self.direct.requires_grad_(False)
+        if residual_input == "candidate":
+            expanded_weight = torch.zeros(
+                recurrent_feature_count, dtype=self.direct.weight.dtype
+            )
+            selected_positions = self.selected_candidate_positions
+            selected_scale = self.feature_scale
+            candidate_scale = self.candidate_feature_scale.index_select(
+                0, selected_positions
+            )
+            coefficient = self.direct.weight.detach()[0]
+            expanded_weight[selected_positions] = (
+                coefficient * candidate_scale / selected_scale
+            )
+            candidate_mean = self.candidate_feature_mean.index_select(
+                0, selected_positions
+            )
+            expanded_bias = self.direct.bias.detach()[0] + torch.sum(
+                coefficient * (candidate_mean - self.feature_mean) / selected_scale
+            )
+            self.register_buffer(
+                "candidate_direct_weight", expanded_weight[None], persistent=False
+            )
+            self.register_buffer(
+                "candidate_direct_bias", expanded_bias[None], persistent=False
+            )
         if self.residual_decoder:
-            self.head_initialization = "zero_residual_on_lars"
-            nn.init.zeros_(self.output.weight)
+            self.head_initialization = (
+                "near_zero_residual_on_lars"
+                if residual_output_init_std
+                else "zero_residual_on_lars"
+            )
+            if residual_output_init_std:
+                nn.init.normal_(
+                    self.output.weight, mean=0.0, std=residual_output_init_std
+                )
+            else:
+                nn.init.zeros_(self.output.weight)
             nn.init.zeros_(self.output.bias)
         else:
             self._initialize_lars_linear_regime(
@@ -311,7 +348,9 @@ class SingleWaveletDecoder(nn.Module):
         recurrent, _ = self.lstm(recurrent_features)
         prediction = self.output(recurrent)
         if self.residual_decoder:
-            prediction = self.direct(direct_features) + prediction
+            prediction = self._direct_prediction(
+                recurrent_features, direct_features
+            ) + prediction
         return self.activate_output(prediction).squeeze(-1), recurrent
 
     def decode_features(self, features: torch.Tensor) -> torch.Tensor:
@@ -335,16 +374,29 @@ class SingleWaveletDecoder(nn.Module):
             recurrent = (
                 features - self.candidate_feature_mean
             ) / self.candidate_feature_scale
-            selected = features.index_select(-1, self.selected_candidate_positions)
-            direct = (selected - self.feature_mean) / self.feature_scale
-            return recurrent, direct
+            return recurrent, recurrent
         standardized = (features - self.feature_mean) / self.feature_scale
         return standardized, standardized
 
+    def _direct_prediction(
+        self,
+        recurrent_features: torch.Tensor,
+        direct_features: torch.Tensor,
+    ) -> torch.Tensor:
+        if self.residual_input == "candidate":
+            return F.linear(
+                recurrent_features,
+                self.candidate_direct_weight,
+                self.candidate_direct_bias,
+            )
+        return self.direct(direct_features)
+
     def direct_features(self, features: torch.Tensor) -> torch.Tensor:
         """Return the immutable LARS audit prediction for the same features."""
-        _, direct_features = self._prepare_features(features)
-        return self.activate_output(self.direct(direct_features)).squeeze(-1)
+        recurrent_features, direct_features = self._prepare_features(features)
+        return self.activate_output(
+            self._direct_prediction(recurrent_features, direct_features)
+        ).squeeze(-1)
 
     def extract_sequences(
         self,

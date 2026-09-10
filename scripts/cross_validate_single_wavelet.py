@@ -767,6 +767,7 @@ def make_model(
         wavelet_final_normalization=args.wavelet_final_normalization,
         residual_input=args.residual_input,
         movement_head=args.movement_loss_weight > 0,
+        residual_output_init_std=args.residual_output_init_std,
     )
 
 
@@ -1456,6 +1457,15 @@ def main() -> None:
         default=0.0,
         help="weight of a balanced target-finger movement/rest BCE auxiliary head",
     )
+    parser.add_argument(
+        "--residual-output-init-std",
+        type=float,
+        default=0.0,
+        help=(
+            "near-zero random initialization for residual-head coefficients; "
+            "zero preserves exact LARS output but delays recurrent gradients by one update"
+        ),
+    )
     parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
     parser.add_argument(
         "--derivative-correlation-weight", type=float, default=0.0
@@ -1472,6 +1482,7 @@ def main() -> None:
     args = parser.parse_args()
     if (
         args.movement_loss_weight < 0
+        or args.residual_output_init_std < 0
         or args.correlation_loss_weight < 0
         or args.derivative_correlation_weight < 0
     ):
@@ -1940,6 +1951,7 @@ def main() -> None:
                 if args.movement_loss_weight
                 else ["trajectory"]
             ),
+            "residual_output_initialization_std": args.residual_output_init_std,
         },
         "learning_rates": {
             "head": args.head_learning_rate,
