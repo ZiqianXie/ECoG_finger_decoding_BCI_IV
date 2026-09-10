@@ -9,6 +9,7 @@ from cross_validate_single_wavelet import (
     UNFROZEN_UPDATES,
     UniformGroupSampler,
     one_standard_error_selection,
+    cross_finger_rest_weights,
     load_initialization,
     save_initialization,
     scoped_event_groups,
@@ -16,6 +17,22 @@ from cross_validate_single_wavelet import (
     suppress_weak_little_events,
     validation_metrics,
 )
+
+
+def test_cross_finger_rest_weights_only_upweight_hard_negatives() -> None:
+    target = torch.zeros(5, 5)
+    target[0, 1] = 0.4
+    target[1, 2] = 0.3
+    target[1, 4] = 0.7
+    target[2, 2] = 0.04
+    target[2, 3] = 0.2
+    target[3, 2] = 0.08
+    target[3, 3] = 0.5
+
+    weights = cross_finger_rest_weights(target, 2, 0.1, 0.05, 4.0)
+
+    torch.testing.assert_close(weights, torch.tensor([4.0, 1.0, 4.0, 1.0, 1.0]))
+    assert cross_finger_rest_weights(target, 2, 0.1, 0.05, 1.0) is None
 
 
 def schedules() -> list[str]:

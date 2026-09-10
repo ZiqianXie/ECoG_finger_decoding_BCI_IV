@@ -1,0 +1,49 @@
+{
+  "status": "experimental_not_promoted",
+  "subject": 2,
+  "finger": "middle",
+  "selection_data": "event-grouped nested cross-validation on released competition training data",
+  "released_test_touched": false,
+  "diagnostic": {
+    "target_rest_bins": 8622,
+    "fraction_with_other_finger_movement": 0.255,
+    "other_finger_movement_among_50_largest_tuned_false_positives": 0.80,
+    "mean_prediction_during_other_finger_only_movement": 0.087,
+    "mean_prediction_during_pure_rest": 0.043
+  },
+  "runs": {
+    "weight_1_control": {
+      "tuned_pcc": 0.447053812,
+      "gain_over_lars": 0.082315587,
+      "rest_false_positive_rms": 0.088111944,
+      "movement_rmse": 0.469693412,
+      "amplitude_slope": 0.241279468,
+      "velocity_pcc": 0.211080343
+    },
+    "weight_2": {
+      "tuned_pcc": 0.447929747,
+      "gain_over_lars": 0.083191522,
+      "rest_false_positive_rms": 0.079485197,
+      "movement_rmse": 0.483857791,
+      "amplitude_slope": 0.233392462,
+      "velocity_pcc": 0.201034803
+    },
+    "weight_4": {
+      "tuned_pcc": 0.429106803,
+      "gain_over_lars": 0.064368578,
+      "rest_false_positive_rms": 0.077865389,
+      "movement_rmse": 0.495203376,
+      "amplitude_slope": 0.221905837,
+      "velocity_pcc": 0.175062645
+    },
+    "weight_8": {
+      "tuned_pcc": 0.421385719,
+      "gain_over_lars": 0.056647495,
+      "rest_false_positive_rms": 0.081400596,
+      "movement_rmse": 0.493446479,
+      "amplitude_slope": 0.213964239,
+      "velocity_pcc": 0.171345293
+    }
+  },
+  "decision": "Cross-finger activity explains many false positives, but uniform hard-negative weighting is not the solution. Weight 2 reduces rest false-positive RMS but increases movement error and changes PCC by less than 0.001; larger weights are harmful. A future attribution model must distinguish true shared/co-movement activity from cross-finger leakage instead of treating every other-finger event as negative."
+}

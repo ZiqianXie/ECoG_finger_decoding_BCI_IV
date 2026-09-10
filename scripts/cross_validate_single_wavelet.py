@@ -809,6 +809,7 @@ def train_updates(
     batch_size: int,
     target_scale: torch.Tensor,
     raw_stem: bool,
+    loss_weights: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
 ) -> list[float]:
@@ -827,7 +828,12 @@ def train_updates(
             if raw_stem
             else call(cached[index])
         )
-        loss = ((result - observed) / target_scale).square().mean()
+        squared_error = ((result - observed) / target_scale).square()
+        if loss_weights is None:
+            loss = squared_error.mean()
+        else:
+            observed_weights = loss_weights[index]
+            loss = (squared_error * observed_weights).sum() / observed_weights.sum()
         if correlation_loss_weight:
             loss = loss + correlation_loss_weight * sequence_correlation_loss(
                 result, observed
@@ -843,6 +849,33 @@ def train_updates(
         optimizer_instance.step()
         losses.append(float(loss.detach()))
     return losses
+
+
+def cross_finger_rest_weights(
+    target: torch.Tensor,
+    finger_index: int,
+    movement_threshold: float,
+    rest_threshold: float,
+    other_finger_rest_weight: float,
+) -> torch.Tensor | None:
+    """Upweight target-rest bins containing clear movement of another finger."""
+    if other_finger_rest_weight == 1.0:
+        return None
+    other_indices = torch.as_tensor(
+        [index for index in range(target.shape[1]) if index != finger_index],
+        dtype=torch.long,
+        device=target.device,
+    )
+    other_moving = target.index_select(1, other_indices).amax(dim=1) >= movement_threshold
+    target_resting = target[:, finger_index] <= rest_threshold
+    hard_negative = target_resting & other_moving
+    return torch.where(
+        hard_negative,
+        torch.as_tensor(
+            other_finger_rest_weight, dtype=target.dtype, device=target.device
+        ),
+        torch.ones((), dtype=target.dtype, device=target.device),
+    )
 
 
 def balanced_accuracy(truth: np.ndarray, prediction: np.ndarray) -> float:
@@ -959,6 +992,13 @@ def monitor_inner_fold(
         torch.as_tensor(training_rows, device=target.device), finger_index
     ].std().clamp_min(0.1)
     sampler = make_sampler(args, training_groups, seed)
+    loss_weights = cross_finger_rest_weights(
+        target,
+        finger_index,
+        args.movement_threshold,
+        args.rest_threshold,
+        args.other_finger_rest_weight,
+    )
     metrics = {}
     baseline = cached_prediction(model, cached, validation_intervals, raw.size)
     metrics["frozen_0"] = validation_metrics(
@@ -989,6 +1029,7 @@ def monitor_inner_fold(
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=False,
+            loss_weights=loss_weights,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1036,6 +1077,7 @@ def monitor_inner_fold(
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=True,
+            loss_weights=loss_weights,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1129,6 +1171,13 @@ def train_final_schedule(
         torch.as_tensor(training_rows, device=target.device), finger_index
     ].std().clamp_min(0.1)
     parts = schedule.split("_")
+    loss_weights = cross_finger_rest_weights(
+        target,
+        finger_index,
+        args.movement_threshold,
+        args.rest_threshold,
+        args.other_finger_rest_weight,
+    )
     frozen_updates = int(parts[1])
     unfrozen_updates = 0 if parts[0] == "frozen" else int(parts[2])
     if frozen_updates:
@@ -1152,6 +1201,7 @@ def train_final_schedule(
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=False,
+            loss_weights=loss_weights,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1181,6 +1231,7 @@ def train_final_schedule(
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=True,
+            loss_weights=loss_weights,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1285,6 +1336,15 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=0.08)
     parser.add_argument("--movement-threshold", type=float, default=0.10)
     parser.add_argument("--rest-threshold", type=float, default=0.05)
+    parser.add_argument(
+        "--other-finger-rest-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "MSE weight for bins where the target finger rests while another finger "
+            "moves; 1 disables hard-negative weighting"
+        ),
+    )
     parser.add_argument(
         "--little-event-decontamination",
         action=argparse.BooleanOptionalAction,
@@ -1398,6 +1458,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.correlation_loss_weight < 0 or args.derivative_correlation_weight < 0:
         raise ValueError("correlation loss weights must be nonnegative")
+    if args.other_finger_rest_weight < 1.0:
+        raise ValueError("other-finger rest weight must be at least one")
     if args.residual_input == "candidate" and args.recurrent_cell not in (
         "residual_lstm",
         "residual_gru",
@@ -1845,6 +1907,7 @@ def main() -> None:
         ),
         "training_objective": {
             "trajectory": "normalized mean squared error",
+            "other_finger_rest_weight": args.other_finger_rest_weight,
             "within_sequence_correlation_weight": args.correlation_loss_weight,
             "within_sequence_velocity_correlation_weight": (
                 args.derivative_correlation_weight
