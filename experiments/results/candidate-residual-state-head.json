@@ -867,6 +867,85 @@
     },
     "decision": "Count S2 little as the third numerical pass. Its +0.1391 PCC gain exceeds the requested threshold and every recorded morphology diagnostic improves over the split-local LARS initialization."
   },
+  "S1_index_fixed_data_six_seed_ensemble": {
+    "description": "The current-best S1-index residual configuration is repeated with identical event folds and sampler order; only model initialization differs. All finite nonconstant seeds are included.",
+    "released_test_touched": false,
+    "included_seed_count": 6,
+    "collapsed_seed_count": 0,
+    "initialization_pcc": 0.721371854,
+    "member_pcc_mean": 0.776858025,
+    "member_pcc_population_sd": 0.003068048,
+    "ensemble_pcc": 0.780307504,
+    "ensemble_gain": 0.05893565,
+    "ensemble_morphology": {
+      "event_macro_nmse": 0.360970112,
+      "rest_false_positive_rms": 0.065307818,
+      "movement_rmse": 0.228566006,
+      "amplitude_slope": 0.610516608,
+      "velocity_pcc": 0.507146523,
+      "movement_balanced_accuracy": 0.760133908
+    },
+    "decision": "Do not count as a pass. Averaging improves only 0.00345 PCC over the seed mean and leaves the gain at +0.0589; the very small seed SD rules out more replicas as the missing S1-index improvement."
+  },
+  "split_local_target_alignment_audit": {
+    "description": "The split-local cleaned OOF target is compared with the raw glove trajectory used by the primary PCC diagnostic. This is a diagnostic of objective alignment, not a model-selection result.",
+    "lowest_cleaned_vs_raw_pcc": {
+      "S3_middle": 0.777241468,
+      "S3_ring": 0.875261027,
+      "S2_little": 0.893836327
+    },
+    "diagnostic": "S3 middle and ring have the clearest mismatch between the morphology-preserving cleaned loss target and the raw-PCC selection target. A movement-only raw-shape loss is therefore tested next while cleaned-target MSE remains active to suppress baseline drift and rest false positives."
+  },
+  "raw_movement_shape_loss_pilot": {
+    "description": "The same single-branch residual LSTM retains cleaned-target MSE and movement-state BCE, then adds weight-0.1 correlation losses against raw glove level and velocity only where the split-local cleaned target indicates movement.",
+    "released_test_touched": false,
+    "pairs": {
+      "S3_middle": {
+        "initialization_pcc": 0.589792391,
+        "tuned_pcc": 0.571340024,
+        "gain": -0.018452368,
+        "selected_rest_false_positive_rms": 0.116297781,
+        "selected_movement_rmse": 0.22085989,
+        "selected_velocity_pcc": 0.328927048,
+        "selected_movement_balanced_accuracy": 0.735060958
+      },
+      "S3_ring": {
+        "initialization_pcc": 0.451866234,
+        "tuned_pcc": 0.448764787,
+        "gain": -0.003101447,
+        "selected_rest_false_positive_rms": 0.167090788,
+        "selected_movement_rmse": 0.331365804,
+        "selected_velocity_pcc": 0.166914146,
+        "selected_movement_balanced_accuracy": 0.677306198
+      }
+    },
+    "decision": "Reject without tuning its weight on outer results. Both pairs improve rest suppression, velocity PCC, and movement-state accuracy, but movement RMSE worsens and neither beats LARS. The cleaned/raw target mismatch is real but is not the missing decoder gain."
+  },
+  "frozen_feature_residual_capacity_audit": {
+    "description": "Split-local ridge and fixed histogram-gradient-boosting probes test whether current and causal summaries of the frozen single-branch feature bank contain a large learnable residual. These are diagnostics, not promoted decoders.",
+    "released_test_touched": false,
+    "pairs": {
+      "S1_middle": {
+        "lars_pcc": 0.2161467,
+        "best_probe": "histogram_gradient_boosting_current_temporal",
+        "best_probe_pcc": 0.229240672,
+        "best_probe_gain": 0.013093973
+      },
+      "S3_middle": {
+        "lars_pcc": 0.589792393,
+        "best_probe": "ridge_current_temporal",
+        "best_probe_pcc": 0.595705123,
+        "best_probe_gain": 0.00591273
+      },
+      "S3_ring": {
+        "lars_pcc": 0.451866235,
+        "best_probe": "ridge_refit_all_lags",
+        "best_probe_pcc": 0.475950202,
+        "best_probe_gain": 0.024083968
+      }
+    },
+    "decision": "The existing frozen representation lacks enough stable residual signal to support +0.1 on these pairs. Stop tuning only the recurrent head or its loss; change the spectral-spatial evidence while preserving the single branch."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. Three of fifteen subject-finger models now exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold result at +0.059. Generic learning-rate, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, and auxiliary-velocity changes do not close the other gaps. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat those saturated sweeps."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. Three of fifteen subject-finger models now exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold result at +0.0589 after its corrected six-seed mean. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, and raw-movement-shape changes do not close the other gaps. Frozen-feature probes find at most +0.024 residual gain on S1 middle, S3 middle, and S3 ring, so the next attempt must add finger-specific spectral-spatial evidence inside the single branch rather than repeat head-only tuning."
 }

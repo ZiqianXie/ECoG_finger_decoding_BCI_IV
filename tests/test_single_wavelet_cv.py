@@ -16,6 +16,7 @@ from cross_validate_single_wavelet import (
     load_initialization,
     load_or_create_initialization,
     grouped_velocity_scale,
+    masked_sequence_correlation_loss,
     movement_positive_weight,
     save_initialization,
     scoped_event_groups,
@@ -131,6 +132,31 @@ def test_sequence_correlation_loss_rewards_shape_and_backpropagates() -> None:
     assert reversed_loss > exact_loss
     assert exact.grad is not None
     assert torch.isfinite(exact.grad).all()
+
+
+def test_masked_sequence_correlation_uses_only_movement_bins() -> None:
+    target = torch.tensor([[50.0, 0.0, 1.0, 2.0, -50.0]])
+    prediction = torch.tensor([[-50.0, 0.0, 1.0, 2.0, 50.0]], requires_grad=True)
+    mask = torch.tensor([[False, True, True, True, False]])
+
+    loss = masked_sequence_correlation_loss(prediction, target, mask)
+    loss.backward()
+
+    assert torch.isclose(loss, torch.tensor(0.0), atol=1.0e-6)
+    assert prediction.grad is not None
+    assert torch.isfinite(prediction.grad).all()
+
+
+def test_masked_sequence_correlation_skips_rows_without_three_bins() -> None:
+    prediction = torch.tensor([[0.0, 1.0], [2.0, 1.0]], requires_grad=True)
+    target = prediction.detach().clone()
+    mask = torch.ones_like(prediction, dtype=torch.bool)
+
+    loss = masked_sequence_correlation_loss(prediction, target, mask)
+    loss.backward()
+
+    assert torch.isclose(loss, torch.tensor(0.0))
+    assert prediction.grad is not None
 
 
 def test_trajectory_mse_loss_can_emphasize_movement_bins() -> None:

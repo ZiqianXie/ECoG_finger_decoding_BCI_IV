@@ -975,6 +975,31 @@ def sequence_correlation_loss(
     return 1.0 - correlation.mean()
 
 
+def masked_sequence_correlation_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Return correlation loss over masked bins in each sufficiently observed row."""
+    weights = mask.to(prediction.dtype)
+    count = weights.sum(dim=1)
+    valid = count >= 3
+    if not torch.any(valid):
+        return prediction.sum() * 0.0
+    safe_count = count.clamp_min(1.0)[:, None]
+    prediction_mean = (prediction * weights).sum(dim=1, keepdim=True) / safe_count
+    target_mean = (target * weights).sum(dim=1, keepdim=True) / safe_count
+    centered_prediction = (prediction - prediction_mean) * weights
+    centered_target = (target - target_mean) * weights
+    numerator = (centered_prediction * centered_target).sum(dim=1)
+    denominator = (
+        torch.linalg.vector_norm(centered_prediction, dim=1)
+        * torch.linalg.vector_norm(centered_target, dim=1)
+    ).clamp_min(1.0e-8)
+    correlation = numerator / denominator
+    return 1.0 - correlation[valid].mean()
+
+
 def trajectory_mse_loss(
     prediction: torch.Tensor,
     target: torch.Tensor,
@@ -1016,6 +1041,9 @@ def train_updates(
     velocity_scale: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
+    raw_target: torch.Tensor | None = None,
+    raw_movement_correlation_weight: float = 0.0,
+    raw_movement_derivative_correlation_weight: float = 0.0,
 ) -> list[float]:
     offsets = torch.arange(steps, device=target.device)
     losses = []
@@ -1075,6 +1103,24 @@ def train_updates(
                     torch.diff(result, dim=1), torch.diff(observed, dim=1)
                 )
             )
+        if raw_movement_correlation_weight or raw_movement_derivative_correlation_weight:
+            if raw_target is None:
+                raise ValueError("raw target is required for raw movement correlation")
+            raw_observed = raw_target[index]
+            moving = observed >= movement_threshold
+            if raw_movement_correlation_weight:
+                loss = loss + raw_movement_correlation_weight * (
+                    masked_sequence_correlation_loss(result, raw_observed, moving)
+                )
+            if raw_movement_derivative_correlation_weight:
+                adjacent_moving = moving[:, 1:] & moving[:, :-1]
+                loss = loss + raw_movement_derivative_correlation_weight * (
+                    masked_sequence_correlation_loss(
+                        torch.diff(result, dim=1),
+                        torch.diff(raw_observed, dim=1),
+                        adjacent_moving,
+                    )
+                )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         optimizer_instance.step()
@@ -1221,6 +1267,7 @@ def monitor_inner_fold(
     seed: int,
     finger_index: int = LITTLE,
 ) -> dict[str, dict[str, float]]:
+    raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
     training_rows = indices_from_intervals(training_groups)
     target_scale = target[
         torch.as_tensor(training_rows, device=target.device), finger_index
@@ -1285,6 +1332,11 @@ def monitor_inner_fold(
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
         )
         completed = checkpoint
         prediction = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -1344,6 +1396,11 @@ def monitor_inner_fold(
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
         )
         completed = checkpoint
         prediction = raw_prediction(model, padded_ecog, validation_intervals, raw.size)
@@ -1424,12 +1481,14 @@ def train_final_schedule(
     cached: torch.Tensor,
     padded_ecog: torch.Tensor,
     target: torch.Tensor,
+    raw: np.ndarray,
     training_groups: list[list[int]],
     schedule: str,
     args: argparse.Namespace,
     seed: int,
     finger_index: int = LITTLE,
 ) -> None:
+    raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
     training_rows = indices_from_intervals(training_groups)
     scale = target[
         torch.as_tensor(training_rows, device=target.device), finger_index
@@ -1485,6 +1544,11 @@ def train_final_schedule(
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
         )
     if unfrozen_updates:
         sampler = make_sampler(args, training_groups, seed + 1000)
@@ -1526,6 +1590,11 @@ def train_final_schedule(
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
         )
 
 
@@ -1817,6 +1886,18 @@ def main() -> None:
     parser.add_argument(
         "--derivative-correlation-weight", type=float, default=0.0
     )
+    parser.add_argument(
+        "--raw-movement-correlation-weight",
+        type=float,
+        default=0.0,
+        help="movement-bin shape loss against the raw glove trajectory",
+    )
+    parser.add_argument(
+        "--raw-movement-derivative-correlation-weight",
+        type=float,
+        default=0.0,
+        help="movement-bin velocity-shape loss against the raw glove trajectory",
+    )
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument(
         "--split-seed",
@@ -1846,6 +1927,8 @@ def main() -> None:
         or args.residual_output_init_std < 0
         or args.correlation_loss_weight < 0
         or args.derivative_correlation_weight < 0
+        or args.raw_movement_correlation_weight < 0
+        or args.raw_movement_derivative_correlation_weight < 0
         or (
             args.movement_modulation_learning_rate is not None
             and args.movement_modulation_learning_rate <= 0
@@ -2221,6 +2304,7 @@ def main() -> None:
             cached=cached,
             padded_ecog=padded_ecog,
             target=target,
+            raw=raw,
             training_groups=[[int(start), int(stop)] for start, stop in groups],
             schedule=selected_schedule,
             args=args,
@@ -2364,6 +2448,12 @@ def main() -> None:
             "within_sequence_correlation_weight": args.correlation_loss_weight,
             "within_sequence_velocity_correlation_weight": (
                 args.derivative_correlation_weight
+            ),
+            "raw_movement_level_correlation_weight": (
+                args.raw_movement_correlation_weight
+            ),
+            "raw_movement_velocity_correlation_weight": (
+                args.raw_movement_derivative_correlation_weight
             ),
             "model_outputs": ["trajectory"]
             + (

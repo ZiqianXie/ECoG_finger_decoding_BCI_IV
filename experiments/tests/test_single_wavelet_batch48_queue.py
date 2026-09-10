@@ -46,6 +46,8 @@ def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
     assert "--residual-input-width 64" in joined
     assert "--correlation-loss-weight 0.0" in joined
     assert "--derivative-correlation-weight 0.0" in joined
+    assert "--raw-movement-correlation-weight 0.0" in joined
+    assert "--raw-movement-derivative-correlation-weight 0.0" in joined
     assert "--wavelet-interlevel-skip" not in command
     assert "--wavelet-interlevel-normalization" not in command
 
@@ -64,9 +66,13 @@ def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
         96,
         0.1,
         0.1,
+        0.2,
+        0.3,
     )
     joined = " ".join(command)
     assert "--csp-band-mode separate_hhl_hhh" in joined
     assert "--residual-input-width 96" in joined
     assert "--correlation-loss-weight 0.1" in joined
     assert "--derivative-correlation-weight 0.1" in joined
+    assert "--raw-movement-correlation-weight 0.2" in joined
+    assert "--raw-movement-derivative-correlation-weight 0.3" in joined
