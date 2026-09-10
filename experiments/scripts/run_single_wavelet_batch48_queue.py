@@ -214,6 +214,7 @@ def main() -> None:
             "joint_hhl_hhh",
             "separate_hhl_hhh",
             "separate_50_100_hhl_hhh",
+            "designed_seven",
         ),
         default="joint_hhl_hhh",
     )

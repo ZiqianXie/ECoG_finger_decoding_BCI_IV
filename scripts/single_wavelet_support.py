@@ -239,10 +239,26 @@ def csp_candidate_union(
     ica_per_bin: int,
     ica_prescreen: int,
     finger_index: int = LITTLE,
+    csp_per_bin_positions: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, int]]:
     position = np.arange(features.shape[1]) % per_bin
     ica_candidates = np.flatnonzero(position < ica_per_bin)
-    csp_candidates = np.flatnonzero(position >= ica_per_bin)
+    if csp_per_bin_positions is None:
+        csp_candidates = np.flatnonzero(position >= ica_per_bin)
+    else:
+        aligned = np.unique(np.asarray(csp_per_bin_positions, dtype=np.int64))
+        if (
+            aligned.ndim != 1
+            or aligned.size == 0
+            or aligned[0] < ica_per_bin
+            or aligned[-1] >= per_bin
+        ):
+            raise ValueError("aligned CSP positions must lie in the CSP part of one bin")
+        history = features.shape[1] // per_bin
+        csp_candidates = (
+            np.arange(history, dtype=np.int64)[:, None] * per_bin
+            + aligned[None]
+        ).reshape(-1)
     selected_local = correlation_screen(
         features[training][:, ica_candidates],
         target[training, finger_index],
@@ -252,4 +268,7 @@ def csp_candidate_union(
     return np.concatenate((selected_ica, csp_candidates)), {
         "ica_prescreen_candidates": int(selected_ica.size),
         "guaranteed_csp_candidates": int(csp_candidates.size),
+        "aligned_csp_positions_per_bin": int(
+            csp_candidates.size // max(1, features.shape[1] // per_bin)
+        ),
     }

@@ -58,6 +58,7 @@ from build_event_stratified_folds import (
 from ecog_decoding.models import WaveletPacketEnergy, fit_fastica_spatial_weights
 from ecog_decoding.preprocessing import local_baseline_correct
 from ecog_decoding.regression import lagged
+from ecog_decoding.spatial import CSP_BANDS_HZ
 from ecog_decoding.training import FINGER_NAMES
 from gpu_lasso import fit_torch_lasso_cv
 from train_event_grouped_lars_lstm import indices_from_intervals
@@ -86,6 +87,7 @@ CSP_BAND_MODES = (
     "joint_hhl_hhh",
     "separate_hhl_hhh",
     "separate_50_100_hhl_hhh",
+    "designed_seven",
 )
 
 
@@ -456,10 +458,37 @@ def fit_csp_band_rows(
     component_indices: tuple[int, ...],
     csp_band_mode: str,
     lower_high_gamma_bins: np.ndarray | None = None,
+    designed_band_bins: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Fit joint or leaf-specific gamma CSP rows for one spatial layer."""
     if csp_band_mode not in CSP_BAND_MODES:
         raise ValueError(f"unsupported CSP band mode {csp_band_mode!r}")
+    if csp_band_mode == "designed_seven":
+        if designed_band_bins is None or designed_band_bins.shape[0] != len(
+            CSP_BANDS_HZ
+        ):
+            raise ValueError("designed_seven requires all seven designed-band caches")
+        rows = []
+        audits = []
+        source_band_indices = []
+        for band_index, (low, high) in enumerate(CSP_BANDS_HZ):
+            weights, audit = finger_csp_bank(
+                designed_band_bins[band_index],
+                target,
+                training,
+                finger_index,
+                component_indices,
+            )
+            rows.append(weights)
+            source_band_indices.extend([band_index] * weights.shape[0])
+            audits.append({"band_hz": [low, high], **audit})
+        weights = np.concatenate(rows, axis=0)
+        return weights, {
+            "band_mode": csp_band_mode,
+            "spatial_rows": int(weights.shape[0]),
+            "source_band_indices": source_band_indices,
+            "bands": audits,
+        }
     if csp_band_mode == "joint_hhl_hhh":
         weights, audit = finger_csp_bank(
             joint_bins, target, training, finger_index, component_indices
@@ -517,6 +546,7 @@ def fit_initialization(
     hhl_bins: np.ndarray | None = None,
     hhh_bins: np.ndarray | None = None,
     lower_high_gamma_bins: np.ndarray | None = None,
+    designed_band_bins: np.ndarray | None = None,
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
     include_candidate_pool: bool = False,
@@ -544,6 +574,7 @@ def fit_initialization(
         hhl_bins=hhl_bins,
         hhh_bins=hhh_bins,
         lower_high_gamma_bins=lower_high_gamma_bins,
+        designed_band_bins=designed_band_bins,
         target=target,
         training=training,
         finger_index=finger_index,
@@ -574,6 +605,29 @@ def fit_initialization(
         streams.append(joint_energy.reshape(joint_energy.shape[0], -1))
     stream = np.concatenate(streams, axis=1)
     features = lagged(np.asarray(stream, dtype=np.float32), HISTORY)
+    csp_per_bin_positions = None
+    if csp_band_mode == "designed_seven" and joint_weights.shape[0]:
+        leaf_count = int(ica_energy.shape[2])
+        level_counts = getattr(frontend, "output_band_level_counts", (leaf_count,))
+        leaf_intervals = []
+        for count in level_counts:
+            width = 200.0 / count
+            leaf_intervals.extend(
+                (index * width, (index + 1) * width) for index in range(count)
+            )
+        csp_per_bin_positions_list = []
+        source_band_indices = csp_audit["source_band_indices"]
+        csp_offset = ica_energy.shape[1] * leaf_count
+        for row, band_index in enumerate(source_band_indices):
+            low, high = CSP_BANDS_HZ[int(band_index)]
+            for leaf, (leaf_low, leaf_high) in enumerate(leaf_intervals):
+                if leaf_low < high and leaf_high > low:
+                    csp_per_bin_positions_list.append(
+                        csp_offset + row * leaf_count + leaf
+                    )
+        csp_per_bin_positions = np.asarray(
+            csp_per_bin_positions_list, dtype=np.int64
+        )
     candidates, candidate_audit = csp_candidate_union(
         features,
         target,
@@ -582,6 +636,7 @@ def fit_initialization(
         ica_energy.shape[1] * ica_energy.shape[2],
         ica_prescreen,
         finger_index,
+        csp_per_bin_positions,
     )
     scaler = StandardScaler()
     train_x = scaler.fit_transform(features[training][:, candidates]).astype(
@@ -1794,6 +1849,12 @@ def main() -> None:
         "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
     )
     parser.add_argument(
+        "--csp-band-cache-root",
+        type=Path,
+        default=Path("/dev/shm/ecog_csp_band_cache"),
+        help="shared seven-band ECoG cache used only to fit designed-band CSP rows",
+    )
+    parser.add_argument(
         "--ica-cache-root",
         type=Path,
         default=None,
@@ -2218,6 +2279,26 @@ def main() -> None:
         lower_high_gamma_bins = np.concatenate(
             (lower_first_bins, lower_second_bins), axis=1
         )
+    designed_band_bins = None
+    if args.csp_band_mode == "designed_seven":
+        designed_path = (
+            args.csp_band_cache_root
+            / f"sub{args.subject}"
+            / "train_filtered_bands.npy"
+        )
+        designed = np.load(designed_path, mmap_mode="r")
+        if (
+            designed.ndim != 3
+            or designed.shape[0] != len(CSP_BANDS_HZ)
+            or designed.shape[2] != ecog.shape[1]
+        ):
+            raise ValueError(
+                "designed-band cache must have shape (7, samples, channels)"
+            )
+        usable = designed.shape[1] // args.samples_per_bin * args.samples_per_bin
+        designed_band_bins = designed[:, :usable].reshape(
+            len(CSP_BANDS_HZ), -1, args.samples_per_bin, designed.shape[2]
+        )
     ecog_t = torch.from_numpy(ecog.copy()).to(device)
     context = frontend.effective_kernel_size // 2
     padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
@@ -2291,6 +2372,7 @@ def main() -> None:
                     hhl_bins=hhl_bins,
                     hhh_bins=hhh_bins,
                     lower_high_gamma_bins=lower_high_gamma_bins,
+                    designed_band_bins=designed_band_bins,
                     ica_weights=load_cached_ica(
                         args.ica_cache_root,
                         args.subject,
@@ -2396,6 +2478,7 @@ def main() -> None:
                 hhl_bins=hhl_bins,
                 hhh_bins=hhh_bins,
                 lower_high_gamma_bins=lower_high_gamma_bins,
+                designed_band_bins=designed_band_bins,
                 ica_weights=load_cached_ica(
                     args.ica_cache_root,
                     args.subject,

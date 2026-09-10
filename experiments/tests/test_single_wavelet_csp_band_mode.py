@@ -7,6 +7,7 @@ from cross_validate_single_wavelet import fit_csp_band_rows, resolve_seed_roles
 from ecog_decoding.models import WaveletPacketEnergy
 from single_wavelet_support import (
     OFFSET,
+    csp_candidate_union,
     linear_gamma_leaf_signals,
     linear_lower_high_gamma_leaf_signals,
     linear_wavelet_leaf_signals,
@@ -77,6 +78,50 @@ def test_lower_high_gamma_mode_adds_one_spatial_row_to_same_bank() -> None:
     assert weights.shape == (3, 3)
     assert audit["spatial_rows"] == 3
     assert "wavelet_50_100_hz" in audit
+
+
+def test_designed_seven_mode_fits_each_band_inside_one_spatial_bank() -> None:
+    target, training, hhl, hhh = synthetic_inputs()
+    designed = np.stack(
+        [hhl * (1.0 + 0.1 * band) for band in range(7)], axis=0
+    )
+    weights, audit = fit_csp_band_rows(
+        joint_bins=np.concatenate((hhl, hhh), axis=1),
+        hhl_bins=hhl,
+        hhh_bins=hhh,
+        designed_band_bins=designed,
+        target=target,
+        training=training,
+        finger_index=4,
+        component_indices=(0, -1),
+        csp_band_mode="designed_seven",
+    )
+    assert weights.shape == (14, 3)
+    assert audit["spatial_rows"] == 14
+    assert audit["source_band_indices"] == [
+        band for band in range(7) for _ in range(2)
+    ]
+    assert len(audit["bands"]) == 7
+
+
+def test_candidate_union_can_keep_only_band_aligned_csp_atoms() -> None:
+    rng = np.random.default_rng(12)
+    features = rng.normal(size=(6, 30)).astype(np.float32)
+    target = rng.normal(size=(6, 5)).astype(np.float32)
+    candidates, audit = csp_candidate_union(
+        features,
+        target,
+        np.arange(6),
+        per_bin=10,
+        ica_per_bin=4,
+        ica_prescreen=2,
+        finger_index=4,
+        csp_per_bin_positions=np.asarray([5, 8]),
+    )
+    csp = candidates[candidates % 10 >= 4]
+    assert set((csp % 10).tolist()) == {5, 8}
+    assert csp.size == 6
+    assert audit["aligned_csp_positions_per_bin"] == 2
 
 
 def test_seed_roles_can_hold_data_order_fixed() -> None:

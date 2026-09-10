@@ -134,3 +134,25 @@ def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
     assert "--raw-movement-correlation-weight 0.2" in joined
     assert "--raw-movement-derivative-correlation-weight 0.3" in joined
     assert "--lasso-backend torch_fista" in joined
+
+
+def test_command_can_request_designed_band_csp_rows(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_band_mode="designed_seven",
+        csp_mode="tails_2x2",
+        residual_input_width=256,
+        wavelet_frontend="overcomplete_depth3_depth4",
+    )
+    joined = " ".join(command)
+    assert "--csp-band-mode designed_seven" in joined
+    assert "--csp-mode tails_2x2" in joined
+    assert "--residual-input-width 256" in joined
+    assert "--wavelet-frontend overcomplete_depth3_depth4" in joined
