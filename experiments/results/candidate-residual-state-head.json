@@ -1151,6 +1151,23 @@
       "velocity_pcc": 0.214435635,
       "movement_balanced_accuracy": 0.647888008
     },
+    "near_zero_residual_output_initialization": {
+      "standard_deviation": 0.001,
+      "tuned_pcc": 0.29579222,
+      "gain_over_lars": 0.018304162,
+      "gain_over_exact_zero_output_initialization": 0.003536753,
+      "selected_schedules": ["frozen_100", "frozen_50", "frozen_50"],
+      "tuned_morphology": {
+        "event_macro_nmse": 1.024381103,
+        "rest_false_positive_rms": 0.09287555,
+        "movement_rmse": 0.439571549,
+        "amplitude_slope": 0.140152633,
+        "velocity_pcc": 0.208954065,
+        "movement_balanced_accuracy": 0.646560902
+      },
+      "runtime_seconds": 288.860632,
+      "diagnostic": "Giving the recurrent path a nonzero first-step gradient produces only a 0.0035 PCC increase over exact zero output initialization. Initial gradient blocking is not the missing residual gain."
+    },
     "gpu_ridge_capacity": {
       "runtime_seconds": 14.34513,
       "ridge_all_lags_pcc": 0.269984831,
@@ -1158,7 +1175,7 @@
       "ridge_current_temporal_pcc": 0.294132622,
       "ridge_current_temporal_gain": 0.016644567
     },
-    "decision": "The seven-band decoded-finger CSP raises the split-local sparse initialization by 0.0737 PCC over the overcomplete FastICA+CSP baseline, confirming useful spectral-spatial evidence. The residual LSTM and ridge probes then add only about 0.015--0.017 PCC, so do not spend another head-only sweep on this representation."
+    "decision": "The seven-band decoded-finger CSP raises the split-local sparse initialization by 0.0737 PCC over the overcomplete FastICA+CSP baseline, confirming useful spectral-spatial evidence. Exact-zero and 1e-3 residual-output initializations, as well as ridge probes, add less than 0.02 PCC, so do not spend another head-only or initialization sweep on this representation."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
   "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, and longer-schedule changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization, but the LSTM and ridge probes still find less than +0.02 residual gain after that stronger baseline. The next attempt must make the residual problem easier by changing how the single branch exposes causal temporal structure, rather than repeat head-only tuning or stack another branch."
