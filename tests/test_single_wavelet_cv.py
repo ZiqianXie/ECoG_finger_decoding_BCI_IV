@@ -10,12 +10,22 @@ from cross_validate_single_wavelet import (
     UniformGroupSampler,
     one_standard_error_selection,
     load_initialization,
+    movement_positive_weight,
     save_initialization,
     scoped_event_groups,
     sequence_correlation_loss,
     suppress_weak_little_events,
     validation_metrics,
 )
+
+
+def test_movement_positive_weight_balances_training_scope() -> None:
+    target = torch.zeros(6, 5)
+    target[[1, 4], 2] = 0.2
+
+    weight = movement_positive_weight(target, np.arange(6), 2, 0.1)
+
+    torch.testing.assert_close(weight, torch.tensor(2.0))
 
 
 def schedules() -> list[str]:

@@ -197,3 +197,28 @@ def test_candidate_pool_residual_can_use_a_feature_excluded_by_lars() -> None:
     model.decode_features(features).sum().backward()
 
     assert torch.count_nonzero(features.grad[..., 2:]).item() > 0
+
+
+def test_auxiliary_movement_head_preserves_lars_trajectory_and_trains_lstm() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        movement_head=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    trajectory, movement_logit = model.decode_features_with_movement(features)
+    torch.testing.assert_close(trajectory, model.direct_features(features))
+    assert movement_logit.shape == trajectory.shape
+
+    movement_target = torch.randint(0, 2, movement_logit.shape).float()
+    torch.nn.functional.binary_cross_entropy_with_logits(
+        movement_logit, movement_target
+    ).backward()
+    assert torch.count_nonzero(model.movement_output.weight.grad).item() > 0
+    assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0

@@ -1,0 +1,63 @@
+{
+  "status": "experimental_not_promoted",
+  "selection_data": "event-grouped nested cross-validation on released competition training data",
+  "released_test_touched": false,
+  "primary_metric": "stitched out-of-fold raw-target PCC",
+  "requested_gain_threshold": 0.1,
+  "subject": 2,
+  "finger": "middle",
+  "initialization_pcc": 0.364738224,
+  "candidate_pool_residual_control": {
+    "tuned_pcc": 0.447053812,
+    "gain": 0.082315587
+  },
+  "target_finger_movement_state_head": {
+    "description": "The same residual LSTM state predicts trajectory and a balanced target-finger movement/rest logit. The direct LARS path remains fixed.",
+    "weights": {
+      "0.05": {
+        "tuned_pcc": 0.448603263,
+        "gain": 0.083865039
+      },
+      "0.2": {
+        "tuned_pcc": 0.452170653,
+        "gain": 0.087432429
+      },
+      "0.5": {
+        "tuned_pcc": 0.454993652,
+        "gain": 0.090255428,
+        "mean_outer_diagnostics": {
+          "rest_false_positive_rms": 0.084206539,
+          "movement_rmse": 0.47211649,
+          "amplitude_slope": 0.259346267,
+          "velocity_pcc": 0.223448689,
+          "movement_balanced_accuracy": 0.750226539
+        }
+      }
+    }
+  },
+  "movement_state_plus_hidden_level_normalization": {
+    "valid_raw_stem_test": true,
+    "tuned_pcc": 0.444734555,
+    "gain": 0.079996331,
+    "inner_selected_schedules": [
+      "frozen_400",
+      "frozen_400",
+      "unfrozen_100_200"
+    ],
+    "outer_fold_pcc": [
+      0.451926477,
+      0.454597156,
+      0.435086211
+    ],
+    "mean_outer_diagnostics": {
+      "rest_false_positive_rms": 0.083294359,
+      "movement_rmse": 0.475276728,
+      "amplitude_slope": 0.254635294,
+      "velocity_pcc": 0.227037838,
+      "movement_balanced_accuracy": 0.745735761
+    }
+  },
+  "excluded_invalid_ablation": "A cached-feature-only run cannot exercise interlevel wavelet paths and is excluded. The runner now rejects that configuration.",
+  "visual_diagnostic": "The state head lowered stationary offset and enlarged several movement peaks, but retained isolated false peaks and substantially underestimated the two largest flexions.",
+  "decision": "Keep the auxiliary state head and the interlevel paths experimental. The state head gives a small consistent improvement but remains below the requested 0.1 PCC gain; valid end-to-end normalization is rejected by two inner folds and reduces stitched held-out PCC when selected in the third."
+}

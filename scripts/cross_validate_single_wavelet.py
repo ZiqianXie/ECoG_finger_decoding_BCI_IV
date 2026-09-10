@@ -723,6 +723,8 @@ def optimizer(
     weight_decay: float,
 ) -> torch.optim.Optimizer:
     head_parameters = list(model.lstm.parameters()) + list(model.output.parameters())
+    if model.movement_output is not None:
+        head_parameters += list(model.movement_output.parameters())
     parameter_groups = [
         {
             "params": head_parameters,
@@ -764,6 +766,7 @@ def make_model(
         wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
         wavelet_final_normalization=args.wavelet_final_normalization,
         residual_input=args.residual_input,
+        movement_head=args.movement_loss_weight > 0,
     )
 
 
@@ -809,6 +812,9 @@ def train_updates(
     batch_size: int,
     target_scale: torch.Tensor,
     raw_stem: bool,
+    movement_loss_weight: float = 0.0,
+    movement_threshold: float = 0.10,
+    movement_positive_weight: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
 ) -> list[float]:
@@ -822,12 +828,23 @@ def train_updates(
         index = starts[:, None] + offsets[None]
         observed = target[index]
         optimizer_instance.zero_grad(set_to_none=True)
-        result = (
+        result_or_pair = (
             call(padded_ecog, starts, steps)
             if raw_stem
             else call(cached[index])
         )
+        if movement_loss_weight:
+            result, movement_logit = result_or_pair
+        else:
+            result = result_or_pair
         loss = ((result - observed) / target_scale).square().mean()
+        if movement_loss_weight:
+            movement_target = (observed >= movement_threshold).to(result.dtype)
+            loss = loss + movement_loss_weight * F.binary_cross_entropy_with_logits(
+                movement_logit,
+                movement_target,
+                pos_weight=movement_positive_weight,
+            )
         if correlation_loss_weight:
             loss = loss + correlation_loss_weight * sequence_correlation_loss(
                 result, observed
@@ -843,6 +860,21 @@ def train_updates(
         optimizer_instance.step()
         losses.append(float(loss.detach()))
     return losses
+
+
+def movement_positive_weight(
+    target: torch.Tensor,
+    rows: np.ndarray,
+    finger_index: int,
+    movement_threshold: float,
+) -> torch.Tensor:
+    """Balance target-finger movement and rest in the auxiliary BCE."""
+    scoped = target[
+        torch.as_tensor(rows, dtype=torch.long, device=target.device), finger_index
+    ]
+    positive = (scoped >= movement_threshold).sum().clamp_min(1)
+    negative = (scoped < movement_threshold).sum().clamp_min(1)
+    return (negative / positive).to(target.dtype)
 
 
 def balanced_accuracy(truth: np.ndarray, prediction: np.ndarray) -> float:
@@ -958,6 +990,12 @@ def monitor_inner_fold(
     target_scale = target[
         torch.as_tensor(training_rows, device=target.device), finger_index
     ].std().clamp_min(0.1)
+    positive_weight = movement_positive_weight(
+        target,
+        training_rows,
+        finger_index,
+        args.movement_threshold,
+    )
     sampler = make_sampler(args, training_groups, seed)
     metrics = {}
     baseline = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -970,7 +1008,11 @@ def monitor_inner_fold(
         args.rest_threshold,
     )
     opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay)
-    decode = model.decode_features
+    decode = (
+        model.decode_features_with_movement
+        if args.movement_loss_weight
+        else model.decode_features
+    )
     if args.compile:
         decode = torch.compile(decode, mode="reduce-overhead")
     completed = 0
@@ -989,6 +1031,9 @@ def monitor_inner_fold(
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=False,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1018,7 +1063,9 @@ def monitor_inner_fold(
         args.interlevel_learning_rate,
         args.weight_decay,
     )
-    forward = model.forward
+    forward = (
+        model.forward_with_movement if args.movement_loss_weight else model.forward
+    )
     if args.compile:
         forward = torch.compile(forward, mode="reduce-overhead")
     completed = 0
@@ -1036,6 +1083,9 @@ def monitor_inner_fold(
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=True,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1128,6 +1178,12 @@ def train_final_schedule(
     scale = target[
         torch.as_tensor(training_rows, device=target.device), finger_index
     ].std().clamp_min(0.1)
+    positive_weight = movement_positive_weight(
+        target,
+        training_rows,
+        finger_index,
+        args.movement_threshold,
+    )
     parts = schedule.split("_")
     frozen_updates = int(parts[1])
     unfrozen_updates = 0 if parts[0] == "frozen" else int(parts[2])
@@ -1136,7 +1192,11 @@ def train_final_schedule(
         opt = optimizer(
             model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay
         )
-        decode = model.decode_features
+        decode = (
+            model.decode_features_with_movement
+            if args.movement_loss_weight
+            else model.decode_features
+        )
         if args.compile:
             decode = torch.compile(decode, mode="reduce-overhead")
         train_updates(
@@ -1152,6 +1212,9 @@ def train_final_schedule(
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=False,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1165,7 +1228,9 @@ def train_final_schedule(
             args.interlevel_learning_rate,
             args.weight_decay,
         )
-        forward = model.forward
+        forward = (
+            model.forward_with_movement if args.movement_loss_weight else model.forward
+        )
         if args.compile:
             forward = torch.compile(forward, mode="reduce-overhead")
         train_updates(
@@ -1181,6 +1246,9 @@ def train_final_schedule(
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=True,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1382,6 +1450,12 @@ def main() -> None:
         help="compare the LARS initialization with LSTM-only updates; do not tune the stem",
     )
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
+    parser.add_argument(
+        "--movement-loss-weight",
+        type=float,
+        default=0.0,
+        help="weight of a balanced target-finger movement/rest BCE auxiliary head",
+    )
     parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
     parser.add_argument(
         "--derivative-correlation-weight", type=float, default=0.0
@@ -1396,14 +1470,25 @@ def main() -> None:
         help="prepare the subject-level 400 Hz and fixed-leaf caches, then exit",
     )
     args = parser.parse_args()
-    if args.correlation_loss_weight < 0 or args.derivative_correlation_weight < 0:
-        raise ValueError("correlation loss weights must be nonnegative")
+    if (
+        args.movement_loss_weight < 0
+        or args.correlation_loss_weight < 0
+        or args.derivative_correlation_weight < 0
+    ):
+        raise ValueError("auxiliary loss weights must be nonnegative")
     if args.residual_input == "candidate" and args.recurrent_cell not in (
         "residual_lstm",
         "residual_gru",
     ):
         raise ValueError(
             "--residual-input candidate requires --recurrent-cell residual_lstm or residual_gru"
+        )
+    if args.frozen_only and (
+        args.wavelet_interlevel_skip or args.wavelet_interlevel_normalization
+    ):
+        raise ValueError(
+            "interlevel wavelet paths require end-to-end raw-stem updates; "
+            "they cannot affect --frozen-only cached-feature training"
         )
     if args.model_rate % 25:
         raise ValueError("model rate must be divisible by the 25 Hz target rate")
@@ -1845,11 +1930,16 @@ def main() -> None:
         ),
         "training_objective": {
             "trajectory": "normalized mean squared error",
+            "movement_state_bce_weight": args.movement_loss_weight,
             "within_sequence_correlation_weight": args.correlation_loss_weight,
             "within_sequence_velocity_correlation_weight": (
                 args.derivative_correlation_weight
             ),
-            "model_outputs": ["trajectory"],
+            "model_outputs": (
+                ["trajectory", "target_finger_movement_logit"]
+                if args.movement_loss_weight
+                else ["trajectory"]
+            ),
         },
         "learning_rates": {
             "head": args.head_learning_rate,

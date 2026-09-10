@@ -99,6 +99,7 @@ class SingleWaveletDecoder(nn.Module):
         wavelet_interlevel_normalization: bool = False,
         wavelet_final_normalization: bool = True,
         residual_input: str = "selected",
+        movement_head: bool = False,
     ) -> None:
         super().__init__()
         components, channels = spatial_weights.shape
@@ -210,6 +211,7 @@ class SingleWaveletDecoder(nn.Module):
             raise ValueError(f"unsupported recurrent cell {recurrent_cell!r}")
         self.recurrent_cell = recurrent_cell
         self.output = nn.Linear(hidden_size, 1)
+        self.movement_output = nn.Linear(hidden_size, 1) if movement_head else None
         with torch.no_grad():
             self.direct.weight.copy_(
                 torch.as_tensor(initialization["coefficients"])[None]
@@ -229,6 +231,10 @@ class SingleWaveletDecoder(nn.Module):
                 open_gate_bias=open_gate_bias,
                 forget_gate_bias=forget_gate_bias,
             )
+        if self.movement_output is not None:
+            with torch.no_grad():
+                self.movement_output.weight.normal_(0.0, near_zero_std)
+                self.movement_output.bias.zero_()
 
     @torch.no_grad()
     def _initialize_lars_linear_regime(
@@ -298,13 +304,28 @@ class SingleWaveletDecoder(nn.Module):
             return F.softplus(prediction, beta=self.softplus_beta)
         return prediction
 
-    def decode_features(self, features: torch.Tensor) -> torch.Tensor:
+    def _decode_features(
+        self, features: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         recurrent_features, direct_features = self._prepare_features(features)
         recurrent, _ = self.lstm(recurrent_features)
         prediction = self.output(recurrent)
         if self.residual_decoder:
             prediction = self.direct(direct_features) + prediction
-        return self.activate_output(prediction).squeeze(-1)
+        return self.activate_output(prediction).squeeze(-1), recurrent
+
+    def decode_features(self, features: torch.Tensor) -> torch.Tensor:
+        prediction, _ = self._decode_features(features)
+        return prediction
+
+    def decode_features_with_movement(
+        self, features: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return trajectory and auxiliary target-finger movement logits."""
+        if self.movement_output is None:
+            raise RuntimeError("decoder has no auxiliary movement head")
+        prediction, recurrent = self._decode_features(features)
+        return prediction, self.movement_output(recurrent).squeeze(-1)
 
     def _prepare_features(
         self, features: torch.Tensor
@@ -370,6 +391,16 @@ class SingleWaveletDecoder(nn.Module):
         steps: int,
     ) -> torch.Tensor:
         return self.decode_features(self.extract_sequences(padded_ecog, starts, steps))
+
+    def forward_with_movement(
+        self,
+        padded_ecog: torch.Tensor,
+        starts: torch.Tensor,
+        steps: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return self.decode_features_with_movement(
+            self.extract_sequences(padded_ecog, starts, steps)
+        )
 
 
 @torch.inference_mode()
