@@ -1444,9 +1444,37 @@
       "inner_selected_raw_PCC_gain_by_outer_fold": [0.085335, 0.029788, 0.035279],
       "outer_raw_PCC_gain_by_outer_fold": [0.065764, 0.003169, 0.069863]
     },
+    "separate_HHL_HHH_matched_ablation": {
+      "description": "The same eight-row spatial capacity is divided into four CSP rows fitted on HHL and four fitted independently on HHH. The wavelet tree, residual LSTM, folds, target policy, update grid, and optimization settings are unchanged.",
+      "comparison_metric": "mean of the three outer-fold raw PCC values",
+      "initialized_pcc": 0.423986085,
+      "tuned_pcc": 0.450287993,
+      "gain": 0.026301908,
+      "outer_raw_pcc_initialized": [0.451803849, 0.414220016, 0.40593439],
+      "outer_raw_pcc_tuned": [0.49222519, 0.450830226, 0.407808563],
+      "outer_raw_pcc_gain": [0.040421341, 0.03661021, 0.001874173],
+      "initialized_morphology": {
+        "event_macro_nmse": 0.93530093,
+        "rest_false_positive_rms": 0.122035464,
+        "movement_rmse": 0.394927243,
+        "amplitude_slope": 0.180985486,
+        "velocity_pcc": 0.278542387,
+        "movement_balanced_accuracy": 0.728304975
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.84363131,
+        "rest_false_positive_rms": 0.097162602,
+        "movement_rmse": 0.395251026,
+        "amplitude_slope": 0.323857506,
+        "velocity_pcc": 0.302282826,
+        "movement_balanced_accuracy": 0.763585308
+      },
+      "runtime_seconds": 333.809047,
+      "decision": "Reject. Separating HHL and HHH improves the formerly neutral middle fold but transfers the near-zero gain to fold 2 and lowers both initialized and tuned mean outer-fold PCC. Retain the joint HHL-plus-HHH CSP fit."
+    },
     "visual_diagnostic": "The tuned trace suppresses the elevated LARS rest baseline and improves several movement bursts, but it creates a conspicuous false-positive burst around 36--37 seconds and still underestimates the largest flexions.",
     "runtime_seconds": 982.894198,
-    "decision": "Keep as a pair-specific representation result, not as a goal pass. It restores the old development-level S1-little range under the current strict protocol, but the stitched gain is only +0.0455 and movement RMSE worsens. The nearly neutral middle fold is not explained by movement prevalence; it also has the weakest inner-CV gain and the lowest CSP coefficient share, consistent with fold-specific representation mismatch rather than an optimizer collapse."
+    "decision": "Keep the joint-band route as a pair-specific representation result, not as a goal pass. It restores the old development-level S1-little range under the current strict protocol, but the stitched gain is only +0.0455 and movement RMSE worsens. The nearly neutral middle fold is not explained by movement prevalence; it also has the weakest inner-CV gain and the lowest CSP coefficient share, consistent with fold-specific representation mismatch rather than an optimizer collapse. A capacity-matched separate-HHL/HHH fit redistributes rather than resolves the fold sensitivity and is rejected."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
   "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information, but the dual rest-plus-other representation adds less than 0.001 tuned PCC and the isolated contrast lowers stitched PCC. The pair-specific S1-little high-gamma-CSP and decontamination route reaches 0.4800 stitched OOF PCC (+0.0455), with two strong outer-fold gains and one nearly neutral fold; its movement RMSE and visible resting false positive prevent promotion. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."
