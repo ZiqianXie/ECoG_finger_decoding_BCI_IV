@@ -41,6 +41,21 @@ def main() -> None:
         help="per-fold directory prefix, for example outer or fold",
     )
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
+    parser.add_argument(
+        "--fixed-reference-pcc",
+        type=float,
+        default=None,
+        help=(
+            "immutable pre-ablation PCC for this subject-finger pair; when supplied, "
+            "report the primary gain without replacing it with the candidate initializer"
+        ),
+    )
+    parser.add_argument(
+        "--gain-threshold",
+        type=float,
+        default=0.1,
+        help="required PCC gain over --fixed-reference-pcc (default: 0.1)",
+    )
     args = parser.parse_args()
 
     raw = np.load(
@@ -88,6 +103,19 @@ def main() -> None:
         report["stitched_selected_raw_pcc"] = pearson(
             merged_arrays["selected_oof.npy"][observed], raw_target[observed]
         )
+        report["same_architecture_tuning_gain"] = float(
+            report["stitched_selected_raw_pcc"]
+            - report["stitched_initialized_raw_pcc"]
+        )
+        if args.fixed_reference_pcc is not None:
+            report["fixed_pre_ablation_reference_pcc"] = float(args.fixed_reference_pcc)
+            report["gain_over_fixed_reference"] = float(
+                report["stitched_selected_raw_pcc"] - args.fixed_reference_pcc
+            )
+            report["required_gain_over_fixed_reference"] = float(args.gain_threshold)
+            report["passes_fixed_reference_gain_threshold"] = bool(
+                report["gain_over_fixed_reference"] >= args.gain_threshold
+            )
         report["runtime_seconds"] = float(sum(item["runtime_seconds"] for item in reports))
         report["settings"]["outer_folds"] = [0, 1, 2]
         report["settings"]["output"] = str(output)
@@ -99,6 +127,13 @@ def main() -> None:
                     "finger": finger,
                     "initialized_oof_raw_pcc": report["stitched_initialized_raw_pcc"],
                     "selected_oof_raw_pcc": report["stitched_selected_raw_pcc"],
+                    "same_architecture_tuning_gain": report[
+                        "same_architecture_tuning_gain"
+                    ],
+                    "gain_over_fixed_reference": report.get("gain_over_fixed_reference"),
+                    "passes_fixed_reference_gain_threshold": report.get(
+                        "passes_fixed_reference_gain_threshold"
+                    ),
                 }
             ),
             flush=True,

@@ -1640,6 +1640,19 @@
     "single_seed_gain_over_fixed_reference": 0.088741919,
     "single_seed_candidate_self_gain": 0.036174685,
     "extended_update_grid_tuned_pcc": 0.72069343,
+    "same_architecture_lower_learning_rate": {
+      "description": "The identical depth-3 dual-CSP single-branch residual LSTM is refit with head learning rate 3e-5 and interlevel learning rate 3e-4. The representation, folds, target, initializer, and old fixed comparison baseline are unchanged.",
+      "tuned_pcc": 0.724995419,
+      "gain_over_fixed_reference": 0.093052718,
+      "same_architecture_tuning_gain": 0.040485484,
+      "improvement_over_previous_tuned_candidate": 0.004310799,
+      "selected_schedule_by_outer_fold": [
+        "unfrozen_100_400",
+        "unfrozen_100_400",
+        "unfrozen_100_400"
+      ],
+      "decision": "Do not count as a pass. Lowering the rates improves the identical tuned model, but it remains 0.006947 PCC short of the declared +0.1 gain over the fixed old baseline. Because all three inner selections land at the longest unfrozen checkpoint and their inner mean PCC is still increasing there, extend only that same schedule before considering another architecture."
+    },
     "six_seed": {
       "included_seed_count": 6,
       "collapsed_seed_count": 0,
