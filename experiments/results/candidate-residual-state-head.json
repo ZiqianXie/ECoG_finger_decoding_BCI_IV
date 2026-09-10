@@ -787,6 +787,31 @@
     },
     "decision": "Do not count S2-little as a pass. The fixed 1e-3 diagnostic misses +0.1 by 0.000041, and the leakage-safe inner-selected learning-rate route gains only +0.0819. Further generic interlevel-rate tuning is not justified."
   },
+  "separate_gamma_csp_single_branch": {
+    "description": "The single spatial layer contains the split-local full-rank FastICA rows plus one target-finger CSP row fitted on HHL (100--125 Hz) and one fitted independently on HHH (125--150 Hz). Every row enters the same depth-3 wavelet tree; no temporal or prediction branch is stacked.",
+    "released_test_touched": false,
+    "residual_input_width": 96,
+    "pairs": {
+      "S1_middle": {
+        "initialization_pcc": 0.217101655,
+        "tuned_pcc": 0.195221683,
+        "gain": -0.021879973
+      },
+      "S3_middle": {
+        "initialization_pcc": 0.589792391,
+        "tuned_pcc": 0.567237323,
+        "gain": -0.022555068
+      },
+      "S3_ring": {
+        "initialization_pcc": 0.451866234,
+        "tuned_pcc": 0.435693597,
+        "gain": -0.016172637,
+        "initialization_gain_over_joint_gamma_csp": 0.047161925
+      }
+    },
+    "diagnostic": "For S3 middle and ring, tuning reduces rest RMS and improves movement-state balanced accuracy, but movement RMSE or velocity tracking worsens enough to reduce PCC. Only S3 ring receives a material fixed-LARS benefit from leaf-specific CSP.",
+    "decision": "Do not promote separate gamma CSP as a general residual decoder. Retain it only as an S3-ring initialization candidate and test whether the predeclared level-plus-velocity correlation objective prevents the residual head from sacrificing within-event timing."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
   "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The complete 15-pair screen has only two numerical passes: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 with the current-bin, batch-48 recipe. S1-index remains the best sub-threshold result at +0.059. None of the twelve fixed-recipe transfers reaches +0.1, and seven reduce raw PCC despite often improving rest suppression or movement-state accuracy. S2-little reaches +0.09996 under the fixed 1e-3 interlevel-path rate, but the inner-selected learning-rate route gains only +0.0819, so it is not promoted. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat generic optimizer, batch-size, or wavelet-path sweeps."
 }

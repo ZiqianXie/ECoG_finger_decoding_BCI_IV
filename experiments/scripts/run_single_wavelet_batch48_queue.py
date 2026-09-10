@@ -53,6 +53,8 @@ def build_command(
     ica_cache_root: Path,
     csp_band_mode: str = "joint_hhl_hhh",
     residual_input_width: int = 64,
+    correlation_loss_weight: float = 0.0,
+    derivative_correlation_weight: float = 0.0,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -165,9 +167,9 @@ def build_command(
         "--residual-output-init-std",
         "0.0",
         "--correlation-loss-weight",
-        "0.0",
+        str(correlation_loss_weight),
         "--derivative-correlation-weight",
-        "0.0",
+        str(derivative_correlation_weight),
         "--seed",
         "2026",
         "--feature-chunk",
@@ -202,6 +204,8 @@ def main() -> None:
         default="joint_hhl_hhh",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
+    parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
+    parser.add_argument("--derivative-correlation-weight", type=float, default=0.0)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
         "--script", type=Path, default=Path("scripts/cross_validate_single_wavelet.py")
@@ -226,6 +230,8 @@ def main() -> None:
             args.ica_cache_root,
             args.csp_band_mode,
             args.residual_input_width,
+            args.correlation_loss_weight,
+            args.derivative_correlation_weight,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

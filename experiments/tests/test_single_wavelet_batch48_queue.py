@@ -44,6 +44,8 @@ def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
     assert "--frozen-only" in command
     assert "--csp-band-mode joint_hhl_hhh" in joined
     assert "--residual-input-width 64" in joined
+    assert "--correlation-loss-weight 0.0" in joined
+    assert "--derivative-correlation-weight 0.0" in joined
     assert "--wavelet-interlevel-skip" not in command
     assert "--wavelet-interlevel-normalization" not in command
 
@@ -60,7 +62,11 @@ def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
         tmp_path / "ica",
         "separate_hhl_hhh",
         96,
+        0.1,
+        0.1,
     )
     joined = " ".join(command)
     assert "--csp-band-mode separate_hhl_hhh" in joined
     assert "--residual-input-width 96" in joined
+    assert "--correlation-loss-weight 0.1" in joined
+    assert "--derivative-correlation-weight 0.1" in joined
