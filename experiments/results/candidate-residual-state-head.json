@@ -1240,6 +1240,32 @@
     },
     "decision": "Depth-5 materially improves the fixed representation and lower learning rates prevent the 200-update collapse seen at 3e-4. The gain nevertheless saturates at +0.0403, the linear residual reserve is only +0.0203, and movement RMSE worsens despite better rest suppression. Keep the implementation for targeted representation work, but do not expand this costly configuration across all 15 pairs or continue head-only tuning."
   },
+  "S1_middle_gpu_leaky_residual_state": {
+    "description": "The same single-branch depth-5 model interprets the LSTM output as a causal innovation and applies a fixed-decay state[t] = 0.95 * state[t-1] + innovation[t]. The recurrence is evaluated as one differentiable grouped GPU convolution, with an exactly zero residual at initialization.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.314679349,
+    "tuned_pcc": 0.281945837,
+    "gain": -0.032733512,
+    "selected_schedules": ["frozen_400", "frozen_100", "frozen_100"],
+    "initialized_morphology": {
+      "event_macro_nmse": 1.039650131,
+      "rest_false_positive_rms": 0.125026464,
+      "movement_rmse": 0.418072065,
+      "amplitude_slope": 0.102163834,
+      "velocity_pcc": 0.210278644,
+      "movement_balanced_accuracy": 0.633100913
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 1.042091616,
+      "rest_false_positive_rms": 0.073080096,
+      "movement_rmse": 0.46434617,
+      "amplitude_slope": 0.097290155,
+      "velocity_pcc": 0.231686269,
+      "movement_balanced_accuracy": 0.643701039
+    },
+    "runtime_seconds_sum": 501.304269,
+    "decision": "Reject: the leaky state is computationally efficient and suppresses rest activity, but it over-smooths the causal innovation, worsens movement amplitude and OOF PCC, and should not replace the pointwise residual output."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, and longer-schedule changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. The next attempt must change how the single branch represents causal movement dynamics, rather than add spectral resolution, repeat head-only tuning, or stack another branch."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, and leaky integrated-output changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. The leaky residual state further confirms that stronger temporal smoothing trades rest suppression for worse movement reconstruction. The next attempt should preserve the pointwise residual path and change the movement-amplitude objective or evidence, rather than add spectral resolution, repeat head-only tuning, or stack another branch."
 }
