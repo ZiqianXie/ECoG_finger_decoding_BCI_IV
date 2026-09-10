@@ -212,6 +212,7 @@ class SingleWaveletDecoder(nn.Module):
         residual_input_width: int | None = None,
         residual_include_direct: bool = False,
         movement_head: bool = False,
+        movement_head_outputs: int = 1,
         velocity_head: bool = False,
         movement_modulation: bool = False,
         wavelet_signed_pooling: bool = False,
@@ -512,10 +513,19 @@ class SingleWaveletDecoder(nn.Module):
             raise ValueError(f"unsupported recurrent cell {recurrent_cell!r}")
         self.recurrent_cell = recurrent_cell
         self.output = nn.Linear(hidden_size, 1)
-        self.movement_output = nn.Linear(hidden_size, 1) if movement_head else None
+        if movement_head_outputs <= 0:
+            raise ValueError("movement head output count must be positive")
+        self.movement_head_outputs = int(movement_head_outputs)
+        self.movement_output = (
+            nn.Linear(hidden_size, self.movement_head_outputs)
+            if movement_head
+            else None
+        )
         self.velocity_output = nn.Linear(hidden_size, 1) if velocity_head else None
         if movement_modulation and self.movement_output is None:
             raise ValueError("movement modulation requires a movement output head")
+        if movement_modulation and self.movement_head_outputs != 1:
+            raise ValueError("movement modulation requires a scalar movement head")
         self.movement_modulation = bool(movement_modulation)
         self.movement_gain = (
             nn.Parameter(torch.zeros(())) if movement_modulation else None

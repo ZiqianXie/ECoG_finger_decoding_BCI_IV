@@ -37,6 +37,18 @@ def test_movement_positive_weight_balances_training_scope() -> None:
     torch.testing.assert_close(weight, torch.tensor(2.0))
 
 
+def test_movement_positive_weight_can_balance_all_fingers() -> None:
+    target = torch.zeros(6, 5)
+    target[[1, 4], 0] = 0.2
+    target[[0, 2, 4], 1] = 0.2
+
+    weight = movement_positive_weight(target, np.arange(6), None, 0.1)
+
+    torch.testing.assert_close(
+        weight, torch.tensor([2.0, 1.0, 6.0, 6.0, 6.0])
+    )
+
+
 def test_grouped_velocity_scale_excludes_interval_jumps() -> None:
     target = torch.tensor([0.0, 1.0, 2.0, 100.0, 101.0, 102.0])
 

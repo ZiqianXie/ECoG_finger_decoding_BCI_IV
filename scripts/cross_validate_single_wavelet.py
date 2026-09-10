@@ -1041,6 +1041,7 @@ def make_model(
         residual_input_width=args.residual_input_width,
         residual_include_direct=args.residual_include_direct,
         movement_head=args.movement_loss_weight > 0,
+        movement_head_outputs=5 if args.movement_head_scope == "all_fingers" else 1,
         velocity_head=args.velocity_loss_weight > 0,
         movement_modulation=args.movement_modulation,
         wavelet_signed_pooling=args.wavelet_signed_pooling,
@@ -1190,6 +1191,7 @@ def train_updates(
     movement_trajectory_weight: float = 1.0,
     movement_threshold: float = 0.10,
     movement_positive_weight: torch.Tensor | None = None,
+    movement_targets: torch.Tensor | None = None,
     velocity_loss_weight: float = 0.0,
     velocity_scale: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
@@ -1207,6 +1209,9 @@ def train_updates(
         )
         index = starts[:, None] + offsets[None]
         observed = target[index]
+        movement_observed = (
+            observed if movement_targets is None else movement_targets[index]
+        )
         trajectory_observed = (
             observed if trajectory_target is None else trajectory_target[index]
         )
@@ -1233,6 +1238,7 @@ def train_updates(
             trajectory_observed = trajectory_observed[:, warmup_steps:]
             if movement_loss_weight:
                 movement_logit = movement_logit[:, warmup_steps:]
+                movement_observed = movement_observed[:, warmup_steps:]
             if velocity_loss_weight:
                 velocity_prediction = velocity_prediction[:, warmup_steps:]
         loss = trajectory_mse_loss(
@@ -1243,7 +1249,7 @@ def train_updates(
             movement_trajectory_weight,
         )
         if movement_loss_weight:
-            movement_target = (observed >= movement_threshold).to(result.dtype)
+            movement_target = (movement_observed >= movement_threshold).to(result.dtype)
             loss = loss + movement_loss_weight * F.binary_cross_entropy_with_logits(
                 movement_logit,
                 movement_target,
@@ -1298,15 +1304,20 @@ def train_updates(
 def movement_positive_weight(
     target: torch.Tensor,
     rows: np.ndarray,
-    finger_index: int,
+    finger_index: int | None,
     movement_threshold: float,
 ) -> torch.Tensor:
-    """Balance target-finger movement and rest in the auxiliary BCE."""
-    scoped = target[
-        torch.as_tensor(rows, dtype=torch.long, device=target.device), finger_index
-    ]
-    positive = (scoped >= movement_threshold).sum().clamp_min(1)
-    negative = (scoped < movement_threshold).sum().clamp_min(1)
+    """Balance target-finger or all-finger movement and rest in auxiliary BCE."""
+    scoped = target.index_select(
+        0, torch.as_tensor(rows, dtype=torch.long, device=target.device)
+    )
+    if finger_index is not None:
+        scoped = scoped[:, finger_index]
+        reduction: int | tuple[int, ...] = 0
+    else:
+        reduction = 0
+    positive = (scoped >= movement_threshold).sum(dim=reduction).clamp_min(1)
+    negative = (scoped < movement_threshold).sum(dim=reduction).clamp_min(1)
     return (negative / positive).to(target.dtype)
 
 
@@ -1449,7 +1460,7 @@ def monitor_inner_fold(
     positive_weight = movement_positive_weight(
         target,
         training_rows,
-        finger_index,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
         args.movement_threshold,
     )
     velocity_scale = grouped_velocity_scale(
@@ -1504,6 +1515,9 @@ def monitor_inner_fold(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1570,6 +1584,9 @@ def monitor_inner_fold(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1679,7 +1696,7 @@ def train_final_schedule(
     positive_weight = movement_positive_weight(
         target,
         training_rows,
-        finger_index,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
         args.movement_threshold,
     )
     velocity_scale = grouped_velocity_scale(
@@ -1725,6 +1742,9 @@ def train_final_schedule(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1773,6 +1793,9 @@ def train_final_schedule(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -2077,6 +2100,15 @@ def main() -> None:
         help="weight of a balanced target-finger movement/rest BCE auxiliary head",
     )
     parser.add_argument(
+        "--movement-head-scope",
+        choices=("target", "all_fingers"),
+        default="target",
+        help=(
+            "train the shared recurrent state to classify movement of only the "
+            "decoded finger or of all five fingers"
+        ),
+    )
+    parser.add_argument(
         "--movement-trajectory-weight",
         type=float,
         default=1.0,
@@ -2212,6 +2244,8 @@ def main() -> None:
         )
     if args.movement_modulation and args.movement_loss_weight <= 0:
         raise ValueError("--movement-modulation requires --movement-loss-weight")
+    if args.movement_modulation and args.movement_head_scope != "target":
+        raise ValueError("--movement-modulation requires --movement-head-scope target")
     if args.frozen_only and (
         args.wavelet_interlevel_skip
         or args.wavelet_interlevel_normalization
@@ -2808,6 +2842,7 @@ def main() -> None:
             )
             + (["target_finger_velocity"] if args.velocity_loss_weight else []),
             "residual_recurrent_sees_direct_lars_logit": args.residual_include_direct,
+            "movement_head_scope": args.movement_head_scope,
             "residual_output_initialization_std": args.residual_output_init_std,
             "residual_dynamics": args.residual_dynamics,
             "residual_decay": args.residual_decay,

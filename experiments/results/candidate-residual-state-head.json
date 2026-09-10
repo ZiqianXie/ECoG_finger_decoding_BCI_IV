@@ -1266,6 +1266,48 @@
     "runtime_seconds_sum": 501.304269,
     "decision": "Reject: the leaky state is computationally efficient and suppresses rest activity, but it over-smooths the causal innovation, worsens movement amplitude and OOF PCC, and should not replace the pointwise residual output."
   },
+  "S3_middle_split_local_raw_trajectory_objective": {
+    "description": "The pointwise residual LSTM retains the cleaned-target LARS initialization. During tuning, raw glove shape is affine-mapped onto the cleaned scale using only the current split's training rows and blended into the trajectory objective. Blend strength is selected from clean, 0.25, 0.50, 0.75, and 1.00 using inner-fold PCC only.",
+    "released_test_touched": false,
+    "outer_validation_used_for_selection": false,
+    "initialized_pcc": 0.590355891,
+    "fixed_blend_tuned_pcc": {
+      "0.00": 0.567901008,
+      "0.25": 0.601976219,
+      "0.50": 0.598261943,
+      "0.75": 0.605638965,
+      "1.00": 0.586438647
+    },
+    "inner_selected_blends_by_outer_fold": [1.0, 0.25, 0.5],
+    "inner_selected_tuned_pcc": 0.595759619,
+    "inner_selected_gain": 0.005403728,
+    "decision": "Do not promote: adding some raw shape reverses the old harmful tuning sign, but inner-only strength selection remains only +0.0054 over LARS. Target mismatch is real but cannot explain the requested +0.1 residual gain."
+  },
+  "S1_ring_recurrent_warmup": {
+    "description": "Training sequences prepend 50 causal bins that update the same LSTM state but contribute to no loss, followed by the original 100 scored bins. This matches full-interval evaluation more closely without adding a model branch.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.493492559,
+    "no_warmup_lr3e4_tuned_pcc": 0.386952437,
+    "warmup50_lr3e4": {
+      "tuned_pcc": 0.49254922,
+      "gain": -0.00094334,
+      "selected_schedules": ["frozen_10", "frozen_10", "frozen_10"],
+      "tuned_morphology": {
+        "event_macro_nmse": 0.826889337,
+        "rest_false_positive_rms": 0.109965677,
+        "movement_rmse": 0.307324638,
+        "amplitude_slope": 0.169836978,
+        "velocity_pcc": 0.250294942,
+        "movement_balanced_accuracy": 0.759589064
+      }
+    },
+    "warmup50_lr3e5": {
+      "tuned_pcc": 0.40402987,
+      "gain": -0.089462689,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_600"]
+    },
+    "decision": "Keep warm-up as a valid training option because it removes nearly all of the original S1-ring collapse and improves most diagnostics at 3e-4. It does not create a positive residual gain, and lowering the rate restores the failure, so do not expand a warm-up or learning-rate grid across all pairs."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, and leaky integrated-output changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. The leaky residual state further confirms that stronger temporal smoothing trades rest suppression for worse movement reconstruction. The next attempt should preserve the pointwise residual path and change the movement-amplitude objective or evidence, rather than add spectral resolution, repeat head-only tuning, or stack another branch."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. Warm-up removes the severe S1-ring collapse but does not make tuning beneficial. The next attempt should preserve the pointwise single branch while giving its recurrent state explicit information about which finger is moving, rather than stack another feature branch or repeat optimizer sweeps."
 }

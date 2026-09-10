@@ -648,3 +648,24 @@ def test_auxiliary_movement_head_preserves_lars_trajectory_and_trains_lstm() -> 
     ).backward()
     assert torch.count_nonzero(model.movement_output.weight.grad).item() > 0
     assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
+def test_all_finger_movement_head_preserves_single_trajectory_path() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        movement_head=True,
+        movement_head_outputs=5,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    trajectory, movement_logits = model.decode_features_with_auxiliary(features)
+
+    torch.testing.assert_close(trajectory, model.direct_features(features))
+    assert movement_logits.shape == (2, 12, 5)
+    assert model.output.out_features == 1

@@ -255,3 +255,18 @@ def test_command_can_warm_up_recurrent_state_before_scoring(tmp_path) -> None:
     joined = " ".join(command)
     assert "--sequence-steps 100" in joined
     assert "--warmup-steps 50" in joined
+
+
+def test_command_can_train_all_finger_movement_context(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        movement_head_scope="all_fingers",
+    )
+    assert "--movement-head-scope all_fingers" in " ".join(command)
