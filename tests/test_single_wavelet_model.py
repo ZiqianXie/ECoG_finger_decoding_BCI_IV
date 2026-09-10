@@ -14,6 +14,25 @@ def make_initialization(coefficients: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
+def make_candidate_initialization(
+    coefficients: np.ndarray,
+) -> dict[str, np.ndarray]:
+    initialization = make_initialization(coefficients)
+    initialization.update(
+        {
+            "candidate_indices": np.arange(coefficients.size + 2),
+            "candidate_feature_mean": np.zeros(
+                coefficients.size + 2, dtype=np.float32
+            ),
+            "candidate_feature_scale": np.ones(
+                coefficients.size + 2, dtype=np.float32
+            ),
+            "selected_candidate_positions": np.arange(coefficients.size),
+        }
+    )
+    return initialization
+
+
 def test_lars_is_embedded_in_a_standard_nonlinear_lstm() -> None:
     torch.manual_seed(13)
     coefficients = np.asarray([0.35, -0.20, 0.10, 0.05], dtype=np.float32)
@@ -58,6 +77,7 @@ def test_release_topology_and_nonnegative_output() -> None:
     assert model.wavelet.tap_resample_down == 2
     assert not any("lmp" in name.lower() for name, _ in model.named_modules())
     assert not hasattr(model, "movement_gate")
+    assert "candidate_indices" not in model.state_dict()
     prediction = model.decode_features(torch.randn(2, 12, 2))
     assert torch.all(prediction >= 0)
 
@@ -139,3 +159,41 @@ def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
         optimizer.step()
     assert torch.count_nonzero(model.output.weight).item() > 0
     assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
+def test_candidate_pool_residual_starts_exactly_at_selected_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.input_size == 4
+    assert model.direct.in_features == 2
+
+
+def test_candidate_pool_residual_can_use_a_feature_excluded_by_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        output_activation="linear",
+    )
+    with torch.no_grad():
+        model.output.weight.fill_(0.1)
+    features = torch.randn(2, 12, 4, requires_grad=True)
+
+    model.decode_features(features).sum().backward()
+
+    assert torch.count_nonzero(features.grad[..., 2:]).item() > 0

@@ -440,6 +440,7 @@ def fit_initialization(
     csp_mode: str = "movement_1",
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
+    include_candidate_pool: bool = False,
 ) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, object]]:
     training = indices_from_intervals(training_intervals)
     if csp_mode not in CSP_MODES:
@@ -537,6 +538,18 @@ def fit_initialization(
         "intercept": np.asarray(intercept, dtype=np.float32),
         "selected_features": np.asarray(features[:, selected], dtype=np.float32),
     }
+    if include_candidate_pool:
+        initialization.update(
+            {
+                "candidate_indices": candidates.astype(np.int64),
+                "candidate_feature_mean": scaler.mean_.astype(np.float32),
+                "candidate_feature_scale": scaler.scale_.astype(np.float32),
+                "selected_candidate_positions": selected_nonzero.astype(np.int64),
+                "candidate_features": np.asarray(
+                    features[:, candidates], dtype=np.float32
+                ),
+            }
+        )
     spatial = np.concatenate((ica, joint_weights)).astype(np.float32)
     audit = {
         "selected_features": int(selected_nonzero.size),
@@ -750,7 +763,20 @@ def make_model(
         wavelet_interlevel_skip=args.wavelet_interlevel_skip,
         wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
         wavelet_final_normalization=args.wavelet_final_normalization,
+        residual_input=args.residual_input,
     )
+
+
+def cached_initialization_features(
+    initialization: dict[str, np.ndarray], residual_input: str
+) -> np.ndarray:
+    """Return the raw feature matrix expected by the configured decoder."""
+    name = "candidate_features" if residual_input == "candidate" else "selected_features"
+    if name not in initialization:
+        raise ValueError(
+            f"initialization cache lacks {name!r}; refit the split-local initialization"
+        )
+    return initialization[name]
 
 
 def sequence_correlation_loss(
@@ -1301,6 +1327,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--residual-input",
+        choices=("selected", "candidate"),
+        default="selected",
+        help=(
+            "feed the residual recurrent cell either the LARS-selected subset or "
+            "the complete split-local pre-LARS candidate pool"
+        ),
+    )
+    parser.add_argument(
         "--output-activation", choices=("linear", "softplus"), default="softplus"
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
@@ -1363,6 +1398,13 @@ def main() -> None:
     args = parser.parse_args()
     if args.correlation_loss_weight < 0 or args.derivative_correlation_weight < 0:
         raise ValueError("correlation loss weights must be nonnegative")
+    if args.residual_input == "candidate" and args.recurrent_cell not in (
+        "residual_lstm",
+        "residual_gru",
+    ):
+        raise ValueError(
+            "--residual-input candidate requires --recurrent-cell residual_lstm or residual_gru"
+        )
     if args.model_rate % 25:
         raise ValueError("model rate must be divisible by the 25 Hz target rate")
     args.samples_per_bin = args.model_rate // 25
@@ -1560,11 +1602,14 @@ def main() -> None:
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
+                    include_candidate_pool=args.residual_input == "candidate",
                 )
                 save_initialization(cache, initialization, spatial, target_np, split, audit)
             torch.manual_seed(args.seed)
             model = make_model(spatial, initialization, args).to(device)
-            cached = torch.from_numpy(initialization["selected_features"]).to(device)
+            cached = torch.from_numpy(
+                cached_initialization_features(initialization, args.residual_input)
+            ).to(device)
             target = torch.from_numpy(target_np.astype(np.float32)).to(device)
             metrics = monitor_inner_fold(
                 model=model,
@@ -1585,7 +1630,10 @@ def main() -> None:
                     "training_bins": int(split["training_bins"]),
                     "validation_bins": int(split["validation_bins"]),
                     "training_group_count": len(split["training_groups"]),
-                    "selected_feature_count": int(cached.shape[1]),
+                    "selected_feature_count": int(
+                        initialization["selected_indices"].size
+                    ),
+                    "recurrent_input_feature_count": int(cached.shape[1]),
                     "metrics": metrics,
                 }
             )
@@ -1641,6 +1689,7 @@ def main() -> None:
                     ecog.shape[1],
                 ),
                 samples_per_bin=args.samples_per_bin,
+                include_candidate_pool=args.residual_input == "candidate",
             )
             save_initialization(
                 outer_cache,
@@ -1652,7 +1701,9 @@ def main() -> None:
             )
         torch.manual_seed(args.seed)
         model = make_model(spatial, initialization, args).to(device)
-        cached = torch.from_numpy(initialization["selected_features"]).to(device)
+        cached = torch.from_numpy(
+            cached_initialization_features(initialization, args.residual_input)
+        ).to(device)
         target_np = outer_target.astype(np.float32)
         target = torch.from_numpy(target_np).to(device)
         with torch.inference_mode():
@@ -1728,7 +1779,8 @@ def main() -> None:
             "one single-path subject/finger model; five event-balanced inner folds per "
             "outer-training scope; split-local target, "
             "ICA, joint HHL/HHH CSP and LARS refits; "
-            f"{args.recurrent_cell} nonlinear gated LSTM decoder "
+            f"{args.recurrent_cell} nonlinear gated LSTM decoder with "
+            f"{args.residual_input} residual input "
             f"with {args.head_initialization}; {args.sampler_mode} minibatches; "
             f"optimizer-update checkpoints; {args.selection_rule} selection on "
             f"{args.selection_metric}; outer fold evaluated once; released test untouched"
@@ -1787,7 +1839,10 @@ def main() -> None:
             if args.reuse_inner_metrics_from is not None
             else None
         ),
-        "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
+        "decoder": (
+            f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM; "
+            f"residual input={args.residual_input}"
+        ),
         "training_objective": {
             "trajectory": "normalized mean squared error",
             "within_sequence_correlation_weight": args.correlation_loss_weight,

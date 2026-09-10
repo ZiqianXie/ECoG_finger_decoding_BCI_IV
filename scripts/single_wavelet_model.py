@@ -98,6 +98,7 @@ class SingleWaveletDecoder(nn.Module):
         wavelet_interlevel_skip: bool = False,
         wavelet_interlevel_normalization: bool = False,
         wavelet_final_normalization: bool = True,
+        residual_input: str = "selected",
     ) -> None:
         super().__init__()
         components, channels = spatial_weights.shape
@@ -136,6 +137,51 @@ class SingleWaveletDecoder(nn.Module):
             torch.as_tensor(initialization["feature_scale"], dtype=torch.float32),
         )
 
+        if residual_input not in ("selected", "candidate"):
+            raise ValueError(f"unsupported residual input {residual_input!r}")
+        if residual_input == "candidate" and recurrent_cell not in (
+            "residual_lstm",
+            "residual_gru",
+        ):
+            raise ValueError(
+                "candidate residual input requires residual_lstm or residual_gru"
+            )
+        self.residual_input = residual_input
+        if residual_input == "candidate":
+            required = (
+                "candidate_indices",
+                "candidate_feature_mean",
+                "candidate_feature_scale",
+                "selected_candidate_positions",
+            )
+            missing = [name for name in required if name not in initialization]
+            if missing:
+                raise ValueError(
+                    "candidate residual initialization is missing " + ", ".join(missing)
+                )
+            self.register_buffer(
+                "candidate_indices",
+                torch.as_tensor(initialization["candidate_indices"], dtype=torch.long),
+            )
+            self.register_buffer(
+                "candidate_feature_mean",
+                torch.as_tensor(
+                    initialization["candidate_feature_mean"], dtype=torch.float32
+                ),
+            )
+            self.register_buffer(
+                "candidate_feature_scale",
+                torch.as_tensor(
+                    initialization["candidate_feature_scale"], dtype=torch.float32
+                ),
+            )
+            self.register_buffer(
+                "selected_candidate_positions",
+                torch.as_tensor(
+                    initialization["selected_candidate_positions"], dtype=torch.long
+                ),
+            )
+
         if output_activation not in ("linear", "softplus"):
             raise ValueError(f"unsupported output activation {output_activation!r}")
         if softplus_beta <= 0:
@@ -145,6 +191,11 @@ class SingleWaveletDecoder(nn.Module):
         self.head_initialization = "lars_linear_regime"
 
         feature_count = int(self.selected_indices.numel())
+        recurrent_feature_count = (
+            int(self.candidate_indices.numel())
+            if residual_input == "candidate"
+            else feature_count
+        )
         self.direct = nn.Linear(feature_count, 1)
         self.residual_decoder = recurrent_cell in ("residual_lstm", "residual_gru")
         if recurrent_cell == "standard":
@@ -152,9 +203,9 @@ class SingleWaveletDecoder(nn.Module):
         elif recurrent_cell == "paper_equations":
             self.lstm = PaperEquationLSTM(feature_count, hidden_size, batch_first=True)
         elif recurrent_cell == "residual_lstm":
-            self.lstm = nn.LSTM(feature_count, hidden_size, batch_first=True)
+            self.lstm = nn.LSTM(recurrent_feature_count, hidden_size, batch_first=True)
         elif recurrent_cell == "residual_gru":
-            self.lstm = nn.GRU(feature_count, hidden_size, batch_first=True)
+            self.lstm = nn.GRU(recurrent_feature_count, hidden_size, batch_first=True)
         else:
             raise ValueError(f"unsupported recurrent cell {recurrent_cell!r}")
         self.recurrent_cell = recurrent_cell
@@ -248,17 +299,31 @@ class SingleWaveletDecoder(nn.Module):
         return prediction
 
     def decode_features(self, features: torch.Tensor) -> torch.Tensor:
-        standardized = (features - self.feature_mean) / self.feature_scale
-        recurrent, _ = self.lstm(standardized)
+        recurrent_features, direct_features = self._prepare_features(features)
+        recurrent, _ = self.lstm(recurrent_features)
         prediction = self.output(recurrent)
         if self.residual_decoder:
-            prediction = self.direct(standardized) + prediction
+            prediction = self.direct(direct_features) + prediction
         return self.activate_output(prediction).squeeze(-1)
+
+    def _prepare_features(
+        self, features: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Standardize recurrent input and recover the selected LARS subset."""
+        if self.residual_input == "candidate":
+            recurrent = (
+                features - self.candidate_feature_mean
+            ) / self.candidate_feature_scale
+            selected = features.index_select(-1, self.selected_candidate_positions)
+            direct = (selected - self.feature_mean) / self.feature_scale
+            return recurrent, direct
+        standardized = (features - self.feature_mean) / self.feature_scale
+        return standardized, standardized
 
     def direct_features(self, features: torch.Tensor) -> torch.Tensor:
         """Return the immutable LARS audit prediction for the same features."""
-        standardized = (features - self.feature_mean) / self.feature_scale
-        return self.activate_output(self.direct(standardized)).squeeze(-1)
+        _, direct_features = self._prepare_features(features)
+        return self.activate_output(self.direct(direct_features)).squeeze(-1)
 
     def extract_sequences(
         self,
@@ -291,7 +356,12 @@ class SingleWaveletDecoder(nn.Module):
             .flatten(2)
         )
         history = per_bin.unfold(1, HISTORY, 1).permute(0, 1, 3, 2).flatten(2)
-        return history.index_select(2, self.selected_indices)
+        indices = (
+            self.candidate_indices
+            if self.residual_input == "candidate"
+            else self.selected_indices
+        )
+        return history.index_select(2, indices)
 
     def forward(
         self,
