@@ -273,6 +273,25 @@
     "mean_target_during_movement_range": [0.357061, 0.382557],
     "decision": "Softplus saturation is not the learning bottleneck. LARS underestimates movement amplitude, but the residual path receives a strong local gradient on essentially every movement bin."
   },
+  "S1_index_frozen_feature_residual_predictability": {
+    "description": "Diagnostic regressors are trained independently inside each outer-training scope. Ridge alpha is chosen with interval-grouped inner folds. A fixed histogram-gradient-boosting probe sees the LARS trajectory, current candidate atoms, and four causal exponential summaries. It is not a candidate production decoder.",
+    "stitched_raw_pcc": {
+      "lars": 0.72554507,
+      "ridge_all_lags": 0.70059187,
+      "ridge_current_temporal_residual": 0.732099571,
+      "nonlinear_current_temporal_residual": 0.787567705,
+      "best_residual_lstm": 0.78482521
+    },
+    "stitched_cleaned_pcc": {
+      "lars": 0.757515877,
+      "ridge_all_lags": 0.723026061,
+      "ridge_current_temporal_residual": 0.763664153,
+      "nonlinear_current_temporal_residual": 0.820877205
+    },
+    "nonlinear_outer_raw_pcc": [0.766727721, 0.7973388, 0.815559781],
+    "nonlinear_outer_cleaned_residual_pcc": [0.529584823, 0.610857522, 0.61452004],
+    "decision": "The residual is genuinely nonlinear: the nonlinear temporal-summary probe improves every outer fold, whereas both ridge probes are weak or harmful. However, it is only 0.0027 raw PCC above the best LSTM and still gains only 0.062 over LARS. This is evidence against a large unexploited optimization reserve in the frozen feature bank, not a formal upper bound."
+  },
   "S1_index_signed_leaf_pooling": {
     "description": "Each existing wavelet leaf retains one scalar statistic: initialized log-energy plus a zero-gated signed within-bin mean. Spatial filters and wavelet taps are frozen, so this isolates phase-sensitive pooling without adding a filter branch.",
     "shared_initialization_pcc": 0.725545068,
@@ -581,6 +600,54 @@
     "parallel_jobs_compared": 3,
     "decision": "Keep: the matched control and two auxiliary-velocity runs loaded identical split-local initializations while training concurrently."
   },
-  "visual_diagnostic": "Across S1 index, S2 middle, and S3 thumb, the state head lowers stationary offset and increases event amplitudes. It still retains isolated false peaks, underestimates the largest flexions, and barely changes S3-thumb velocity correlation.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Presenting only current-bin candidate features plus the immutable LARS logit to a 64-unit residual LSTM is the best S1 geometry; batch 48 raises it to 0.785 PCC (+0.059). Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and the batch-size optimum is shallow, so further learning-rate, batch-size, or wavelet-path sweeps are unlikely to close the requested +0.1 gain without changing the information or target model."
+  "S3_thumb_current_bin_batch48_generalization": {
+    "description": "The S1-selected current-bin recurrent geometry and batch-48 schedule are transferred unchanged to S3 thumb. The spatial/wavelet stem and direct split-local LARS path remain frozen; only the 64-unit residual LSTM and its trajectory/movement heads train.",
+    "data_scope": "event-grouped nested cross-validation on released competition training data",
+    "released_test_touched": false,
+    "initialization_pcc": 0.629314796,
+    "tuned_pcc": 0.732715192,
+    "gain": 0.103400396,
+    "selected_schedules": [
+      "frozen_100",
+      "frozen_100",
+      "frozen_100"
+    ],
+    "outer_raw_pcc": [
+      0.786571331,
+      0.723266829,
+      0.717508963
+    ],
+    "mean_selected_outer_diagnostics": {
+      "event_macro_nmse": 0.469701586,
+      "rest_false_positive_rms": 0.091223096,
+      "movement_rmse": 0.295624902,
+      "amplitude_slope": 0.647394061,
+      "velocity_pcc": 0.269897868,
+      "movement_balanced_accuracy": 0.829820153
+    },
+    "stitched_cleaned_diagnostics": {
+      "initialization_pcc": 0.661436617,
+      "tuned_pcc": 0.760431468,
+      "initialization_rest_rms": 0.15096201,
+      "tuned_rest_rms": 0.095434554,
+      "initialization_movement_rmse": 0.327441633,
+      "tuned_movement_rmse": 0.295841366,
+      "initialization_state_f1": 0.359413203,
+      "tuned_state_f1": 0.694805195,
+      "initialization_velocity_pcc": 0.161190554,
+      "tuned_velocity_pcc": 0.247399613
+    },
+    "peak_triggered_diagnostic": {
+      "peak_count": 67,
+      "initialization_peak_ratio": 0.446345776,
+      "tuned_peak_ratio": 0.600931108,
+      "tuned_aligned_waveform_pcc": 0.838950932,
+      "tuned_best_lag_bins": 0
+    },
+    "runtime_seconds_sum": 1362.837548,
+    "visual_finding": "The LSTM more reliably detects movement state, suppresses most resting offset, and raises the flexion envelope. It still smooths across within-event extension valleys, compresses peak amplitude, and retains one conspicuous resting false-positive episode.",
+    "decision": "The transferred recipe meets the requested numerical threshold at +0.1034 PCC and improves every stitched morphology summary reported above. Count it as a numerical pass, but not as a solved trajectory: fine movement dynamics remain underfit."
+  },
+  "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. Two of the three screened subject-finger pairs now meet the requested +0.1 PCC gain: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 when the S1-selected current-bin, batch-48 recipe is transferred unchanged. S1-index remains below the goal at +0.059. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM, so closing the remaining S1 gap likely requires a better information or target representation rather than another optimizer sweep. The other twelve subject-finger pairs have not yet been evaluated under this gain criterion."
 }

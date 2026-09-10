@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Measure how much target signal remains in a frozen single-wavelet feature bank.
+
+This is a diagnostic, not a candidate decoder.  Every outer fold uses its own
+target, FastICA/CSP features, candidate screen, and LARS fit.  Ridge strengths
+are selected with interval-grouped folds inside the outer-training scope; the
+outer interval is evaluated once.  Released competition test labels are never
+loaded.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import numpy as np
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+from ecog_decoding.training import FINGER_NAMES
+
+
+ALPHAS = tuple(float(value) for value in np.logspace(-2, 5, 8))
+EMA_DECAYS = (0.5, 0.8, 0.92, 0.97)
+
+
+def rows_from_intervals(intervals: list[list[int]]) -> np.ndarray:
+    return np.concatenate(
+        [np.arange(start, stop, dtype=np.int64) for start, stop in intervals]
+    )
+
+
+def grouped_rows(
+    intervals: list[list[int]],
+) -> tuple[np.ndarray, np.ndarray]:
+    rows = rows_from_intervals(intervals)
+    groups = np.concatenate(
+        [
+            np.full(stop - start, group, dtype=np.int64)
+            for group, (start, stop) in enumerate(intervals)
+        ]
+    )
+    return rows, groups
+
+
+def pearson(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.corrcoef(np.asarray(a), np.asarray(b))[0, 1])
+
+
+def softplus(values: np.ndarray, beta: float) -> np.ndarray:
+    return np.logaddexp(0.0, beta * values) / beta
+
+
+def causal_ema(
+    values: np.ndarray,
+    intervals: list[list[int]],
+    decay: float,
+) -> np.ndarray:
+    """Apply a causal EMA independently inside each complete event interval."""
+    result = np.zeros_like(values, dtype=np.float32)
+    for start, stop in intervals:
+        if stop <= start:
+            continue
+        state = np.asarray(values[start], dtype=np.float32).copy()
+        result[start] = state
+        for row in range(start + 1, stop):
+            state = decay * state + (1.0 - decay) * values[row]
+            result[row] = state
+    return result
+
+
+def temporal_summary(
+    current: np.ndarray,
+    intervals: list[list[int]],
+    base: np.ndarray,
+) -> np.ndarray:
+    summaries = [current]
+    summaries.extend(causal_ema(current, intervals, decay) for decay in EMA_DECAYS)
+    summaries.append(base[:, None])
+    return np.concatenate(summaries, axis=1)
+
+
+def select_ridge(
+    features: np.ndarray,
+    target: np.ndarray,
+    training_intervals: list[list[int]],
+) -> tuple[object, float, dict[str, float]]:
+    training, groups = grouped_rows(training_intervals)
+    splitter = GroupKFold(n_splits=min(5, len(training_intervals)))
+    losses = {alpha: [] for alpha in ALPHAS}
+    for train_local, validation_local in splitter.split(
+        training, target[training], groups
+    ):
+        train_rows = training[train_local]
+        validation_rows = training[validation_local]
+        for alpha in ALPHAS:
+            model = make_pipeline(StandardScaler(), Ridge(alpha=alpha))
+            model.fit(features[train_rows], target[train_rows])
+            estimate = model.predict(features[validation_rows])
+            losses[alpha].append(
+                float(np.mean((estimate - target[validation_rows]) ** 2))
+            )
+    means = {alpha: float(np.mean(values)) for alpha, values in losses.items()}
+    selected = min(means, key=means.get)
+    model = make_pipeline(StandardScaler(), Ridge(alpha=selected))
+    model.fit(features[training], target[training])
+    return model, selected, {str(alpha): loss for alpha, loss in means.items()}
+
+
+def direct_lars(
+    initialization: dict[str, np.ndarray],
+    beta: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    candidates = initialization["candidate_features"]
+    standardized = (
+        candidates - initialization["candidate_feature_mean"]
+    ) / initialization["candidate_feature_scale"]
+    selected = initialization["selected_candidate_positions"].astype(np.int64)
+    logit = (
+        standardized[:, selected] @ initialization["coefficients"]
+        + float(initialization["intercept"])
+    )
+    return softplus(logit, beta), standardized, logit
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--subject", type=int, required=True)
+    parser.add_argument("--finger", choices=FINGER_NAMES, required=True)
+    parser.add_argument("--cache-root", type=Path, required=True)
+    parser.add_argument(
+        "--prepared-root", type=Path, default=Path("outputs/preprocessed_v2")
+    )
+    parser.add_argument("--outer-folds", type=int, nargs="+", default=(0, 1, 2))
+    parser.add_argument("--softplus-beta", type=float, default=10.0)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    finger_index = list(FINGER_NAMES).index(args.finger)
+
+    stitched: dict[str, np.ndarray] = {}
+    stitched_target = None
+    stitched_raw = None
+    outer_records = []
+    for outer_fold in args.outer_folds:
+        directory = args.cache_root / "cache" / f"outer{outer_fold}" / "outer"
+        split = json.loads((directory / "split.json").read_text())
+        with np.load(directory / "initialization.npz") as archive:
+            initialization = {name: archive[name] for name in archive.files}
+        target = np.load(directory / "target.npy")[:, finger_index]
+        rows = target.size
+        raw = np.asarray(
+            np.load(
+                args.prepared_root
+                / f"sub{args.subject}"
+                / "train_glove_25hz_raw.npy",
+                mmap_mode="r",
+            )[24 : 24 + rows, finger_index]
+        )
+        if stitched_target is None:
+            stitched_target = np.full(rows, np.nan, dtype=np.float32)
+            stitched_raw = raw
+
+        training_intervals = split["training_intervals"]
+        validation_intervals = split["validation_intervals"]
+        validation = rows_from_intervals(validation_intervals)
+        all_intervals = training_intervals + validation_intervals
+        base, standardized, _ = direct_lars(
+            initialization, args.softplus_beta
+        )
+        current_positions = initialization["current_candidate_positions"].astype(
+            np.int64
+        )
+        current = standardized[:, current_positions]
+        temporal = temporal_summary(current, all_intervals, base)
+        residual = target - base
+
+        ridge_all, ridge_all_alpha, ridge_all_curve = select_ridge(
+            standardized, target, training_intervals
+        )
+        ridge_current, ridge_current_alpha, ridge_current_curve = select_ridge(
+            temporal, residual, training_intervals
+        )
+        ridge_all_prediction = np.maximum(ridge_all.predict(standardized), 0.0)
+        ridge_current_prediction = np.maximum(
+            base + ridge_current.predict(temporal), 0.0
+        )
+
+        training = rows_from_intervals(training_intervals)
+        nonlinear = make_pipeline(
+            StandardScaler(),
+            HistGradientBoostingRegressor(
+                learning_rate=0.05,
+                max_iter=200,
+                max_leaf_nodes=15,
+                l2_regularization=1.0,
+                early_stopping=False,
+                random_state=2026,
+            ),
+        )
+        nonlinear.fit(temporal[training], residual[training])
+        nonlinear_prediction = np.maximum(
+            base + nonlinear.predict(temporal), 0.0
+        )
+        predictions = {
+            "lars": base,
+            "ridge_all_lags": ridge_all_prediction,
+            "ridge_current_temporal": ridge_current_prediction,
+            "hist_current_temporal": nonlinear_prediction,
+        }
+        for name, prediction in predictions.items():
+            stitched.setdefault(
+                name, np.full(rows, np.nan, dtype=np.float32)
+            )[validation] = prediction[validation]
+        stitched_target[validation] = target[validation]
+        outer_records.append(
+            {
+                "outer_fold": outer_fold,
+                "ridge_all_alpha": ridge_all_alpha,
+                "ridge_current_alpha": ridge_current_alpha,
+                "ridge_all_inner_mse": ridge_all_curve,
+                "ridge_current_inner_mse": ridge_current_curve,
+                "raw_pcc": {
+                    name: pearson(prediction[validation], raw[validation])
+                    for name, prediction in predictions.items()
+                },
+                "cleaned_residual_pcc": {
+                    "ridge_current_temporal": pearson(
+                        ridge_current_prediction[validation] - base[validation],
+                        residual[validation],
+                    ),
+                    "hist_current_temporal": pearson(
+                        nonlinear_prediction[validation] - base[validation],
+                        residual[validation],
+                    ),
+                },
+            }
+        )
+
+    assert stitched_target is not None and stitched_raw is not None
+    observed = np.isfinite(stitched_target)
+    report = {
+        "protocol": (
+            "outer-split residual predictability audit using split-local target, "
+            "FastICA/CSP candidate bank and LARS; ridge alpha selected by grouped "
+            "folds inside outer training; fixed nonlinear probe; released test untouched"
+        ),
+        "released_test_touched": False,
+        "subject": args.subject,
+        "finger": args.finger,
+        "outer_records": outer_records,
+        "stitched_raw_pcc": {
+            name: pearson(prediction[observed], stitched_raw[observed])
+            for name, prediction in stitched.items()
+        },
+        "stitched_cleaned_pcc": {
+            name: pearson(prediction[observed], stitched_target[observed])
+            for name, prediction in stitched.items()
+        },
+    }
+    args.output.mkdir(parents=True, exist_ok=True)
+    for name, prediction in stitched.items():
+        np.save(args.output / f"{name}_oof.npy", prediction, allow_pickle=False)
+    np.save(args.output / "target_oof.npy", stitched_target, allow_pickle=False)
+    (args.output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()
