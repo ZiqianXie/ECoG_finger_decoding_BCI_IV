@@ -189,3 +189,19 @@ def test_command_can_randomize_near_zero_residual_output(tmp_path) -> None:
     )
     joined = " ".join(command)
     assert "--residual-output-init-std 0.001" in joined
+
+
+def test_command_can_lower_the_head_learning_rate(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        head_learning_rate=1.0e-4,
+    )
+    joined = " ".join(command)
+    assert "--head-learning-rate 0.0001" in joined

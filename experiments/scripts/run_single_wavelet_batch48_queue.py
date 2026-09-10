@@ -62,6 +62,7 @@ def build_command(
     frozen_update_grid: tuple[int, ...] = (10, 25, 50, 100, 200),
     wavelet_frontend: str = "depth3",
     residual_output_init_std: float = 0.0,
+    head_learning_rate: float = 3.0e-4,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -159,7 +160,7 @@ def build_command(
         "--batch-size",
         "48",
         "--head-learning-rate",
-        "0.0003",
+        str(head_learning_rate),
         "--frozen-update-grid",
         *(str(update) for update in frozen_update_grid),
         "--frozen-only",
@@ -226,6 +227,7 @@ def main() -> None:
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
+    parser.add_argument("--head-learning-rate", type=float, default=3.0e-4)
     parser.add_argument(
         "--wavelet-frontend",
         choices=(
@@ -285,6 +287,7 @@ def main() -> None:
             tuple(args.frozen_update_grid),
             args.wavelet_frontend,
             args.residual_output_init_std,
+            args.head_learning_rate,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
