@@ -156,3 +156,19 @@ def test_command_can_request_designed_band_csp_rows(tmp_path) -> None:
     assert "--csp-mode tails_2x2" in joined
     assert "--residual-input-width 256" in joined
     assert "--wavelet-frontend overcomplete_depth3_depth4" in joined
+
+
+def test_command_can_randomize_near_zero_residual_output(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        residual_output_init_std=0.001,
+    )
+    joined = " ".join(command)
+    assert "--residual-output-init-std 0.001" in joined

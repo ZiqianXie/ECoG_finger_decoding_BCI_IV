@@ -61,6 +61,7 @@ def build_command(
     csp_mode: str = "movement_1",
     frozen_update_grid: tuple[int, ...] = (10, 25, 50, 100, 200),
     wavelet_frontend: str = "depth3",
+    residual_output_init_std: float = 0.0,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -171,7 +172,7 @@ def build_command(
         "--velocity-loss-weight",
         "0.0",
         "--residual-output-init-std",
-        "0.0",
+        str(residual_output_init_std),
         "--correlation-loss-weight",
         str(correlation_loss_weight),
         "--derivative-correlation-weight",
@@ -224,6 +225,7 @@ def main() -> None:
         default="movement_1",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
+    parser.add_argument("--residual-output-init-std", type=float, default=0.0)
     parser.add_argument(
         "--wavelet-frontend",
         choices=("depth3", "overcomplete_depth3_depth4"),
@@ -278,6 +280,7 @@ def main() -> None:
             args.csp_mode,
             tuple(args.frozen_update_grid),
             args.wavelet_frontend,
+            args.residual_output_init_std,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
