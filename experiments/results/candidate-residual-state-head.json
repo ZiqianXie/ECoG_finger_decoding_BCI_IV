@@ -1177,6 +1177,69 @@
     },
     "decision": "The seven-band decoded-finger CSP raises the split-local sparse initialization by 0.0737 PCC over the overcomplete FastICA+CSP baseline, confirming useful spectral-spatial evidence. Exact-zero and 1e-3 residual-output initializations, as well as ridge probes, add less than 0.02 PCC, so do not spend another head-only or initialization sweep on this representation."
   },
+  "S1_middle_depth5_overcomplete_single_tree": {
+    "description": "One FastICA plus seven-band decoded-finger-CSP spatial convolution feeds one wavelet-packet tree that retains all depth-3, depth-4, and depth-5 energies. Its 56 overlapping atoms give LARS 25, 12.5, and 6.25 Hz nominal resolutions without input resampling or an auxiliary temporal branch.",
+    "released_test_touched": false,
+    "frequency_response_audit": {
+      "lowest_depth5_peaks_hz": [4.455566, 9.216309],
+      "highest_depth5_peak_hz": 195.129395,
+      "diagnostic": "The added atoms resolve the low-frequency designed bands more closely and remain concentrated on the approximately 0--200 Hz signal support."
+    },
+    "initialized_pcc": 0.314679349,
+    "state_only_lr3e4": {
+      "tuned_pcc": 0.323803209,
+      "gain": 0.009123861,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_50"]
+    },
+    "level_plus_velocity_correlation_lr3e4": {
+      "weights": [0.1, 0.1],
+      "tuned_pcc": 0.326057834,
+      "gain": 0.011378485
+    },
+    "state_only_lr1e4": {
+      "tuned_pcc": 0.351208291,
+      "gain": 0.036528943,
+      "selected_schedules": ["frozen_200", "frozen_200", "frozen_200"]
+    },
+    "state_only_lr3e5": {
+      "tuned_pcc": 0.354987579,
+      "gain": 0.040308231,
+      "selected_schedules": ["frozen_600", "frozen_600", "frozen_600"],
+      "initialized_morphology": {
+        "event_macro_nmse": 1.039650131,
+        "rest_false_positive_rms": 0.125026464,
+        "movement_rmse": 0.418072065,
+        "amplitude_slope": 0.102163834,
+        "velocity_pcc": 0.210278644,
+        "movement_balanced_accuracy": 0.633100913
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.991807936,
+        "rest_false_positive_rms": 0.07755203,
+        "movement_rmse": 0.446876377,
+        "amplitude_slope": 0.145338955,
+        "velocity_pcc": 0.237052527,
+        "movement_balanced_accuracy": 0.657552222
+      }
+    },
+    "selected_atom_audit": {
+      "depth5_fraction_of_absolute_coefficient_mass_by_outer_fold": [0.848, 0.771, 0.722],
+      "diagnostic": "Depth-5 atoms carry most of the selected coefficient mass in every outer fold, so the improved frequency resolution is used."
+    },
+    "gpu_ridge_capacity": {
+      "lars_pcc": 0.314679346,
+      "ridge_all_lags_pcc": 0.300413929,
+      "ridge_current_temporal_pcc": 0.334980611,
+      "best_linear_gain": 0.020301265,
+      "runtime_seconds": 29.458
+    },
+    "runtime": {
+      "initial_nested_feature_build_seconds_sum": 4282.026687,
+      "cached_lr1e4_seconds_sum": 424.921658,
+      "cached_lr3e5_seconds_sum": 788.345266
+    },
+    "decision": "Depth-5 materially improves the fixed representation and lower learning rates prevent the 200-update collapse seen at 3e-4. The gain nevertheless saturates at +0.0403, the linear residual reserve is only +0.0203, and movement RMSE worsens despite better rest suppression. Keep the implementation for targeted representation work, but do not expand this costly configuration across all 15 pairs or continue head-only tuning."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, and longer-schedule changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization, but the LSTM and ridge probes still find less than +0.02 residual gain after that stronger baseline. The next attempt must make the residual problem easier by changing how the single branch exposes causal temporal structure, rather than repeat head-only tuning or stack another branch."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, and overcomplete single-tree representation. Three of fifteen subject-finger models exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, and longer-schedule changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. The next attempt must change how the single branch represents causal movement dynamics, rather than add spectral resolution, repeat head-only tuning, or stack another branch."
 }
