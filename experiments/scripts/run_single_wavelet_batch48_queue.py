@@ -83,10 +83,11 @@ def build_command(
     warmup_steps: int = 0,
     movement_head_scope: str = "target",
     csp_contrast_mode: str = "common_rest",
+    initialization_only: bool = False,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
-    return [
+    command = [
         python,
         str(script),
         "--subject",
@@ -117,7 +118,11 @@ def build_command(
         str(initialization),
         "--ica-cache-root",
         str(ica_cache_root),
-        "--require-lstm-update",
+        *(
+            ("--no-require-lstm-update",)
+            if initialization_only
+            else ("--require-lstm-update",)
+        ),
         "--selection-metric",
         "raw_pcc",
         "--selection-rule",
@@ -224,6 +229,9 @@ def build_command(
         "--device",
         "cuda",
     ]
+    if initialization_only:
+        command.append("--initialization-only")
+    return command
 
 
 def main() -> None:
@@ -311,6 +319,11 @@ def main() -> None:
         choices=("sklearn_lars", "torch_fista"),
         default="torch_fista",
     )
+    parser.add_argument(
+        "--initialization-only",
+        action="store_true",
+        help="fit and score only outer sparse initializers; skip all LSTM work",
+    )
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
         "--script", type=Path, default=Path("scripts/cross_validate_single_wavelet.py")
@@ -362,6 +375,7 @@ def main() -> None:
             args.warmup_steps,
             args.movement_head_scope,
             args.csp_contrast_mode,
+            args.initialization_only,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

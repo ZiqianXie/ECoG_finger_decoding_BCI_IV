@@ -124,6 +124,23 @@ def test_command_can_request_one_overcomplete_wavelet_tree(tmp_path) -> None:
     assert "--recurrent-cell residual_lstm" in joined
 
 
+def test_command_can_request_initialization_only_screen(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "index",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        initialization_only=True,
+    )
+    assert "--initialization-only" in command
+    assert "--no-require-lstm-update" in command
+    assert "--require-lstm-update" not in command
+
+
 def test_command_can_request_depth5_overcomplete_wavelet_tree(tmp_path) -> None:
     command = build_command(
         "python",

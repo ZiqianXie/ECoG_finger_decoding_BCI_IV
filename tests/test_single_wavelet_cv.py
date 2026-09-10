@@ -11,11 +11,12 @@ from cross_validate_single_wavelet import (
     UNFREEZE_AFTER,
     UNFROZEN_UPDATES,
     UniformGroupSampler,
-    one_standard_error_selection,
     cached_initialization_features,
+    direct_initialization_prediction,
     load_initialization,
     load_or_create_initialization,
     load_runtime_ecog,
+    one_standard_error_selection,
     grouped_velocity_scale,
     masked_sequence_correlation_loss,
     movement_positive_weight,
@@ -27,6 +28,50 @@ from cross_validate_single_wavelet import (
     trajectory_mse_loss,
     validation_metrics,
 )
+
+
+def test_direct_initialization_prediction_matches_linear_and_softplus() -> None:
+    initialization = {
+        "selected_indices": np.asarray([0, 1], dtype=np.int64),
+        "selected_features": np.asarray([[1.0, 4.0], [3.0, 2.0]], dtype=np.float32),
+        "feature_mean": np.asarray([1.0, 2.0], dtype=np.float32),
+        "feature_scale": np.asarray([2.0, 4.0], dtype=np.float32),
+        "coefficients": np.asarray([0.5, -2.0], dtype=np.float32),
+        "intercept": np.asarray(0.25, dtype=np.float32),
+    }
+    expected_linear = np.asarray([-0.75, 0.75], dtype=np.float32)
+    observed_linear = direct_initialization_prediction(initialization, "linear", 10.0)
+    np.testing.assert_allclose(observed_linear, expected_linear, atol=1.0e-7)
+    observed_softplus = direct_initialization_prediction(
+        initialization, "softplus", 10.0
+    )
+    expected_softplus = np.logaddexp(0.0, 10.0 * expected_linear) / 10.0
+    np.testing.assert_allclose(observed_softplus, expected_softplus, atol=1.0e-7)
+    model = cv.SingleWaveletDecoder(
+        np.ones((1, 1), dtype=np.float32),
+        initialization,
+        hidden_size=2,
+        recurrent_cell="standard",
+        output_activation="softplus",
+        softplus_beta=10.0,
+    )
+    with torch.inference_mode():
+        model_prediction = model.direct_features(
+            torch.from_numpy(initialization["selected_features"])
+        ).numpy()
+    np.testing.assert_allclose(observed_softplus, model_prediction, atol=1.0e-7)
+
+
+def test_direct_initialization_prediction_rejects_unknown_activation() -> None:
+    initialization = {
+        "selected_features": np.ones((2, 1), dtype=np.float32),
+        "feature_mean": np.zeros(1, dtype=np.float32),
+        "feature_scale": np.ones(1, dtype=np.float32),
+        "coefficients": np.ones(1, dtype=np.float32),
+        "intercept": np.asarray(0.0, dtype=np.float32),
+    }
+    with np.testing.assert_raises_regex(ValueError, "unsupported output activation"):
+        direct_initialization_prediction(initialization, "unknown", 10.0)
 
 
 def test_movement_positive_weight_balances_training_scope() -> None:

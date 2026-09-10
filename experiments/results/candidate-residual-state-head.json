@@ -8,6 +8,8 @@
     "baseline": "strongest fixed pre-ablation split-local reference for the same subject and finger",
     "primary_gain": "final candidate PCC minus the fixed reference PCC",
     "candidate_self_gain": "final candidate PCC minus that candidate architecture's own initialization PCC; diagnostic only",
+    "same_architecture_tuning_gain": "final tuned PCC minus the initialization PCC of the identical architecture and representation",
+    "architecture_change_policy": "Changing the representation or architecture never resets the fixed reference. Such a run may establish an overall model gain against the old reference, but it is not a same-architecture tuning gain.",
     "prohibited_shortcut": "A weaker candidate-specific initialization never replaces the fixed reference and cannot manufacture a pass."
   },
   "current_pass_accounting": {

@@ -909,6 +909,37 @@ def load_or_create_initialization(root: Path, create):
         }
 
 
+def direct_initialization_prediction(
+    initialization: dict[str, np.ndarray],
+    output_activation: str,
+    softplus_beta: float,
+) -> np.ndarray:
+    """Evaluate the immutable sparse initializer without constructing an LSTM.
+
+    Representation-only screens need the split-local LARS prediction, not an
+    arbitrary recurrent input width or a token optimizer update. Keeping this
+    calculation independent of the decoder prevents those training-only
+    settings from changing whether an initializer can be scored.
+    """
+    selected = np.asarray(initialization["selected_features"], dtype=np.float32)
+    mean = np.asarray(initialization["feature_mean"], dtype=np.float32)
+    scale = np.asarray(initialization["feature_scale"], dtype=np.float32)
+    coefficients = np.asarray(initialization["coefficients"], dtype=np.float32)
+    intercept = float(np.asarray(initialization["intercept"]))
+    logit = ((selected - mean) / scale) @ coefficients + intercept
+    if output_activation == "linear":
+        return np.asarray(logit, dtype=np.float32)
+    if output_activation != "softplus":
+        raise ValueError(f"unsupported output activation {output_activation!r}")
+    scaled = softplus_beta * np.asarray(logit, dtype=np.float64)
+    activated = np.where(
+        scaled > 20.0,
+        np.asarray(logit, dtype=np.float64),
+        np.logaddexp(0.0, scaled) / softplus_beta,
+    )
+    return np.asarray(activated, dtype=np.float32)
+
+
 def load_cached_ica(
     root: Path | None,
     subject: int,
@@ -1944,6 +1975,14 @@ def main() -> None:
         help="keep zero-update LARS as a baseline but require the selected model to train the LSTM",
     )
     parser.add_argument(
+        "--initialization-only",
+        action="store_true",
+        help=(
+            "fit and score only the three outer split-local sparse initializers; "
+            "skip inner-fold recurrent models and every LSTM update"
+        ),
+    )
+    parser.add_argument(
         "--selection-metric",
         choices=("event_macro_nmse", "raw_pcc"),
         default="raw_pcc",
@@ -2245,6 +2284,12 @@ def main() -> None:
         help="prepare the subject-level 400 Hz and fixed-leaf caches, then exit",
     )
     args = parser.parse_args()
+    if args.initialization_only:
+        if args.reuse_inner_metrics_from is not None or args.force_schedule is not None:
+            raise ValueError(
+                "--initialization-only cannot reuse decoder metrics or force a decoder schedule"
+            )
+        args.require_lstm_update = False
     if (
         args.movement_loss_weight < 0
         or args.movement_trajectory_weight <= 0
@@ -2496,9 +2541,12 @@ def main() -> None:
         designed_band_bins = designed[:, :usable].reshape(
             len(CSP_BANDS_HZ), -1, args.samples_per_bin, designed.shape[2]
         )
-    ecog_t = torch.from_numpy(ecog.copy()).to(device)
-    context = frontend.effective_kernel_size // 2
-    padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
+    if args.initialization_only:
+        padded_ecog = None
+    else:
+        ecog_t = torch.from_numpy(ecog.copy()).to(device)
+        context = frontend.effective_kernel_size // 2
+        padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
 
     initialized_oof = np.full(rows, np.nan, dtype=np.float32)
     tuned_oof = np.full(rows, np.nan, dtype=np.float32)
@@ -2537,7 +2585,9 @@ def main() -> None:
             finger_index=finger_index,
         )
         inner_records = []
-        for split in ([] if reused_report is not None else splits):
+        for split in (
+            [] if reused_report is not None or args.initialization_only else splits
+        ):
             cache_root = args.initialization_cache_root or args.output
             cache = cache_root / "cache" / f"outer{outer_fold}" / f"inner{split['fold']}"
             requested_split = split
@@ -2637,25 +2687,32 @@ def main() -> None:
                 f"direct_features={direct_feature_count}",
                 flush=True,
             )
-        if reused_report is not None:
+        if args.initialization_only:
+            selected_schedule = "initialization_only"
+            selection_summary = {
+                "rule": "representation-only outer initializer; no decoder selection",
+                "inner_fold_count": 0,
+            }
+        elif reused_report is not None:
             reused_outer = next(
                 record
                 for record in reused_report["outer_folds"]
                 if int(record["outer_fold"]) == outer_fold
             )
             inner_records = reused_outer["inner_records"]
-        selected_schedule, selection_summary = one_standard_error_selection(
-            inner_records,
-            require_lstm_update=args.require_lstm_update,
-            selection_metric=args.selection_metric,
-            selection_rule=args.selection_rule,
-        )
-        if args.force_schedule is not None:
-            if args.force_schedule not in schedule_order():
-                raise ValueError(
-                    f"forced schedule {args.force_schedule!r} is not in the configured grid"
-                )
-            selected_schedule = args.force_schedule
+        if not args.initialization_only:
+            selected_schedule, selection_summary = one_standard_error_selection(
+                inner_records,
+                require_lstm_update=args.require_lstm_update,
+                selection_metric=args.selection_metric,
+                selection_rule=args.selection_rule,
+            )
+            if args.force_schedule is not None:
+                if args.force_schedule not in schedule_order():
+                    raise ValueError(
+                        f"forced schedule {args.force_schedule!r} is not in the configured grid"
+                    )
+                selected_schedule = args.force_schedule
 
         outer_cache_root = args.initialization_cache_root or args.output
         outer_cache = outer_cache_root / "cache" / f"outer{outer_fold}" / "outer"
@@ -2712,34 +2769,41 @@ def main() -> None:
         initialization, spatial, outer_target, _ = load_or_create_initialization(
             outer_cache, create_outer_initialization
         )
-        torch.manual_seed(model_seed)
-        model = make_model(spatial, initialization, args).to(device)
-        cached = torch.from_numpy(
-            cached_initialization_features(initialization, args.residual_input)
-        ).to(device)
         target_np = outer_target.astype(np.float32)
-        target = torch.from_numpy(target_np).to(device)
-        with torch.inference_mode():
-            initialized = model.direct_features(cached).float().cpu().numpy()
-        train_final_schedule(
-            model=model,
-            cached=cached,
-            padded_ecog=padded_ecog,
-            target=target,
-            raw=raw,
-            training_groups=[[int(start), int(stop)] for start, stop in groups],
-            schedule=selected_schedule,
-            args=args,
-            seed=sampler_seed,
-            finger_index=finger_index,
-        )
-        if selected_schedule.startswith("unfrozen"):
-            final_features = extract_all(model, padded_ecog, rows, args.feature_chunk)
+        if args.initialization_only:
+            model = None
+            initialized = direct_initialization_prediction(
+                initialization, args.output_activation, args.softplus_beta
+            )
+            prediction = initialized
         else:
-            final_features = cached
-        prediction = predict_intervals(
-            model, final_features, outer_validation_intervals, rows
-        )
+            torch.manual_seed(model_seed)
+            model = make_model(spatial, initialization, args).to(device)
+            cached = torch.from_numpy(
+                cached_initialization_features(initialization, args.residual_input)
+            ).to(device)
+            target = torch.from_numpy(target_np).to(device)
+            with torch.inference_mode():
+                initialized = model.direct_features(cached).float().cpu().numpy()
+            train_final_schedule(
+                model=model,
+                cached=cached,
+                padded_ecog=padded_ecog,
+                target=target,
+                raw=raw,
+                training_groups=[[int(start), int(stop)] for start, stop in groups],
+                schedule=selected_schedule,
+                args=args,
+                seed=sampler_seed,
+                finger_index=finger_index,
+            )
+            if selected_schedule.startswith("unfrozen"):
+                final_features = extract_all(model, padded_ecog, rows, args.feature_chunk)
+            else:
+                final_features = cached
+            prediction = predict_intervals(
+                model, final_features, outer_validation_intervals, rows
+            )
         validation = indices_from_intervals(outer_validation_intervals)
         initialized_oof[validation] = initialized[validation]
         tuned_oof[validation] = prediction[validation]
@@ -2772,7 +2836,8 @@ def main() -> None:
             "runtime_seconds": time.perf_counter() - fold_started,
         }
         outer_records.append(record)
-        torch.save(model.state_dict(), args.output / f"outer{outer_fold}_model.pt")
+        if model is not None:
+            torch.save(model.state_dict(), args.output / f"outer{outer_fold}_model.pt")
         print(
             json.dumps(
                 {
@@ -2790,14 +2855,21 @@ def main() -> None:
     observed = np.isfinite(tuned_oof)
     report = {
         "protocol": (
-            "one single-path subject/finger model; five event-balanced inner folds per "
-            "outer-training scope; split-local target, "
-            "ICA, configured HHL/HHH CSP and LARS refits; "
-            f"{args.recurrent_cell} nonlinear gated LSTM decoder with "
-            f"{args.residual_input} residual input "
-            f"with {args.head_initialization}; {args.sampler_mode} minibatches; "
-            f"optimizer-update checkpoints; {args.selection_rule} selection on "
-            f"{args.selection_metric}; outer fold evaluated once; released test untouched"
+            "representation-only screen; split-local target, ICA, configured CSP, "
+            "and sparse initializer refitted in each outer-training scope; no inner "
+            "decoder selection and no LSTM updates; outer fold evaluated once; "
+            "released test untouched"
+            if args.initialization_only
+            else (
+                "one single-path subject/finger model; five event-balanced inner folds per "
+                "outer-training scope; split-local target, "
+                "ICA, configured HHL/HHH CSP and LARS refits; "
+                f"{args.recurrent_cell} nonlinear gated LSTM decoder with "
+                f"{args.residual_input} residual input "
+                f"with {args.head_initialization}; {args.sampler_mode} minibatches; "
+                f"optimizer-update checkpoints; {args.selection_rule} selection on "
+                f"{args.selection_metric}; outer fold evaluated once; released test untouched"
+            )
         ),
         "frontend": {
             "name": {
@@ -2855,6 +2927,7 @@ def main() -> None:
             "movement_balanced_accuracy",
         ],
         "released_test_touched": False,
+        "initialization_only": args.initialization_only,
         "subject": args.subject,
         "finger": args.finger,
         "target_policy": {
@@ -2873,12 +2946,17 @@ def main() -> None:
             else None
         ),
         "decoder": (
-            f"fixed split-local LARS direct path plus zero-initialized "
-            f"{args.recurrent_cell} nonlinear residual; recurrent input="
-            f"{args.residual_input}"
-            if args.recurrent_cell in ("residual_lstm", "residual_gru")
-            else f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM"
+            "none; representation-only sparse initializer audit"
+            if args.initialization_only
+            else (
+                f"fixed split-local LARS direct path plus zero-initialized "
+                f"{args.recurrent_cell} nonlinear residual; recurrent input="
+                f"{args.residual_input}"
+                if args.recurrent_cell in ("residual_lstm", "residual_gru")
+                else f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM"
+            )
         ),
+        "selected_prediction_is_initializer_alias": args.initialization_only,
         "training_objective": {
             "trajectory": "normalized mean squared error",
             "movement_trajectory_weight": args.movement_trajectory_weight,
@@ -2934,7 +3012,7 @@ def main() -> None:
             "event_split": split_seed,
             "minibatch_sampler": sampler_seed,
         },
-        "schedule_candidates": schedule_order(),
+        "schedule_candidates": [] if args.initialization_only else schedule_order(),
         "outer_folds": outer_records,
         "mean_initialized_outer_raw_pcc": float(
             np.mean([record["initialized_outer_metrics"]["raw_pcc"] for record in outer_records])
