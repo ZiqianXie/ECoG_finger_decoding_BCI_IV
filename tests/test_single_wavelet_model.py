@@ -159,6 +159,32 @@ def test_auxiliary_velocity_uses_the_same_recurrent_state() -> None:
     assert model.velocity_output.in_features == model.lstm.hidden_size
 
 
+def test_movement_modulation_starts_as_an_exact_identity_gain() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        movement_head=True,
+        movement_modulation=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.movement_gain.item() == 0.0
+
+    with torch.no_grad():
+        model.movement_gain.fill_(1.0)
+        model.movement_output.weight.zero_()
+        model.movement_output.bias.fill_(2.0)
+    modulated = model.decode_features(features)
+    assert torch.all(modulated > model.direct_features(features))
+
+
 def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
     coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
     model = SingleWaveletDecoder(

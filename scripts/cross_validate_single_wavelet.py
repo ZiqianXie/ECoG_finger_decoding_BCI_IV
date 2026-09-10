@@ -764,6 +764,7 @@ def optimizer(
     wavelet_lr: float,
     interlevel_lr: float,
     weight_decay: float,
+    movement_gain_lr: float | None = None,
 ) -> torch.optim.Optimizer:
     head_parameters = list(model.lstm.parameters()) + list(model.output.parameters())
     if model.movement_output is not None:
@@ -784,6 +785,13 @@ def optimizer(
     if interlevel_parameters:
         parameter_groups.append(
             {"params": interlevel_parameters, "lr": interlevel_lr}
+        )
+    if model.movement_gain is not None:
+        parameter_groups.append(
+            {
+                "params": [model.movement_gain],
+                "lr": head_lr if movement_gain_lr is None else movement_gain_lr,
+            }
         )
     return torch.optim.AdamW(parameter_groups, weight_decay=weight_decay)
 
@@ -813,6 +821,7 @@ def make_model(
         residual_input=args.residual_input,
         movement_head=args.movement_loss_weight > 0,
         velocity_head=args.velocity_loss_weight > 0,
+        movement_modulation=args.movement_modulation,
         residual_output_init_std=args.residual_output_init_std,
     )
 
@@ -1115,7 +1124,15 @@ def monitor_inner_fold(
         args.movement_threshold,
         args.rest_threshold,
     )
-    opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay)
+    opt = optimizer(
+        model,
+        args.head_learning_rate,
+        0.0,
+        0.0,
+        0.0,
+        args.weight_decay,
+        args.movement_modulation_learning_rate,
+    )
     decode = (
         model.decode_features_with_auxiliary
         if args.movement_loss_weight or args.velocity_loss_weight
@@ -1173,6 +1190,7 @@ def monitor_inner_fold(
         args.wavelet_learning_rate,
         args.interlevel_learning_rate,
         args.weight_decay,
+        args.movement_modulation_learning_rate,
     )
     forward = (
         model.forward_with_auxiliary
@@ -1309,7 +1327,13 @@ def train_final_schedule(
     if frozen_updates:
         sampler = make_sampler(args, training_groups, seed)
         opt = optimizer(
-            model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay
+            model,
+            args.head_learning_rate,
+            0.0,
+            0.0,
+            0.0,
+            args.weight_decay,
+            args.movement_modulation_learning_rate,
         )
         decode = (
             model.decode_features_with_auxiliary
@@ -1349,6 +1373,7 @@ def train_final_schedule(
             args.wavelet_learning_rate,
             args.interlevel_learning_rate,
             args.weight_decay,
+            args.movement_modulation_learning_rate,
         )
         forward = (
             model.forward_with_auxiliary
@@ -1596,6 +1621,17 @@ def main() -> None:
         help="weight of an auxiliary velocity-regression head on the shared LSTM state",
     )
     parser.add_argument(
+        "--movement-modulation",
+        action="store_true",
+        help="learn a smooth state-conditioned trajectory gain initialized exactly to one",
+    )
+    parser.add_argument(
+        "--movement-modulation-learning-rate",
+        type=float,
+        default=None,
+        help="optional learning rate for the scalar movement modulation gain",
+    )
+    parser.add_argument(
         "--residual-output-init-std",
         type=float,
         default=0.0,
@@ -1625,6 +1661,10 @@ def main() -> None:
         or args.residual_output_init_std < 0
         or args.correlation_loss_weight < 0
         or args.derivative_correlation_weight < 0
+        or (
+            args.movement_modulation_learning_rate is not None
+            and args.movement_modulation_learning_rate <= 0
+        )
     ):
         raise ValueError("auxiliary loss weights must be nonnegative")
     if args.residual_input == "candidate" and args.recurrent_cell not in (
@@ -1634,6 +1674,8 @@ def main() -> None:
         raise ValueError(
             "--residual-input candidate requires --recurrent-cell residual_lstm or residual_gru"
         )
+    if args.movement_modulation and args.movement_loss_weight <= 0:
+        raise ValueError("--movement-modulation requires --movement-loss-weight")
     if args.frozen_only and (
         args.wavelet_interlevel_skip or args.wavelet_interlevel_normalization
     ):
@@ -2079,6 +2121,7 @@ def main() -> None:
             "trajectory": "normalized mean squared error",
             "movement_trajectory_weight": args.movement_trajectory_weight,
             "movement_state_bce_weight": args.movement_loss_weight,
+            "movement_state_trajectory_modulation": args.movement_modulation,
             "auxiliary_velocity_mse_weight": args.velocity_loss_weight,
             "within_sequence_correlation_weight": args.correlation_loss_weight,
             "within_sequence_velocity_correlation_weight": (
@@ -2095,6 +2138,7 @@ def main() -> None:
         },
         "learning_rates": {
             "head": args.head_learning_rate,
+            "movement_modulation": args.movement_modulation_learning_rate,
             "spatial": args.spatial_learning_rate,
             "wavelet_taps": args.wavelet_learning_rate,
             "interlevel_paths": args.interlevel_learning_rate,

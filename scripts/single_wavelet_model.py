@@ -101,6 +101,7 @@ class SingleWaveletDecoder(nn.Module):
         residual_input: str = "selected",
         movement_head: bool = False,
         velocity_head: bool = False,
+        movement_modulation: bool = False,
         residual_output_init_std: float = 0.0,
     ) -> None:
         super().__init__()
@@ -215,6 +216,12 @@ class SingleWaveletDecoder(nn.Module):
         self.output = nn.Linear(hidden_size, 1)
         self.movement_output = nn.Linear(hidden_size, 1) if movement_head else None
         self.velocity_output = nn.Linear(hidden_size, 1) if velocity_head else None
+        if movement_modulation and self.movement_output is None:
+            raise ValueError("movement modulation requires a movement output head")
+        self.movement_modulation = bool(movement_modulation)
+        self.movement_gain = (
+            nn.Parameter(torch.zeros(())) if movement_modulation else None
+        )
         if residual_output_init_std < 0:
             raise ValueError("residual output initialization scale must be nonnegative")
         with torch.no_grad():
@@ -357,7 +364,13 @@ class SingleWaveletDecoder(nn.Module):
             prediction = self._direct_prediction(
                 recurrent_features, direct_features
             ) + prediction
-        return self.activate_output(prediction).squeeze(-1), recurrent
+        trajectory = self.activate_output(prediction).squeeze(-1)
+        if self.movement_modulation:
+            movement_logit = self.movement_output(recurrent).squeeze(-1)
+            movement_state = 2.0 * torch.sigmoid(movement_logit) - 1.0
+            log_gain = np.log(3.0) * torch.tanh(self.movement_gain)
+            trajectory = trajectory * torch.exp(log_gain * movement_state)
+        return trajectory, recurrent
 
     def decode_features(self, features: torch.Tensor) -> torch.Tensor:
         prediction, _ = self._decode_features(features)
