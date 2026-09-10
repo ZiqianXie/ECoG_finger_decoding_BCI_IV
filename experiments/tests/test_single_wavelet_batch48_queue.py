@@ -43,12 +43,31 @@ def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
     assert "--residual-include-direct" in command
     assert "--frozen-only" in command
     assert "--csp-band-mode joint_hhl_hhh" in joined
+    assert "--csp-mode movement_1" in joined
     assert "--residual-input-width 64" in joined
     assert "--correlation-loss-weight 0.0" in joined
     assert "--derivative-correlation-weight 0.0" in joined
     assert "--raw-movement-correlation-weight 0.0" in joined
     assert "--raw-movement-derivative-correlation-weight 0.0" in joined
     assert "--lasso-backend torch_fista" in joined
+
+
+def test_command_can_request_two_csp_components_per_band(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_band_mode="separate_50_100_hhl_hhh",
+        csp_mode="movement_2",
+    )
+    joined = " ".join(command)
+    assert "--csp-mode movement_2" in joined
+    assert "--csp-band-mode separate_50_100_hhl_hhh" in joined
     assert "--wavelet-interlevel-skip" not in command
     assert "--wavelet-interlevel-normalization" not in command
 

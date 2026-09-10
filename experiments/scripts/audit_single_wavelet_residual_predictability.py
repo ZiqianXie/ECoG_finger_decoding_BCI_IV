@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -160,6 +161,12 @@ def main() -> None:
         "--ridge-backend", choices=("sklearn", "torch"), default="torch"
     )
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--probes",
+        nargs="+",
+        choices=("ridge_all_lags", "ridge_current_temporal", "hist_current_temporal"),
+        default=("ridge_all_lags", "ridge_current_temporal", "hist_current_temporal"),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     device = torch.device(args.device)
@@ -170,6 +177,7 @@ def main() -> None:
     stitched_raw = None
     outer_records = []
     for outer_fold in args.outer_folds:
+        outer_started = time.perf_counter()
         directory = args.cache_root / "cache" / f"outer{outer_fold}" / "outer"
         split = json.loads((directory / "split.json").read_text())
         with np.load(directory / "initialization.npz") as archive:
@@ -202,74 +210,85 @@ def main() -> None:
         temporal = temporal_summary(current, all_intervals, base)
         residual = target - base
 
-        ridge_all, ridge_all_alpha, ridge_all_curve = select_ridge(
-            standardized,
-            target,
-            training_intervals,
-            backend=args.ridge_backend,
-            device=device,
-        )
-        ridge_current, ridge_current_alpha, ridge_current_curve = select_ridge(
-            temporal,
-            residual,
-            training_intervals,
-            backend=args.ridge_backend,
-            device=device,
-        )
-        ridge_all_prediction = np.maximum(ridge_all.predict(standardized), 0.0)
-        ridge_current_prediction = np.maximum(
-            base + ridge_current.predict(temporal), 0.0
-        )
-
-        training = rows_from_intervals(training_intervals)
-        nonlinear = make_pipeline(
-            StandardScaler(),
-            HistGradientBoostingRegressor(
-                learning_rate=0.05,
-                max_iter=200,
-                max_leaf_nodes=15,
-                l2_regularization=1.0,
-                early_stopping=False,
-                random_state=2026,
-            ),
-        )
-        nonlinear.fit(temporal[training], residual[training])
-        nonlinear_prediction = np.maximum(
-            base + nonlinear.predict(temporal), 0.0
-        )
-        predictions = {
-            "lars": base,
-            "ridge_all_lags": ridge_all_prediction,
-            "ridge_current_temporal": ridge_current_prediction,
-            "hist_current_temporal": nonlinear_prediction,
-        }
+        predictions = {"lars": base}
+        probe_audit: dict[str, object] = {}
+        if "ridge_all_lags" in args.probes:
+            ridge_all, ridge_all_alpha, ridge_all_curve = select_ridge(
+                standardized,
+                target,
+                training_intervals,
+                backend=args.ridge_backend,
+                device=device,
+            )
+            predictions["ridge_all_lags"] = np.maximum(
+                ridge_all.predict(standardized), 0.0
+            )
+            probe_audit.update(
+                {
+                    "ridge_all_alpha": ridge_all_alpha,
+                    "ridge_all_inner_mse": ridge_all_curve,
+                }
+            )
+        if "ridge_current_temporal" in args.probes:
+            ridge_current, ridge_current_alpha, ridge_current_curve = select_ridge(
+                temporal,
+                residual,
+                training_intervals,
+                backend=args.ridge_backend,
+                device=device,
+            )
+            predictions["ridge_current_temporal"] = np.maximum(
+                base + ridge_current.predict(temporal), 0.0
+            )
+            probe_audit.update(
+                {
+                    "ridge_current_alpha": ridge_current_alpha,
+                    "ridge_current_inner_mse": ridge_current_curve,
+                }
+            )
+        if "hist_current_temporal" in args.probes:
+            training = rows_from_intervals(training_intervals)
+            nonlinear = make_pipeline(
+                StandardScaler(),
+                HistGradientBoostingRegressor(
+                    learning_rate=0.05,
+                    max_iter=200,
+                    max_leaf_nodes=15,
+                    l2_regularization=1.0,
+                    early_stopping=False,
+                    random_state=2026,
+                ),
+            )
+            nonlinear.fit(temporal[training], residual[training])
+            predictions["hist_current_temporal"] = np.maximum(
+                base + nonlinear.predict(temporal), 0.0
+            )
         for name, prediction in predictions.items():
             stitched.setdefault(
                 name, np.full(rows, np.nan, dtype=np.float32)
             )[validation] = prediction[validation]
         stitched_target[validation] = target[validation]
-        outer_records.append(
-            {
-                "outer_fold": outer_fold,
-                "ridge_all_alpha": ridge_all_alpha,
-                "ridge_current_alpha": ridge_current_alpha,
-                "ridge_all_inner_mse": ridge_all_curve,
-                "ridge_current_inner_mse": ridge_current_curve,
-                "raw_pcc": {
-                    name: pearson(prediction[validation], raw[validation])
-                    for name, prediction in predictions.items()
-                },
-                "cleaned_residual_pcc": {
-                    "ridge_current_temporal": pearson(
-                        ridge_current_prediction[validation] - base[validation],
-                        residual[validation],
-                    ),
-                    "hist_current_temporal": pearson(
-                        nonlinear_prediction[validation] - base[validation],
-                        residual[validation],
-                    ),
-                },
-            }
+        cleaned_residual_pcc = {
+            name: pearson(
+                prediction[validation] - base[validation], residual[validation]
+            )
+            for name, prediction in predictions.items()
+            if name in ("ridge_current_temporal", "hist_current_temporal")
+        }
+        record = {
+            "outer_fold": outer_fold,
+            **probe_audit,
+            "raw_pcc": {
+                name: pearson(prediction[validation], raw[validation])
+                for name, prediction in predictions.items()
+            },
+            "cleaned_residual_pcc": cleaned_residual_pcc,
+            "runtime_seconds": float(time.perf_counter() - outer_started),
+        }
+        outer_records.append(record)
+        print(
+            f"outer={outer_fold} runtime_seconds={record['runtime_seconds']:.3f}",
+            flush=True,
         )
 
     assert stitched_target is not None and stitched_raw is not None
@@ -284,6 +303,7 @@ def main() -> None:
         "subject": args.subject,
         "finger": args.finger,
         "ridge_backend": args.ridge_backend,
+        "probes": list(args.probes),
         "outer_records": outer_records,
         "stitched_raw_pcc": {
             name: pearson(prediction[observed], stitched_raw[observed])

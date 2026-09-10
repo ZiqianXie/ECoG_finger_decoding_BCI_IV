@@ -58,6 +58,7 @@ def build_command(
     raw_movement_correlation_weight: float = 0.0,
     raw_movement_derivative_correlation_weight: float = 0.0,
     lasso_backend: str = "torch_fista",
+    csp_mode: str = "movement_1",
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -116,7 +117,7 @@ def build_command(
         "--lasso-backend",
         lasso_backend,
         "--csp-mode",
-        "movement_1",
+        csp_mode,
         "--csp-band-mode",
         csp_band_mode,
         "--hidden-size",
@@ -216,6 +217,11 @@ def main() -> None:
         ),
         default="joint_hhl_hhh",
     )
+    parser.add_argument(
+        "--csp-mode",
+        choices=("ica_only", "movement_1", "movement_2", "movement_4", "tails_2x2", "tails_4x4"),
+        default="movement_1",
+    )
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
     parser.add_argument("--derivative-correlation-weight", type=float, default=0.0)
@@ -257,6 +263,7 @@ def main() -> None:
             args.raw_movement_correlation_weight,
             args.raw_movement_derivative_correlation_weight,
             args.lasso_backend,
+            args.csp_mode,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
