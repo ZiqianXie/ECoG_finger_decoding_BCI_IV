@@ -264,6 +264,15 @@
     "best_global_lag_bins": 0,
     "visual_finding": "The late high-amplitude event is detected with largely correct flexion timing, but peak amplitudes remain compressed and isolated resting transients remain. Global lag zero is optimal, so a fixed alignment correction is not indicated."
   },
+  "S1_index_softplus_gradient_audit": {
+    "description": "The derivative of the beta-10 Softplus was measured at each split-local LARS preactivation before residual tuning. Movement means and lower deciles are reported across the three outer refits.",
+    "movement_derivative_mean_range": [0.849255, 0.862273],
+    "movement_derivative_tenth_percentile_range": [0.608822, 0.65049],
+    "movement_fraction_with_derivative_below_0.1": [0.0, 0.0, 0.0],
+    "lars_mean_prediction_during_movement_range": [0.253248, 0.27342],
+    "mean_target_during_movement_range": [0.357061, 0.382557],
+    "decision": "Softplus saturation is not the learning bottleneck. LARS underestimates movement amplitude, but the residual path receives a strong local gradient on essentially every movement bin."
+  },
   "S1_index_signed_leaf_pooling": {
     "description": "Each existing wavelet leaf retains one scalar statistic: initialized log-energy plus a zero-gated signed within-bin mean. Spatial filters and wavelet taps are frozen, so this isolates phase-sensitive pooling without adding a filter branch.",
     "shared_initialization_pcc": 0.725545068,
@@ -383,6 +392,71 @@
       "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
       "best_inner_unfrozen_minus_best_frozen_pcc": [-0.005014358, -0.002310629, -0.000793381],
       "decision": "Reject: all three scopes again select the unchanged frozen checkpoint, and the best skip-tuned continuation is worse on every inner-fold aggregate."
+    },
+    "current_bin_minibatch_screen": {
+      "description": "Checkpoint grids are scaled inversely with batch size so each candidate sees approximately the same number of 100-bin sequences as the batch-24 reference.",
+      "batch_8": {
+        "checkpoint_grid": [60, 150, 300, 600, 1200],
+        "tuned_pcc": 0.753913983,
+        "gain": 0.028368915,
+        "selected_schedules": ["frozen_60", "frozen_150", "frozen_60"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.369024,
+          "rest_false_positive_rms": 0.075827,
+          "movement_rmse": 0.229978,
+          "amplitude_slope": 0.545674,
+          "velocity_pcc": 0.501891,
+          "movement_balanced_accuracy": 0.758066
+        }
+      },
+      "batch_24_reference": {
+        "checkpoint_grid": [20, 50, 100, 200, 400],
+        "tuned_pcc": 0.781612136,
+        "gain": 0.056067068
+      },
+      "batch_48": {
+        "checkpoint_grid": [10, 25, 50, 100, 200],
+        "tuned_pcc": 0.78482521,
+        "gain": 0.059280142,
+        "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.334322,
+          "rest_false_positive_rms": 0.063912,
+          "movement_rmse": 0.219117,
+          "amplitude_slope": 0.659566,
+          "velocity_pcc": 0.529745,
+          "movement_balanced_accuracy": 0.761711
+        }
+      },
+      "batch_96": {
+        "checkpoint_grid": [5, 13, 25, 50, 100],
+        "tuned_pcc": 0.783785963,
+        "gain": 0.058240895,
+        "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.336593,
+          "rest_false_positive_rms": 0.063512,
+          "movement_rmse": 0.220043,
+          "amplitude_slope": 0.661349,
+          "velocity_pcc": 0.526719,
+          "movement_balanced_accuracy": 0.761463
+        }
+      },
+      "batch_192": {
+        "checkpoint_grid": [3, 6, 13, 25, 50],
+        "tuned_pcc": 0.757304648,
+        "gain": 0.03175958,
+        "selected_schedules": ["frozen_50", "frozen_50", "frozen_50"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.359508,
+          "rest_false_positive_rms": 0.07698,
+          "movement_rmse": 0.22807,
+          "amplitude_slope": 0.548547,
+          "velocity_pcc": 0.494007,
+          "movement_balanced_accuracy": 0.773796
+        }
+      },
+      "decision": "Use batch 48 for any continuation of this S1-index residual family. Smaller batches are much worse; batch 96 is statistically indistinguishable but slightly lower; batch 192 collapses. The new best is 0.785 PCC (+0.059), so batch regularization does not close the requested +0.1 gain."
     },
     "all_candidate_causal_closure": {
       "description": "The LSTM receives the current-time source stream for every atom represented anywhere in the screened candidate lag bank, while the direct LARS path remains unchanged.",
@@ -508,5 +582,5 @@
     "decision": "Keep: the matched control and two auxiliary-velocity runs loaded identical split-local initializations while training concurrently."
   },
   "visual_diagnostic": "Across S1 index, S2 middle, and S3 thumb, the state head lowers stationary offset and increases event amplitudes. It still retains isolated false peaks, underestimates the largest flexions, and barely changes S3-thumb velocity correlation.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Presenting only current-bin candidate features plus the immutable LARS logit to a 64-unit residual LSTM is the best S1 setting at 0.782 PCC (+0.056); four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Presenting only current-bin candidate features plus the immutable LARS logit to a 64-unit residual LSTM is the best S1 geometry; batch 48 raises it to 0.785 PCC (+0.059). Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and the batch-size optimum is shallow, so further learning-rate, batch-size, or wavelet-path sweeps are unlikely to close the requested +0.1 gain without changing the information or target model."
 }
