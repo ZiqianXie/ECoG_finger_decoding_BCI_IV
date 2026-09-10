@@ -1236,26 +1236,39 @@
       "highest_depth5_peak_hz": 195.129395,
       "diagnostic": "The added atoms resolve the low-frequency designed bands more closely and remain concentrated on the approximately 0--200 Hz signal support."
     },
-    "initialized_pcc": 0.314679349,
+    "fixed_pre_ablation_reference_pcc": 0.248297245,
+    "candidate_own_initialization_pcc": 0.314679349,
     "state_only_lr3e4": {
       "tuned_pcc": 0.323803209,
-      "gain": 0.009123861,
+      "gain": 0.075505964,
+      "candidate_self_gain": 0.009123861,
       "selected_schedules": ["frozen_100", "frozen_100", "frozen_50"]
     },
     "level_plus_velocity_correlation_lr3e4": {
       "weights": [0.1, 0.1],
       "tuned_pcc": 0.326057834,
-      "gain": 0.011378485
+      "gain": 0.077760589,
+      "candidate_self_gain": 0.011378485
     },
     "state_only_lr1e4": {
       "tuned_pcc": 0.351208291,
-      "gain": 0.036528943,
+      "gain": 0.102911046,
+      "candidate_self_gain": 0.036528943,
       "selected_schedules": ["frozen_200", "frozen_200", "frozen_200"]
     },
     "state_only_lr3e5": {
       "tuned_pcc": 0.354987579,
-      "gain": 0.040308231,
+      "gain": 0.106690334,
+      "candidate_self_gain": 0.040308231,
       "selected_schedules": ["frozen_600", "frozen_600", "frozen_600"],
+      "fixed_reference_morphology": {
+        "event_macro_nmse": 0.961221308,
+        "rest_false_positive_rms": 0.12577057,
+        "movement_rmse": 0.432790674,
+        "amplitude_slope": 0.07563205,
+        "velocity_pcc": 0.184765974,
+        "movement_balanced_accuracy": 0.625469338
+      },
       "initialized_morphology": {
         "event_macro_nmse": 1.039650131,
         "rest_false_positive_rms": 0.125026464,
@@ -1271,7 +1284,8 @@
         "amplitude_slope": 0.145338955,
         "velocity_pcc": 0.237052527,
         "movement_balanced_accuracy": 0.657552222
-      }
+      },
+      "fixed_reference_visual_audit": "The candidate removes the old diffuse rest floor and detects the major movement blocks more clearly. It still underestimates the largest flexions and introduces a few isolated false peaks; accordingly, movement RMSE is the one diagnostic that worsens while event NMSE, rest RMS, amplitude slope, velocity PCC, movement-state accuracy, and raw PCC improve."
     },
     "selected_atom_audit": {
       "depth5_fraction_of_absolute_coefficient_mass_by_outer_fold": [0.848, 0.771, 0.722],
@@ -1289,7 +1303,7 @@
       "cached_lr1e4_seconds_sum": 424.921658,
       "cached_lr3e5_seconds_sum": 788.345266
     },
-    "decision": "Depth-5 materially improves the fixed representation and lower learning rates prevent the 200-update collapse seen at 3e-4. The gain nevertheless saturates at +0.0403, the linear residual reserve is only +0.0203, and movement RMSE worsens despite better rest suppression. Keep the implementation for targeted representation work, but do not expand this costly configuration across all 15 pairs or continue head-only tuning."
+    "decision": "Count S1 middle as a fixed-reference PCC pass: the depth-5 candidate gains +0.1067 over the stronger pre-ablation reference. Its candidate-specific self-gain is +0.0403. The visual trace and six morphology diagnostics improve, but movement RMSE worsens modestly because large flexions remain underestimated, so this is not a claim of complete trajectory recovery."
   },
   "S1_middle_gpu_leaky_residual_state": {
     "description": "The same single-branch depth-5 model interprets the LSTM output as a causal innovation and applies a fixed-decay state[t] = 0.95 * state[t-1] + innovation[t]. The recurrence is evaluated as one differentiable grouped GPU convolution, with an exactly zero residual at initialization.",
@@ -1560,5 +1574,5 @@
     "decision": "Count S1 little as the fourth numerical and morphology pass against the fixed pre-ablation reference initialization. The fair stitched gain is +0.1017; the larger +0.1079 self-gain is reported only as a diagnostic because the dual-contrast candidate has a slightly lower own initializer. Every recorded morphology metric improves, and the cross-finger diagnostic shows that the gain is not produced by increased leakage from other-finger movement."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Five of fifteen subject-finger models exceed the requested +0.1 gain over their fixed pre-ablation split-local LARS references: S1 little (+0.1017 with capacity-matched dual rest/other-movement CSP), S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), S3 thumb (+0.1034), and S3 ring (+0.1259 with lower-high-gamma CSP). Candidate-specific lower initializers are never used to manufacture a pass. S3 ring improves every averaged morphology diagnostic against its fixed reference, but its candidate-specific self-gain is -0.0006, so the gain is attributed to the representation rather than recurrent tuning. The S1-little model improves every recorded morphology diagnostic and sharply reduces high predictions during cleaned rest; the S2-little ensemble also improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information for S1 ring but adds less than 0.001 tuned PCC there; increasing that dual representation to eight rows worsens stitched PCC. In contrast, the capacity-matched dual contrast closes the S1-little fold-specific gap. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Six of fifteen subject-finger models exceed the requested +0.1 gain over their fixed pre-ablation split-local LARS references: S1 middle (+0.1067 with a depth-5 overcomplete tree and designed-band CSP), S1 little (+0.1017 with capacity-matched dual rest/other-movement CSP), S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), S3 thumb (+0.1034), and S3 ring (+0.1259 with lower-high-gamma CSP). Candidate-specific lower initializers are never used to manufacture a pass. S3 ring improves every averaged morphology diagnostic against its fixed reference, but its candidate-specific self-gain is -0.0006, so the gain is attributed to the representation rather than recurrent tuning. S1 middle has a +0.0403 candidate-specific self-gain and is visually better than its stronger fixed reference, although its movement RMSE worsens modestly because large flexions remain underestimated. The S1-little model improves every recorded morphology diagnostic and sharply reduces high predictions during cleaned rest; the S2-little ensemble also improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information for S1 ring but adds less than 0.001 tuned PCC there; increasing that dual representation to eight rows worsens stitched PCC. In contrast, the capacity-matched dual contrast closes the S1-little fold-specific gap. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."
 }

@@ -35,6 +35,11 @@ def main() -> None:
     parser.add_argument("--fingers", nargs="+", choices=tuple(FINGER_NAMES), required=True)
     parser.add_argument("--parts-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument(
+        "--part-prefix",
+        default="outer",
+        help="per-fold directory prefix, for example outer or fold",
+    )
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
     args = parser.parse_args()
 
@@ -44,7 +49,9 @@ def main() -> None:
     )[OFFSET:]
     for finger in args.fingers:
         finger_index = list(FINGER_NAMES).index(finger)
-        part_directories = [args.parts_root / finger / f"outer{fold}" for fold in range(3)]
+        part_directories = [
+            args.parts_root / finger / f"{args.part_prefix}{fold}" for fold in range(3)
+        ]
         reports = [json.loads((directory / "summary.json").read_text()) for directory in part_directories]
         outer_records = [item for report in reports for item in report["outer_folds"]]
         if sorted(int(item["outer_fold"]) for item in outer_records) != [0, 1, 2]:
