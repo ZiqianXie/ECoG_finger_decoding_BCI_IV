@@ -46,6 +46,7 @@ from single_wavelet_support import (
     extract_energy,
     finger_csp_bank,
     linear_gamma_leaf_signals,
+    linear_lower_high_gamma_leaf_signals,
     pearson,
     resample_ecog,
 )
@@ -58,6 +59,7 @@ from ecog_decoding.models import WaveletPacketEnergy, fit_fastica_spatial_weight
 from ecog_decoding.preprocessing import local_baseline_correct
 from ecog_decoding.regression import lagged
 from ecog_decoding.training import FINGER_NAMES
+from gpu_lasso import fit_torch_lasso_cv
 from train_event_grouped_lars_lstm import indices_from_intervals
 from train_event_grouped_lars_lstm_nested import intervals_from_mask
 from single_wavelet_model import (
@@ -79,7 +81,11 @@ CSP_MODES = {
     "tails_2x2": (0, 1, -2, -1),
     "tails_4x4": (0, 1, 2, 3, -4, -3, -2, -1),
 }
-CSP_BAND_MODES = ("joint_hhl_hhh", "separate_hhl_hhh")
+CSP_BAND_MODES = (
+    "joint_hhl_hhh",
+    "separate_hhl_hhh",
+    "separate_50_100_hhl_hhh",
+)
 
 
 def resolve_seed_roles(
@@ -448,6 +454,7 @@ def fit_csp_band_rows(
     finger_index: int,
     component_indices: tuple[int, ...],
     csp_band_mode: str,
+    lower_high_gamma_bins: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Fit joint or leaf-specific gamma CSP rows for one spatial layer."""
     if csp_band_mode not in CSP_BAND_MODES:
@@ -458,17 +465,35 @@ def fit_csp_band_rows(
         )
         return weights, {"band_mode": csp_band_mode, **audit}
     if hhl_bins is None or hhh_bins is None:
-        raise ValueError("separate_hhl_hhh requires HHL and HHH bins")
+        raise ValueError("separate CSP modes require HHL and HHH bins")
     hhl_weights, hhl_audit = finger_csp_bank(
         hhl_bins, target, training, finger_index, component_indices
     )
     hhh_weights, hhh_audit = finger_csp_bank(
         hhh_bins, target, training, finger_index, component_indices
     )
-    weights = np.concatenate((hhl_weights, hhh_weights), axis=0)
+    band_weights = []
+    band_audits: dict[str, object] = {}
+    if csp_band_mode == "separate_50_100_hhl_hhh":
+        if lower_high_gamma_bins is None:
+            raise ValueError(
+                "separate_50_100_hhl_hhh requires aggregated 50--100 Hz bins"
+            )
+        lower_weights, lower_audit = finger_csp_bank(
+            lower_high_gamma_bins,
+            target,
+            training,
+            finger_index,
+            component_indices,
+        )
+        band_weights.append(lower_weights)
+        band_audits["wavelet_50_100_hz"] = lower_audit
+    band_weights.extend((hhl_weights, hhh_weights))
+    weights = np.concatenate(band_weights, axis=0)
     return weights, {
         "band_mode": csp_band_mode,
         "spatial_rows": int(weights.shape[0]),
+        **band_audits,
         "hhl_100_125_hz": hhl_audit,
         "hhh_125_150_hz": hhh_audit,
     }
@@ -490,9 +515,11 @@ def fit_initialization(
     csp_band_mode: str = "joint_hhl_hhh",
     hhl_bins: np.ndarray | None = None,
     hhh_bins: np.ndarray | None = None,
+    lower_high_gamma_bins: np.ndarray | None = None,
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
     include_candidate_pool: bool = False,
+    lasso_backend: str = "sklearn_lars",
 ) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, object]]:
     training = indices_from_intervals(training_intervals)
     if csp_mode not in CSP_MODES:
@@ -515,6 +542,7 @@ def fit_initialization(
         joint_bins=joint_bins,
         hhl_bins=hhl_bins,
         hhh_bins=hhh_bins,
+        lower_high_gamma_bins=lower_high_gamma_bins,
         target=target,
         training=training,
         finger_index=finger_index,
@@ -559,17 +587,50 @@ def fit_initialization(
         np.float64, copy=False
     )
     lars_splits = grouped_lars_subfolds(training, training_groups, target.shape[0])
-    lars = LassoLarsCV(
-        cv=lars_splits,
-        max_iter=500,
-        n_jobs=1,
-    )
-    lars.fit(train_x, target[training, finger_index])
-    nonzero = np.flatnonzero(lars.coef_)
-    if nonzero.size == 0:
-        centered_target = target[training, finger_index] - np.mean(
-            target[training, finger_index]
+    train_y = target[training, finger_index]
+    lasso_audit: dict[str, object]
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    lasso_started = time.perf_counter()
+    if lasso_backend == "sklearn_lars":
+        lasso = LassoLarsCV(
+            cv=lars_splits,
+            max_iter=500,
+            n_jobs=1,
         )
+        lasso.fit(train_x, train_y)
+        lasso_coefficients = np.asarray(lasso.coef_, dtype=np.float32)
+        lasso_intercept = float(lasso.intercept_)
+        lasso_alpha = float(lasso.alpha_)
+        lasso_audit = {"backend": "sklearn_lars"}
+        selection_method = "lasso_lars_cv"
+    elif lasso_backend == "torch_fista":
+        lasso = fit_torch_lasso_cv(
+            train_x,
+            train_y,
+            lars_splits,
+            device=device,
+        )
+        lasso_coefficients = lasso.coef_
+        lasso_intercept = float(lasso.intercept_)
+        lasso_alpha = float(lasso.alpha_)
+        lasso_audit = {
+            "backend": "torch_fista",
+            "alpha_count": int(lasso.alphas_.size),
+            "iterations": int(lasso.iterations_),
+            "minimum_mean_validation_mse": float(
+                np.min(lasso.mean_validation_mse_)
+            ),
+        }
+        selection_method = "torch_fista_lasso_cv"
+    else:
+        raise ValueError(f"unsupported Lasso backend {lasso_backend!r}")
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    lasso_audit["elapsed_seconds"] = float(time.perf_counter() - lasso_started)
+    nonzero = np.flatnonzero(np.abs(lasso_coefficients) > 1.0e-7)
+    if nonzero.size == 0:
+        centered_target = train_y - np.mean(train_y)
         ranked = np.argsort(np.abs(train_x.T @ centered_target))[::-1]
         selected_nonzero = ranked[: min(64, ranked.size)]
         ridge = RidgeCV(
@@ -577,17 +638,16 @@ def fit_initialization(
             cv=lars_splits,
             scoring="neg_mean_squared_error",
         )
-        ridge.fit(train_x[:, selected_nonzero], target[training, finger_index])
+        ridge.fit(train_x[:, selected_nonzero], train_y)
         coefficients = np.asarray(ridge.coef_, dtype=np.float32)
         intercept = float(ridge.intercept_)
         fitted_alpha = float(ridge.alpha_)
-        selection_method = "ridge_fallback_after_null_lars"
+        selection_method = f"ridge_fallback_after_null_{lasso_backend}"
     else:
         selected_nonzero = nonzero
-        coefficients = lars.coef_[nonzero].astype(np.float32)
-        intercept = float(lars.intercept_)
-        fitted_alpha = float(lars.alpha_)
-        selection_method = "lasso_lars_cv"
+        coefficients = lasso_coefficients[nonzero].astype(np.float32)
+        intercept = lasso_intercept
+        fitted_alpha = lasso_alpha
     selected = candidates[selected_nonzero]
     initialization = {
         "selected_indices": selected.astype(np.int64),
@@ -649,6 +709,7 @@ def fit_initialization(
         "selected_features": int(selected_nonzero.size),
         "selection_method": selection_method,
         "selection_alpha": fitted_alpha,
+        "lasso": lasso_audit,
         "csp_mode": csp_mode,
         "csp_band_mode": csp_band_mode,
         "csp": {**csp_audit, "pre_normalization_std": csp_stds},
@@ -1711,6 +1772,12 @@ def main() -> None:
     parser.add_argument("--purge-bins", type=int, default=95)
     parser.add_argument("--ica-prescreen", type=int, default=512)
     parser.add_argument("--component-chunk", type=int, default=16)
+    parser.add_argument(
+        "--lasso-backend",
+        choices=("sklearn_lars", "torch_fista"),
+        default="sklearn_lars",
+        help="split-local sparse initializer; torch_fista fits its alpha path on the selected device",
+    )
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument(
         "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
@@ -2070,6 +2137,18 @@ def main() -> None:
         hhl_values, hhh_values = linear_gamma_leaf_signals(ecog, frontend, device)
         atomic_save_npy(hhl_path, hhl_values)
         atomic_save_npy(hhh_path, hhh_values)
+    lower_first_path = args.leaf_cache / "linear_50_75.npy"
+    lower_second_path = args.leaf_cache / "linear_75_100.npy"
+    use_lower_high_gamma = args.csp_band_mode == "separate_50_100_hhl_hhh"
+    if use_lower_high_gamma and not (
+        valid_leaf_cache(lower_first_path, ecog.shape[0])
+        and valid_leaf_cache(lower_second_path, ecog.shape[0])
+    ):
+        lower_first, lower_second = linear_lower_high_gamma_leaf_signals(
+            ecog, frontend, device
+        )
+        atomic_save_npy(lower_first_path, lower_first)
+        atomic_save_npy(lower_second_path, lower_second)
     hhl = np.load(hhl_path, mmap_mode="r")
     hhh = np.load(hhh_path, mmap_mode="r")
     if args.prepare_shared_only:
@@ -2093,6 +2172,19 @@ def main() -> None:
         bins, args.samples_per_bin, -1
     )
     joint_bins = np.concatenate((hhl_bins, hhh_bins), axis=1)
+    lower_high_gamma_bins = None
+    if use_lower_high_gamma:
+        lower_first = np.load(lower_first_path, mmap_mode="r")
+        lower_second = np.load(lower_second_path, mmap_mode="r")
+        lower_first_bins = lower_first[: bins * args.samples_per_bin].reshape(
+            bins, args.samples_per_bin, -1
+        )
+        lower_second_bins = lower_second[: bins * args.samples_per_bin].reshape(
+            bins, args.samples_per_bin, -1
+        )
+        lower_high_gamma_bins = np.concatenate(
+            (lower_first_bins, lower_second_bins), axis=1
+        )
     ecog_t = torch.from_numpy(ecog.copy()).to(device)
     context = frontend.effective_kernel_size // 2
     padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
@@ -2165,6 +2257,7 @@ def main() -> None:
                     csp_band_mode=args.csp_band_mode,
                     hhl_bins=hhl_bins,
                     hhh_bins=hhh_bins,
+                    lower_high_gamma_bins=lower_high_gamma_bins,
                     ica_weights=load_cached_ica(
                         args.ica_cache_root,
                         args.subject,
@@ -2174,6 +2267,7 @@ def main() -> None:
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
+                    lasso_backend=args.lasso_backend,
                     include_candidate_pool=args.residual_input
                     in (
                         "candidate",
@@ -2268,6 +2362,7 @@ def main() -> None:
                 csp_band_mode=args.csp_band_mode,
                 hhl_bins=hhl_bins,
                 hhh_bins=hhh_bins,
+                lower_high_gamma_bins=lower_high_gamma_bins,
                 ica_weights=load_cached_ica(
                     args.ica_cache_root,
                     args.subject,
@@ -2277,6 +2372,7 @@ def main() -> None:
                     ecog.shape[1],
                 ),
                 samples_per_bin=args.samples_per_bin,
+                lasso_backend=args.lasso_backend,
                 include_candidate_pool=args.residual_input
                 in (
                     "candidate",

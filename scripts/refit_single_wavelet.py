@@ -21,6 +21,7 @@ from single_wavelet_support import (
     SAMPLES_PER_BIN,
     SOURCE_RATE,
     linear_gamma_leaf_signals,
+    linear_lower_high_gamma_leaf_signals,
     pearson,
     resample_ecog,
 )
@@ -192,6 +193,11 @@ def main() -> None:
     parser.add_argument("--maximum-rest-group-bins", type=int, default=250)
     parser.add_argument("--ica-prescreen", type=int, default=512)
     parser.add_argument("--component-chunk", type=int, default=16)
+    parser.add_argument(
+        "--lasso-backend",
+        choices=("sklearn_lars", "torch_fista"),
+        default="sklearn_lars",
+    )
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument(
         "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
@@ -339,6 +345,9 @@ def main() -> None:
     ).to(device).eval()
     hhl_path = subject_cache / "linear_hhl_100_125.npy"
     hhh_path = subject_cache / "linear_hhh_125_150.npy"
+    lower_first_path = subject_cache / "linear_50_75.npy"
+    lower_second_path = subject_cache / "linear_75_100.npy"
+    use_lower_high_gamma = args.csp_band_mode == "separate_50_100_hhl_hhh"
     leaves_valid = valid_leaf_cache(hhl_path, train_ecog.shape[0]) and valid_leaf_cache(
         hhh_path, train_ecog.shape[0]
     )
@@ -349,8 +358,20 @@ def main() -> None:
             )
             atomic_save_npy(hhl_path, hhl_values)
             atomic_save_npy(hhh_path, hhh_values)
+        if use_lower_high_gamma and not (
+            valid_leaf_cache(lower_first_path, train_ecog.shape[0])
+            and valid_leaf_cache(lower_second_path, train_ecog.shape[0])
+        ):
+            lower_first, lower_second = linear_lower_high_gamma_leaf_signals(
+                train_ecog, frontend, device
+            )
+            atomic_save_npy(lower_first_path, lower_first)
+            atomic_save_npy(lower_second_path, lower_second)
         hhl = np.load(hhl_path, mmap_mode="r")
         hhh = np.load(hhh_path, mmap_mode="r")
+        if use_lower_high_gamma:
+            lower_first = np.load(lower_first_path, mmap_mode="r")
+            lower_second = np.load(lower_second_path, mmap_mode="r")
     if args.prepare_shared_only:
         print(
             json.dumps(
@@ -384,6 +405,17 @@ def main() -> None:
             bins, args.samples_per_bin, -1
         )
         joint_bins = np.concatenate((hhl_bins, hhh_bins), axis=1)
+        lower_high_gamma_bins = None
+        if use_lower_high_gamma:
+            lower_first_bins = lower_first[: bins * args.samples_per_bin].reshape(
+                bins, args.samples_per_bin, -1
+            )
+            lower_second_bins = lower_second[: bins * args.samples_per_bin].reshape(
+                bins, args.samples_per_bin, -1
+            )
+            lower_high_gamma_bins = np.concatenate(
+                (lower_first_bins, lower_second_bins), axis=1
+            )
         initialization, spatial, audit = fit_initialization(
             ecog=train_ecog,
             joint_bins=joint_bins,
@@ -399,7 +431,9 @@ def main() -> None:
             csp_band_mode=args.csp_band_mode,
             hhl_bins=hhl_bins,
             hhh_bins=hhh_bins,
+            lower_high_gamma_bins=lower_high_gamma_bins,
             samples_per_bin=args.samples_per_bin,
+            lasso_backend=args.lasso_backend,
             ica_weights=(
                 np.load(
                     args.ica_initialization_root
@@ -422,6 +456,7 @@ def main() -> None:
         cached=cached,
         padded_ecog=padded_train,
         target=target_tensor,
+        raw=train_raw[:, finger_index].astype(np.float32),
         training_groups=training_groups,
         schedule=schedule,
         args=args,

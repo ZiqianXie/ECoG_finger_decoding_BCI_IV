@@ -91,21 +91,46 @@ def training_ecog_samples(
 
 
 @torch.inference_mode()
+def linear_wavelet_leaf_signals(
+    ecog: np.ndarray,
+    frontend: WaveletPacketEnergy,
+    device: torch.device,
+    physical_positions: tuple[int, ...],
+) -> tuple[np.ndarray, ...]:
+    """Return initialized tree leaves in ascending-frequency positions."""
+    if not physical_positions or any(
+        position < 0 or position >= FREQUENCY_ORDER.size
+        for position in physical_positions
+    ):
+        raise ValueError("physical leaf positions must be nonempty values from 0 to 7")
+    values = torch.from_numpy(np.asarray(ecog).T.copy()).to(device)[:, None]
+    bands = values
+    for layer in frontend.layers:
+        bands = frontend._same_filter(bands, layer)
+    indices = FREQUENCY_ORDER[np.asarray(physical_positions, dtype=np.int64)]
+    return tuple(
+        bands[:, int(index)].T.float().cpu().numpy() for index in indices
+    )
+
+
 def linear_gamma_leaf_signals(
     ecog: np.ndarray,
     frontend: WaveletPacketEnergy,
     device: torch.device,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return the two initialized 100--150 Hz tree paths before energy pooling."""
-    values = torch.from_numpy(np.asarray(ecog).T.copy()).to(device)[:, None]
-    bands = values
-    for layer in frontend.layers:
-        bands = frontend._same_filter(bands, layer)
-    # Lexicographic HHL/HHH paths occupy physical-frequency positions 4/5.
-    return (
-        bands[:, 6].T.float().cpu().numpy(),
-        bands[:, 7].T.float().cpu().numpy(),
-    )
+    """Return the initialized 100--125 and 125--150 Hz tree leaves."""
+    first, second = linear_wavelet_leaf_signals(ecog, frontend, device, (4, 5))
+    return first, second
+
+
+def linear_lower_high_gamma_leaf_signals(
+    ecog: np.ndarray,
+    frontend: WaveletPacketEnergy,
+    device: torch.device,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the 50--75 and 75--100 Hz leaves used for one 50--100 Hz CSP row."""
+    first, second = linear_wavelet_leaf_signals(ecog, frontend, device, (2, 3))
+    return first, second
 
 
 def regularized_covariance(

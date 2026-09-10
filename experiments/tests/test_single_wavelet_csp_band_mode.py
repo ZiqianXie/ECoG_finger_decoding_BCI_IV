@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import numpy as np
+import torch
 
 from cross_validate_single_wavelet import fit_csp_band_rows, resolve_seed_roles
-from single_wavelet_support import OFFSET
+from ecog_decoding.models import WaveletPacketEnergy
+from single_wavelet_support import (
+    OFFSET,
+    linear_gamma_leaf_signals,
+    linear_lower_high_gamma_leaf_signals,
+    linear_wavelet_leaf_signals,
+)
 
 
 def synthetic_inputs():
@@ -52,6 +59,52 @@ def test_joint_gamma_mode_retains_one_row() -> None:
     assert audit["band_mode"] == "joint_hhl_hhh"
 
 
+def test_lower_high_gamma_mode_adds_one_spatial_row_to_same_bank() -> None:
+    target, training, hhl, hhh = synthetic_inputs()
+    lower = np.random.default_rng(9).normal(size=hhl.shape).astype(np.float32)
+    lower[OFFSET + 20 :, :, 2] *= 5.0
+    weights, audit = fit_csp_band_rows(
+        joint_bins=np.concatenate((hhl, hhh), axis=1),
+        hhl_bins=hhl,
+        hhh_bins=hhh,
+        lower_high_gamma_bins=lower,
+        target=target,
+        training=training,
+        finger_index=4,
+        component_indices=(-1,),
+        csp_band_mode="separate_50_100_hhl_hhh",
+    )
+    assert weights.shape == (3, 3)
+    assert audit["spatial_rows"] == 3
+    assert "wavelet_50_100_hz" in audit
+
+
 def test_seed_roles_can_hold_data_order_fixed() -> None:
     assert resolve_seed_roles(4, 2026, 2026) == (4, 2026, 2026)
     assert resolve_seed_roles(4, None, None) == (4, 4, 4)
+
+
+def test_named_leaf_helpers_match_physical_frequency_positions() -> None:
+    frontend = WaveletPacketEnergy(
+        wavelet="bior6.8",
+        levels=3,
+        kernel_size=17,
+        trainable=False,
+        padding_mode="constant",
+        energy_window_samples=40,
+        energy_stride_samples=40,
+        tap_resample_up=5,
+        tap_resample_down=2,
+    ).eval()
+    ecog = np.random.default_rng(11).normal(size=(240, 3)).astype(np.float32)
+
+    leaves = linear_wavelet_leaf_signals(
+        ecog, frontend, torch.device("cpu"), (2, 3, 4, 5)
+    )
+    lower = linear_lower_high_gamma_leaf_signals(
+        ecog, frontend, torch.device("cpu")
+    )
+    gamma = linear_gamma_leaf_signals(ecog, frontend, torch.device("cpu"))
+
+    for expected, observed in zip(leaves, lower + gamma, strict=True):
+        np.testing.assert_allclose(observed, expected)

@@ -946,6 +946,60 @@
     },
     "decision": "The existing frozen representation lacks enough stable residual signal to support +0.1 on these pairs. Stop tuning only the recurrent head or its loss; change the spectral-spatial evidence while preserving the single branch."
   },
+  "lower_high_gamma_csp_single_branch": {
+    "description": "The same single spatial layer adds one target-finger CSP row fitted jointly on the initialized 50--75 and 75--100 Hz wavelet leaves, alongside the separate 100--125 and 125--150 Hz CSP rows. All FastICA and CSP rows still enter one depth-3 wavelet tree and one residual LSTM.",
+    "released_test_touched": false,
+    "S3_ring": {
+      "initialization_pcc": 0.513604969,
+      "tuned_pcc": 0.495895641,
+      "gain": -0.017709328,
+      "initialization_gain_over_separate_100_150_csp": 0.061738735,
+      "initialized_morphology": {
+        "event_macro_nmse": 0.720890551,
+        "rest_false_positive_rms": 0.177103455,
+        "movement_rmse": 0.304548889,
+        "amplitude_slope": 0.265011802,
+        "velocity_pcc": 0.171572529,
+        "movement_balanced_accuracy": 0.646045479
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.73484537,
+        "rest_false_positive_rms": 0.154526408,
+        "movement_rmse": 0.3201844,
+        "amplitude_slope": 0.306132287,
+        "velocity_pcc": 0.186791973,
+        "movement_balanced_accuracy": 0.723214247
+      }
+    },
+    "decision": "Keep the 50--100 Hz CSP row as useful S3-ring evidence: it raises the split-local sparse baseline by 0.0617 PCC. Do not count the residual decoder as a pass because tuning reduces PCC and worsens event NMSE and movement RMSE despite better rest suppression and movement-state accuracy."
+  },
+  "gpu_lasso_backend_benchmark": {
+    "description": "A batched PyTorch FISTA path solves the same split-local Lasso objective on a GPU Gram matrix. CPU LARS remains available for exact historical reproduction; new batch-48 experiment queues use the GPU backend.",
+    "released_test_touched": false,
+    "cached_inner_split": {
+      "rows": 2666,
+      "features": 1112,
+      "cpu_lars_seconds": 3.340241,
+      "gpu_fista_seconds": 1.460575,
+      "solver_speedup": 2.286936,
+      "cpu_validation_pcc": 0.511924559,
+      "gpu_validation_pcc": 0.512468283,
+      "validation_prediction_pcc_between_backends": 0.999850971,
+      "cpu_selected_features": 265,
+      "gpu_selected_features": 273
+    },
+    "fresh_single_job_outer_fold": {
+      "cpu_lars_runtime_seconds": 280.245859,
+      "gpu_fista_runtime_seconds": 220.053892,
+      "end_to_end_speedup": 1.273529,
+      "cpu_initialization_pcc": 0.562722417,
+      "gpu_initialization_pcc": 0.562528793,
+      "cpu_tuned_pcc": 0.562449107,
+      "gpu_tuned_pcc": 0.562191963,
+      "selected_schedule_both": "frozen_10"
+    },
+    "decision": "Use GPU FISTA for new experiment queues: it is numerically interchangeable for this split and reduces total runtime by about 21%. Keep sklearn LARS as the core default until a caller explicitly opts into the approximate GPU path."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. Three of fifteen subject-finger models now exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold result at +0.0589 after its corrected six-seed mean. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, and raw-movement-shape changes do not close the other gaps. Frozen-feature probes find at most +0.024 residual gain on S1 middle, S3 middle, and S3 ring, so the next attempt must add finger-specific spectral-spatial evidence inside the single branch rather than repeat head-only tuning."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, and GPU FISTA experiment backend. Three of fifteen subject-finger models now exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold result at +0.0589 after its corrected six-seed mean. Generic learning-rate, seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, and raw-movement-shape changes do not close the other gaps. The added 50--100 Hz CSP row materially raises the S3-ring sparse baseline, but the residual LSTM still degrades it. The next attempt must preserve and extend that finger-specific spectral-spatial evidence inside the single branch rather than repeat head-only tuning."
 }
