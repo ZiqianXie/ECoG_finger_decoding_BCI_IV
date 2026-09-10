@@ -293,6 +293,134 @@
     },
     "decision": "Do not promote: signed pooling adds only 0.0017 PCC over the energy-only 64-unit model, worsens most morphology diagnostics, costs about 13--14 minutes, and learns inconsistent leaf signs across outer folds."
   },
+  "S1_index_recurrent_input_geometry": {
+    "description": "The immutable split-local LARS path keeps its full 25-bin lag bank. Only the input presented to the nonlinear residual LSTM changes; every variant remains one spatial layer, one wavelet tree, and one recurrent decoder.",
+    "shared_initialization_pcc": 0.725545068,
+    "current_bin_candidates_variable_width": {
+      "tuned_pcc": 0.7797487,
+      "gain": 0.054203633,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "observed_input_width_range": [26, 47],
+      "runtime_seconds": 634.875,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.335391,
+        "rest_false_positive_rms": 0.065614,
+        "movement_rmse": 0.21986,
+        "amplitude_slope": 0.636938,
+        "velocity_pcc": 0.529877,
+        "movement_balanced_accuracy": 0.764969
+      }
+    },
+    "four_recent_bins": {
+      "tuned_pcc": 0.73926648,
+      "gain": 0.013721412,
+      "selected_schedules": ["frozen_20", "frozen_50", "frozen_50"],
+      "decision": "Reject: explicitly restoring four lag bins reintroduces redundant inputs and loses most of the current-bin gain."
+    },
+    "fixed_width_compile_control": {
+      "zero_padded_width": 64,
+      "head_learning_rate": 0.0003,
+      "tuned_pcc": 0.774016873,
+      "gain": 0.048471805,
+      "runtime_seconds": 202.73,
+      "speedup_over_variable_width": 3.13,
+      "decision": "Keep for efficient screening: zero padding changes no signal and avoids recompiling a different graph for every split-local feature width."
+    },
+    "fixed_width_low_learning_rate": {
+      "head_learning_rate": 0.0001,
+      "maximum_updates": 800,
+      "tuned_pcc": 0.773245918,
+      "gain": 0.04770085,
+      "runtime_seconds": 267.77,
+      "decision": "Reject: a lower rate with a longer schedule does not improve on 3e-4."
+    },
+    "fixed_width_plus_direct_lars_context": {
+      "description": "The same residual LSTM receives the fixed LARS preactivation as one additional scalar; this is contextual input, not a second feature branch.",
+      "tuned_pcc": 0.781612136,
+      "gain": 0.056067068,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "runtime_seconds": 275.406,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.33638,
+        "rest_false_positive_rms": 0.064146,
+        "movement_rmse": 0.220565,
+        "amplitude_slope": 0.643806,
+        "velocity_pcc": 0.533012,
+        "movement_balanced_accuracy": 0.762286
+      }
+    },
+    "current_bin_plus_correlation_objectives": {
+      "fixed_weights": {
+        "movement_state_bce": 0.5,
+        "within_sequence_correlation": 0.1,
+        "within_sequence_velocity_correlation": 0.1
+      },
+      "tuned_pcc": 0.768063989,
+      "gain": 0.042518921,
+      "selected_schedules": ["frozen_50", "frozen_100", "frozen_100"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.352076,
+        "rest_false_positive_rms": 0.073326,
+        "movement_rmse": 0.22351,
+        "amplitude_slope": 0.578584,
+        "velocity_pcc": 0.511316,
+        "movement_balanced_accuracy": 0.765143
+      },
+      "decision": "Reject: the correlation objectives that helped S2-middle still reduce S1-index PCC by 0.0135 and worsen rest error, movement RMSE, amplitude slope, and velocity PCC after the recurrent input is narrowed."
+    },
+    "current_bin_plus_interlevel_normalization": {
+      "description": "Every intermediate wavelet-tree output gains a zero-initialized interpolation toward its normalized value. The paths can change only during the low-rate end-to-end stage and do not add a feature branch.",
+      "tuned_pcc": 0.781612136,
+      "gain": 0.056067068,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "best_inner_unfrozen_minus_best_frozen_pcc": [-0.009979303, -0.004093781, -0.002585993],
+      "decision": "Reject: all three outer-training scopes select the unchanged frozen checkpoint, and even the best normalized continuation is worse than the best frozen checkpoint on every inner-fold aggregate."
+    },
+    "current_bin_plus_interlevel_skip": {
+      "description": "Every wavelet split gains a zero-initialized bypass from its parent representation. The bypass gates can change only during the low-rate end-to-end stage and remain inside the single tree.",
+      "tuned_pcc": 0.781612136,
+      "gain": 0.056067068,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "best_inner_unfrozen_minus_best_frozen_pcc": [-0.005014358, -0.002310629, -0.000793381],
+      "decision": "Reject: all three scopes again select the unchanged frozen checkpoint, and the best skip-tuned continuation is worse on every inner-fold aggregate."
+    },
+    "all_candidate_causal_closure": {
+      "description": "The LSTM receives the current-time source stream for every atom represented anywhere in the screened candidate lag bank, while the direct LARS path remains unchanged.",
+      "zero_padded_width": 512,
+      "tuned_pcc": 0.764869205,
+      "gain": 0.039324138,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "total_parallel_fold_runtime_seconds": 575.356,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.368383,
+        "rest_false_positive_rms": 0.0597,
+        "movement_rmse": 0.238004,
+        "amplitude_slope": 0.597035,
+        "velocity_pcc": 0.497414,
+        "movement_balanced_accuracy": 0.765985
+      },
+      "decision": "Reject: causal closure suppresses resting error but dilutes the useful recurrent state with many streams and is 0.0167 PCC below the narrower current-bin-plus-direct model."
+    },
+    "nonzero_lars_stream_causal_closure": {
+      "description": "The LSTM receives current-time values only for spectral streams represented by nonzero split-local LARS coefficients. The direct LARS prediction still uses the complete selected lag bank.",
+      "zero_padded_width": 128,
+      "tuned_pcc": 0.775423335,
+      "gain": 0.049878267,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "outer_raw_pcc": [0.769308582, 0.760341975, 0.817824268],
+      "total_parallel_fold_runtime_seconds": 924.345,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.358131,
+        "rest_false_positive_rms": 0.057788,
+        "movement_rmse": 0.235875,
+        "amplitude_slope": 0.600266,
+        "velocity_pcc": 0.522869,
+        "movement_balanced_accuracy": 0.763209
+      },
+      "decision": "Reject: restricting causal closure to nonzero-LARS streams recovers some performance but remains 0.0062 PCC below the zero-lag-screened current-bin-plus-direct model and has worse event NMSE, movement RMSE, amplitude slope, and velocity PCC."
+    },
+    "decision": "Use current-bin recurrent inputs plus the fixed direct LARS context for the next single-branch diagnostic. It is the strongest S1-index residual model so far at 0.782 PCC, but its +0.056 gain remains below +0.1."
+  },
   "movement_state_generalization": {
     "S1_index": {
       "initialization_pcc": 0.721336642,
@@ -380,5 +508,5 @@
     "decision": "Keep: the matched control and two auxiliary-velocity runs loaded identical split-local initializations while training concurrently."
   },
   "visual_diagnostic": "Across S1 index, S2 middle, and S3 thumb, the state head lowers stationary offset and increases event amplitudes. It still retains isolated false peaks, underestimates the largest flexions, and barely changes S3-thumb velocity correlation.",
-  "decision": "Keep the auxiliary state head, fixed-width candidate implementation, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. A 64-unit residual LSTM at 3e-4 is the best clean-cache energy-only S1 setting at 0.757 PCC (+0.032); two-stage stem tuning and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization and reject stacking end-to-end interlevel normalization onto the state model."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Presenting only current-bin candidate features plus the immutable LARS logit to a 64-unit residual LSTM is the best S1 setting at 0.782 PCC (+0.056); four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint."
 }

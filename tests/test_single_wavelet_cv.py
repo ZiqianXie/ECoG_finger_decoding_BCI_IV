@@ -12,6 +12,7 @@ from cross_validate_single_wavelet import (
     UNFROZEN_UPDATES,
     UniformGroupSampler,
     one_standard_error_selection,
+    cached_initialization_features,
     load_initialization,
     load_or_create_initialization,
     grouped_velocity_scale,
@@ -179,6 +180,32 @@ def test_initialization_cache_atomic_round_trip(tmp_path) -> None:
     assert loaded_split["fold"] == 1
     assert loaded_split["initialization_audit"] == audit
     assert not list(tmp_path.glob(".*"))
+
+
+def test_causal_cached_features_join_direct_candidates_and_current_sources() -> None:
+    initialization = {
+        "candidate_features": np.arange(12, dtype=np.float32).reshape(3, 4),
+        "causal_features": np.arange(6, dtype=np.float32).reshape(3, 2),
+    }
+
+    observed = cached_initialization_features(initialization, "causal_candidate")
+
+    np.testing.assert_array_equal(observed[:, :4], initialization["candidate_features"])
+    np.testing.assert_array_equal(observed[:, 4:], initialization["causal_features"])
+
+
+def test_selected_causal_cached_features_join_selected_and_current_sources() -> None:
+    initialization = {
+        "selected_features": np.arange(6, dtype=np.float32).reshape(3, 2),
+        "selected_causal_features": np.arange(3, dtype=np.float32).reshape(3, 1),
+    }
+
+    observed = cached_initialization_features(initialization, "selected_causal")
+
+    np.testing.assert_array_equal(observed[:, :2], initialization["selected_features"])
+    np.testing.assert_array_equal(
+        observed[:, 2:], initialization["selected_causal_features"]
+    )
 
 
 def test_initialization_cache_creation_is_serialized(tmp_path) -> None:

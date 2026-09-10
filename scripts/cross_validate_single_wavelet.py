@@ -540,12 +540,47 @@ def fit_initialization(
         "selected_features": np.asarray(features[:, selected], dtype=np.float32),
     }
     if include_candidate_pool:
+        current_candidate_positions = np.flatnonzero(
+            candidates // stream.shape[1] == HISTORY - 1
+        )
+        if current_candidate_positions.size == 0:
+            raise RuntimeError("candidate pool contains no current-bin features")
+        causal_stream_positions = np.unique(candidates % stream.shape[1])
+        causal_values = np.asarray(
+            stream[HISTORY - 1 :, causal_stream_positions], dtype=np.float32
+        )
+        causal_scaler = StandardScaler().fit(causal_values[training])
+        selected_causal_stream_positions = np.unique(selected % stream.shape[1])
+        selected_causal_values = np.asarray(
+            stream[HISTORY - 1 :, selected_causal_stream_positions],
+            dtype=np.float32,
+        )
+        selected_causal_scaler = StandardScaler().fit(
+            selected_causal_values[training]
+        )
         initialization.update(
             {
                 "candidate_indices": candidates.astype(np.int64),
                 "candidate_feature_mean": scaler.mean_.astype(np.float32),
                 "candidate_feature_scale": scaler.scale_.astype(np.float32),
                 "selected_candidate_positions": selected_nonzero.astype(np.int64),
+                "current_candidate_positions": current_candidate_positions.astype(
+                    np.int64
+                ),
+                "causal_stream_positions": causal_stream_positions.astype(np.int64),
+                "causal_feature_mean": causal_scaler.mean_.astype(np.float32),
+                "causal_feature_scale": causal_scaler.scale_.astype(np.float32),
+                "causal_features": causal_values,
+                "selected_causal_stream_positions": (
+                    selected_causal_stream_positions.astype(np.int64)
+                ),
+                "selected_causal_feature_mean": (
+                    selected_causal_scaler.mean_.astype(np.float32)
+                ),
+                "selected_causal_feature_scale": (
+                    selected_causal_scaler.scale_.astype(np.float32)
+                ),
+                "selected_causal_features": selected_causal_values,
                 "candidate_features": np.asarray(
                     features[:, candidates], dtype=np.float32
                 ),
@@ -824,6 +859,9 @@ def make_model(
         wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
         wavelet_final_normalization=args.wavelet_final_normalization,
         residual_input=args.residual_input,
+        residual_history_bins=args.residual_history_bins,
+        residual_input_width=args.residual_input_width,
+        residual_include_direct=args.residual_include_direct,
         movement_head=args.movement_loss_weight > 0,
         velocity_head=args.velocity_loss_weight > 0,
         movement_modulation=args.movement_modulation,
@@ -836,7 +874,25 @@ def cached_initialization_features(
     initialization: dict[str, np.ndarray], residual_input: str
 ) -> np.ndarray:
     """Return the raw feature matrix expected by the configured decoder."""
-    name = "candidate_features" if residual_input == "candidate" else "selected_features"
+    if residual_input in ("causal_candidate", "selected_causal"):
+        prefix = "candidate" if residual_input == "causal_candidate" else "selected"
+        required = ("candidate_features", "causal_features")
+        if prefix == "selected":
+            required = ("selected_features", "selected_causal_features")
+        missing = [name for name in required if name not in initialization]
+        if missing:
+            raise ValueError(
+                "initialization cache lacks " + ", ".join(repr(name) for name in missing)
+            )
+        direct_name, causal_name = required
+        return np.concatenate(
+            (initialization[direct_name], initialization[causal_name]), axis=1
+        )
+    name = (
+        "candidate_features"
+        if residual_input in ("candidate", "current_candidate")
+        else "selected_features"
+    )
     if name not in initialization:
         raise ValueError(
             f"initialization cache lacks {name!r}; refit the split-local initialization"
@@ -1556,15 +1612,51 @@ def main() -> None:
     )
     parser.add_argument(
         "--residual-input",
-        choices=("selected", "candidate"),
+        choices=(
+            "selected",
+            "candidate",
+            "current_candidate",
+            "causal_candidate",
+            "selected_causal",
+        ),
         default="selected",
         help=(
-            "feed the residual recurrent cell either the LARS-selected subset or "
-            "the complete split-local pre-LARS candidate pool"
+            "feed the residual recurrent cell the LARS-selected subset, the "
+            "complete split-local pre-LARS candidate pool, only its newest-bin "
+            "members, the current-time source stream for every candidate identity, "
+            "or only current-time streams represented among nonzero LARS atoms; the "
+            "full LARS direct path is retained in all residual modes"
         ),
     )
     parser.add_argument(
         "--output-activation", choices=("linear", "softplus"), default="softplus"
+    )
+    parser.add_argument(
+        "--residual-history-bins",
+        type=int,
+        default=1,
+        help=(
+            "number of newest 25 Hz lag bins visible to current_candidate "
+            "recurrent input; the direct LARS path always retains all 25 bins"
+        ),
+    )
+    parser.add_argument(
+        "--residual-input-width",
+        type=int,
+        default=None,
+        help=(
+            "optional fixed zero-padded width for current_candidate recurrent "
+            "input, allowing torch.compile graph reuse across split-local pools"
+        ),
+    )
+    parser.add_argument(
+        "--residual-include-direct",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "append the fixed split-local LARS logit to the residual recurrent "
+            "input so the same LSTM can learn state-dependent corrections"
+        ),
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
     parser.add_argument("--sequence-steps", type=int, default=100)
@@ -1687,12 +1779,30 @@ def main() -> None:
         or args.signed_pooling_learning_rate <= 0
     ):
         raise ValueError("auxiliary loss weights must be nonnegative")
-    if args.residual_input == "candidate" and args.recurrent_cell not in (
-        "residual_lstm",
-        "residual_gru",
+    if args.residual_input in (
+        "candidate",
+        "current_candidate",
+        "causal_candidate",
+        "selected_causal",
+    ) and args.recurrent_cell not in ("residual_lstm", "residual_gru"):
+        raise ValueError(
+            "candidate residual inputs require --recurrent-cell residual_lstm or residual_gru"
+        )
+    if not 1 <= args.residual_history_bins <= HISTORY:
+        raise ValueError(f"--residual-history-bins must be between 1 and {HISTORY}")
+    if args.residual_input != "current_candidate" and args.residual_history_bins != 1:
+        raise ValueError(
+            "--residual-history-bins only applies to --residual-input current_candidate"
+        )
+    if args.residual_input_width is not None and args.residual_input_width <= 0:
+        raise ValueError("--residual-input-width must be positive")
+    if (
+        args.residual_input
+        not in ("current_candidate", "causal_candidate", "selected_causal")
+        and args.residual_input_width is not None
     ):
         raise ValueError(
-            "--residual-input candidate requires --recurrent-cell residual_lstm or residual_gru"
+            "--residual-input-width only applies to current/causal candidate input"
         )
     if args.movement_modulation and args.movement_loss_weight <= 0:
         raise ValueError("--movement-modulation requires --movement-loss-weight")
@@ -1901,7 +2011,13 @@ def main() -> None:
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
-                    include_candidate_pool=args.residual_input == "candidate",
+                    include_candidate_pool=args.residual_input
+                    in (
+                        "candidate",
+                        "current_candidate",
+                        "causal_candidate",
+                        "selected_causal",
+                    ),
                 )
                 return initialization, spatial, target_np, requested_split, audit
 
@@ -1936,12 +2052,19 @@ def main() -> None:
                     "selected_feature_count": int(
                         initialization["selected_indices"].size
                     ),
-                    "recurrent_input_feature_count": int(cached.shape[1]),
+                    "recurrent_input_feature_count": int(model.lstm.input_size),
                     "metrics": metrics,
                 }
             )
+            direct_feature_count = (
+                int(model.candidate_indices.numel())
+                if hasattr(model, "candidate_indices")
+                else int(model.selected_indices.numel())
+            )
             print(
-                f"outer={outer_fold} inner={split['fold']} features={cached.shape[1]}",
+                f"outer={outer_fold} inner={split['fold']} "
+                f"recurrent_features={model.lstm.input_size} "
+                f"direct_features={direct_feature_count}",
                 flush=True,
             )
         if reused_report is not None:
@@ -1988,7 +2111,13 @@ def main() -> None:
                     ecog.shape[1],
                 ),
                 samples_per_bin=args.samples_per_bin,
-                include_candidate_pool=args.residual_input == "candidate",
+                include_candidate_pool=args.residual_input
+                in (
+                    "candidate",
+                    "current_candidate",
+                    "causal_candidate",
+                    "selected_causal",
+                ),
             )
             return initialization, spatial, outer_target, outer_definition, audit
 
@@ -2137,8 +2266,11 @@ def main() -> None:
             else None
         ),
         "decoder": (
-            f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM; "
-            f"residual input={args.residual_input}"
+            f"fixed split-local LARS direct path plus zero-initialized "
+            f"{args.recurrent_cell} nonlinear residual; recurrent input="
+            f"{args.residual_input}"
+            if args.recurrent_cell in ("residual_lstm", "residual_gru")
+            else f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM"
         ),
         "training_objective": {
             "trajectory": "normalized mean squared error",
@@ -2157,6 +2289,7 @@ def main() -> None:
                 else []
             )
             + (["target_finger_velocity"] if args.velocity_loss_weight else []),
+            "residual_recurrent_sees_direct_lars_logit": args.residual_include_direct,
             "residual_output_initialization_std": args.residual_output_init_std,
         },
         "learning_rates": {

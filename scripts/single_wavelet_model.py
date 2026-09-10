@@ -99,6 +99,9 @@ class SingleWaveletDecoder(nn.Module):
         wavelet_interlevel_normalization: bool = False,
         wavelet_final_normalization: bool = True,
         residual_input: str = "selected",
+        residual_history_bins: int = 1,
+        residual_input_width: int | None = None,
+        residual_include_direct: bool = False,
         movement_head: bool = False,
         velocity_head: bool = False,
         movement_modulation: bool = False,
@@ -142,17 +145,57 @@ class SingleWaveletDecoder(nn.Module):
             torch.as_tensor(initialization["feature_scale"], dtype=torch.float32),
         )
 
-        if residual_input not in ("selected", "candidate"):
+        if residual_input not in (
+            "selected",
+            "candidate",
+            "current_candidate",
+            "causal_candidate",
+            "selected_causal",
+        ):
             raise ValueError(f"unsupported residual input {residual_input!r}")
-        if residual_input == "candidate" and recurrent_cell not in (
-            "residual_lstm",
-            "residual_gru",
+        candidate_residual = residual_input in (
+            "candidate",
+            "current_candidate",
+            "causal_candidate",
+        )
+        causal_residual = residual_input in ("causal_candidate", "selected_causal")
+        if (
+            residual_input != "selected"
+            and recurrent_cell not in ("residual_lstm", "residual_gru")
         ):
             raise ValueError(
                 "candidate residual input requires residual_lstm or residual_gru"
             )
         self.residual_input = residual_input
-        if residual_input == "candidate":
+        if not 1 <= residual_history_bins <= HISTORY:
+            raise ValueError(
+                f"residual_history_bins must be between 1 and {HISTORY}"
+            )
+        if residual_input != "current_candidate" and residual_history_bins != 1:
+            raise ValueError(
+                "residual_history_bins only applies to current_candidate input"
+            )
+        self.residual_history_bins = int(residual_history_bins)
+        if residual_input_width is not None and residual_input_width <= 0:
+            raise ValueError("residual_input_width must be positive")
+        if (
+            residual_input
+            not in ("current_candidate", "causal_candidate", "selected_causal")
+            and residual_input_width is not None
+        ):
+            raise ValueError(
+                "residual_input_width only applies to current/causal candidate input"
+            )
+        self.residual_input_width = residual_input_width
+        if residual_include_direct and recurrent_cell not in (
+            "residual_lstm",
+            "residual_gru",
+        ):
+            raise ValueError(
+                "residual_include_direct requires a residual recurrent cell"
+            )
+        self.residual_include_direct = bool(residual_include_direct)
+        if candidate_residual:
             required = (
                 "candidate_indices",
                 "candidate_feature_mean",
@@ -186,6 +229,96 @@ class SingleWaveletDecoder(nn.Module):
                     initialization["selected_candidate_positions"], dtype=torch.long
                 ),
             )
+            if residual_input == "current_candidate":
+                per_bin = components * 8
+                current_positions = (
+                    np.asarray(initialization["current_candidate_positions"])
+                    if self.residual_history_bins == 1
+                    and "current_candidate_positions" in initialization
+                    else np.flatnonzero(
+                        np.asarray(initialization["candidate_indices"])
+                        // per_bin
+                        >= HISTORY - self.residual_history_bins
+                    )
+                )
+                if np.asarray(current_positions).size == 0:
+                    raise ValueError("candidate pool contains no current-bin features")
+                self.register_buffer(
+                    "current_candidate_positions",
+                    torch.as_tensor(
+                        current_positions,
+                        dtype=torch.long,
+                    ),
+                )
+            elif residual_input == "causal_candidate":
+                required_causal = (
+                    "causal_stream_positions",
+                    "causal_feature_mean",
+                    "causal_feature_scale",
+                )
+                missing_causal = [
+                    name for name in required_causal if name not in initialization
+                ]
+                if missing_causal:
+                    raise ValueError(
+                        "causal residual initialization is missing "
+                        + ", ".join(missing_causal)
+                    )
+                self.register_buffer(
+                    "causal_stream_positions",
+                    torch.as_tensor(
+                        initialization["causal_stream_positions"], dtype=torch.long
+                    ),
+                )
+                self.register_buffer(
+                    "causal_feature_mean",
+                    torch.as_tensor(
+                        initialization["causal_feature_mean"], dtype=torch.float32
+                    ),
+                )
+                self.register_buffer(
+                    "causal_feature_scale",
+                    torch.as_tensor(
+                        initialization["causal_feature_scale"], dtype=torch.float32
+                    ),
+                )
+        if residual_input == "selected_causal":
+            required_selected_causal = (
+                "selected_causal_stream_positions",
+                "selected_causal_feature_mean",
+                "selected_causal_feature_scale",
+            )
+            missing_selected_causal = [
+                name
+                for name in required_selected_causal
+                if name not in initialization
+            ]
+            if missing_selected_causal:
+                raise ValueError(
+                    "selected-causal residual initialization is missing "
+                    + ", ".join(missing_selected_causal)
+                )
+            self.register_buffer(
+                "selected_causal_stream_positions",
+                torch.as_tensor(
+                    initialization["selected_causal_stream_positions"],
+                    dtype=torch.long,
+                ),
+            )
+            self.register_buffer(
+                "selected_causal_feature_mean",
+                torch.as_tensor(
+                    initialization["selected_causal_feature_mean"],
+                    dtype=torch.float32,
+                ),
+            )
+            self.register_buffer(
+                "selected_causal_feature_scale",
+                torch.as_tensor(
+                    initialization["selected_causal_feature_scale"],
+                    dtype=torch.float32,
+                ),
+            )
 
         if output_activation not in ("linear", "softplus"):
             raise ValueError(f"unsupported output activation {output_activation!r}")
@@ -196,11 +329,36 @@ class SingleWaveletDecoder(nn.Module):
         self.head_initialization = "lars_linear_regime"
 
         feature_count = int(self.selected_indices.numel())
-        recurrent_feature_count = (
-            int(self.candidate_indices.numel())
-            if residual_input == "candidate"
-            else feature_count
-        )
+        if residual_input == "candidate":
+            recurrent_feature_count = int(self.candidate_indices.numel())
+        elif residual_input == "current_candidate":
+            current_feature_count = int(self.current_candidate_positions.numel())
+            if residual_input_width is not None and residual_input_width < current_feature_count:
+                raise ValueError(
+                    f"residual_input_width {residual_input_width} is smaller than "
+                    f"the {current_feature_count} current candidates"
+                )
+            recurrent_feature_count = residual_input_width or current_feature_count
+        elif causal_residual:
+            positions = (
+                self.causal_stream_positions
+                if residual_input == "causal_candidate"
+                else self.selected_causal_stream_positions
+            )
+            causal_feature_count = int(positions.numel())
+            if (
+                residual_input_width is not None
+                and residual_input_width < causal_feature_count
+            ):
+                raise ValueError(
+                    f"residual_input_width {residual_input_width} is smaller than "
+                    f"the {causal_feature_count} causal candidates"
+                )
+            recurrent_feature_count = residual_input_width or causal_feature_count
+        else:
+            recurrent_feature_count = feature_count
+        if self.residual_include_direct:
+            recurrent_feature_count += 1
         self.direct = nn.Linear(feature_count, 1)
         self.residual_decoder = recurrent_cell in ("residual_lstm", "residual_gru")
         if recurrent_cell == "standard":
@@ -234,9 +392,9 @@ class SingleWaveletDecoder(nn.Module):
             )
             self.direct.bias.fill_(float(initialization["intercept"]))
         self.direct.requires_grad_(False)
-        if residual_input == "candidate":
+        if candidate_residual:
             expanded_weight = torch.zeros(
-                recurrent_feature_count, dtype=self.direct.weight.dtype
+                int(self.candidate_indices.numel()), dtype=self.direct.weight.dtype
             )
             selected_positions = self.selected_candidate_positions
             selected_scale = self.feature_scale
@@ -362,12 +520,19 @@ class SingleWaveletDecoder(nn.Module):
         self, features: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         recurrent_features, direct_features = self._prepare_features(features)
+        direct_prediction = None
+        if self.residual_decoder:
+            direct_prediction = self._direct_prediction(
+                recurrent_features, direct_features
+            )
+            if self.residual_include_direct:
+                recurrent_features = torch.cat(
+                    (recurrent_features, direct_prediction), dim=-1
+                )
         recurrent, _ = self.lstm(recurrent_features)
         prediction = self.output(recurrent)
         if self.residual_decoder:
-            prediction = self._direct_prediction(
-                recurrent_features, direct_features
-            ) + prediction
+            prediction = direct_prediction + prediction
         trajectory = self.activate_output(prediction).squeeze(-1)
         if self.movement_modulation:
             movement_logit = self.movement_output(recurrent).squeeze(-1)
@@ -407,11 +572,54 @@ class SingleWaveletDecoder(nn.Module):
         self, features: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Standardize recurrent input and recover the selected LARS subset."""
-        if self.residual_input == "candidate":
-            recurrent = (
+        if self.residual_input in ("causal_candidate", "selected_causal"):
+            candidate_mode = self.residual_input == "causal_candidate"
+            direct_count = (
+                int(self.candidate_indices.numel())
+                if candidate_mode
+                else int(self.selected_indices.numel())
+            )
+            direct_raw = features[..., :direct_count]
+            causal = features[..., direct_count:]
+            direct_mean = (
+                self.candidate_feature_mean if candidate_mode else self.feature_mean
+            )
+            direct_scale = (
+                self.candidate_feature_scale if candidate_mode else self.feature_scale
+            )
+            causal_mean = (
+                self.causal_feature_mean
+                if candidate_mode
+                else self.selected_causal_feature_mean
+            )
+            causal_scale = (
+                self.causal_feature_scale
+                if candidate_mode
+                else self.selected_causal_feature_scale
+            )
+            direct = (direct_raw - direct_mean) / direct_scale
+            recurrent = (causal - causal_mean) / causal_scale
+            if self.residual_input_width is not None:
+                recurrent = F.pad(
+                    recurrent,
+                    (0, self.residual_input_width - recurrent.shape[-1]),
+                )
+            return recurrent, direct
+        if self.residual_input in ("candidate", "current_candidate"):
+            standardized = (
                 features - self.candidate_feature_mean
             ) / self.candidate_feature_scale
-            return recurrent, recurrent
+            recurrent = (
+                standardized
+                if self.residual_input == "candidate"
+                else standardized.index_select(-1, self.current_candidate_positions)
+            )
+            if self.residual_input_width is not None:
+                recurrent = F.pad(
+                    recurrent,
+                    (0, self.residual_input_width - recurrent.shape[-1]),
+                )
+            return recurrent, standardized
         standardized = (features - self.feature_mean) / self.feature_scale
         return standardized, standardized
 
@@ -420,9 +628,13 @@ class SingleWaveletDecoder(nn.Module):
         recurrent_features: torch.Tensor,
         direct_features: torch.Tensor,
     ) -> torch.Tensor:
-        if self.residual_input == "candidate":
+        if self.residual_input in (
+            "candidate",
+            "current_candidate",
+            "causal_candidate",
+        ):
             return F.linear(
-                recurrent_features,
+                direct_features,
                 self.candidate_direct_weight,
                 self.candidate_direct_bias,
             )
@@ -473,9 +685,24 @@ class SingleWaveletDecoder(nn.Module):
             .flatten(2)
         )
         history = per_bin.unfold(1, HISTORY, 1).permute(0, 1, 3, 2).flatten(2)
+        if self.residual_input in ("causal_candidate", "selected_causal"):
+            candidate_mode = self.residual_input == "causal_candidate"
+            direct_indices = (
+                self.candidate_indices if candidate_mode else self.selected_indices
+            )
+            causal_positions = (
+                self.causal_stream_positions
+                if candidate_mode
+                else self.selected_causal_stream_positions
+            )
+            direct = history.index_select(2, direct_indices)
+            causal = per_bin[:, HISTORY - 1 :, :].index_select(
+                2, causal_positions
+            )
+            return torch.cat((direct, causal), dim=2)
         indices = (
             self.candidate_indices
-            if self.residual_input == "candidate"
+            if self.residual_input in ("candidate", "current_candidate")
             else self.selected_indices
         )
         return history.index_select(2, indices)
