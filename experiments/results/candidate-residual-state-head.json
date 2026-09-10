@@ -10,6 +10,17 @@
     "candidate_self_gain": "final candidate PCC minus that candidate architecture's own initialization PCC; diagnostic only",
     "prohibited_shortcut": "A weaker candidate-specific initialization never replaces the fixed reference and cannot manufacture a pass."
   },
+  "current_pass_accounting": {
+    "fixed_reference_gain_at_least_0p1": {
+      "count": 6,
+      "pairs": ["S1 middle", "S1 little", "S2 middle", "S2 little", "S3 thumb", "S3 ring"]
+    },
+    "candidate_self_gain_at_least_0p1": {
+      "count": 4,
+      "pairs": ["S1 little", "S2 middle", "S2 little", "S3 thumb"]
+    },
+    "representation_only_fixed_reference_passes": ["S1 middle", "S3 ring"]
+  },
   "screened_pairs": [
     "S1 thumb",
     "S1 index",
