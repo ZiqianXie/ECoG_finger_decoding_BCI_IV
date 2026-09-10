@@ -6,6 +6,7 @@ from single_wavelet_model import (
     OvercompleteWaveletPacketEnergy,
     PaperEquationLSTM,
     SingleWaveletDecoder,
+    leaky_integrate,
 )
 from single_wavelet_support import frontend_frequency_order
 
@@ -574,6 +575,35 @@ def test_near_zero_residual_initialization_trains_recurrent_weights_immediately(
 
     prediction.square().mean().backward()
     assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
+def test_leaky_integrator_matches_causal_recurrence() -> None:
+    innovation = torch.tensor([[[1.0], [0.0], [0.0]]])
+
+    integrated = leaky_integrate(innovation, decay=0.5)
+
+    torch.testing.assert_close(
+        integrated, torch.tensor([[[1.0], [0.5], [0.25]]])
+    )
+
+
+def test_zero_initialized_leaky_residual_starts_exactly_at_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        residual_dynamics="leaky_velocity",
+        residual_decay=0.95,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
 
 
 def test_candidate_pool_residual_can_use_a_feature_excluded_by_lars() -> None:

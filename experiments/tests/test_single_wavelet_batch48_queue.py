@@ -205,3 +205,21 @@ def test_command_can_lower_the_head_learning_rate(tmp_path) -> None:
     )
     joined = " ".join(command)
     assert "--head-learning-rate 0.0001" in joined
+
+
+def test_command_can_use_gpu_vectorized_leaky_residual_state(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        residual_dynamics="leaky_velocity",
+        residual_decay=0.95,
+    )
+    joined = " ".join(command)
+    assert "--residual-dynamics leaky_velocity" in joined
+    assert "--residual-decay 0.95" in joined

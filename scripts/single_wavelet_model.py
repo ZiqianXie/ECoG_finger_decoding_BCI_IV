@@ -16,6 +16,35 @@ from single_wavelet_support import (
 )
 
 
+def leaky_integrate(innovation: torch.Tensor, decay: float) -> torch.Tensor:
+    """Apply a causal leaky integrator along the penultimate (time) axis.
+
+    This convolution form performs the full recurrence on the accelerator:
+    ``state[t] = decay * state[t - 1] + innovation[t]``.  It avoids a Python
+    time loop and remains differentiable with respect to every innovation.
+    """
+    if innovation.ndim < 2:
+        raise ValueError("innovation must have time and feature dimensions")
+    if not 0.0 <= decay <= 1.0:
+        raise ValueError("decay must be between zero and one")
+    time_steps = innovation.shape[-2]
+    channels = innovation.shape[-1]
+    flat = innovation.reshape(-1, time_steps, channels).transpose(1, 2)
+    powers = torch.arange(
+        time_steps - 1,
+        -1,
+        -1,
+        device=innovation.device,
+        dtype=innovation.dtype,
+    )
+    kernel = torch.pow(innovation.new_tensor(decay), powers)
+    weight = kernel.reshape(1, 1, time_steps).expand(channels, 1, time_steps)
+    integrated = F.conv1d(
+        flat, weight, padding=time_steps - 1, groups=channels
+    )[..., :time_steps]
+    return integrated.transpose(1, 2).reshape_as(innovation)
+
+
 class OvercompleteWaveletPacketEnergy(WaveletPacketEnergy):
     """One packet tree retaining every complete level from depth 3 onward.
 
@@ -187,6 +216,8 @@ class SingleWaveletDecoder(nn.Module):
         movement_modulation: bool = False,
         wavelet_signed_pooling: bool = False,
         residual_output_init_std: float = 0.0,
+        residual_dynamics: str = "pointwise",
+        residual_decay: float = 0.95,
     ) -> None:
         super().__init__()
         components, channels = spatial_weights.shape
@@ -264,6 +295,17 @@ class SingleWaveletDecoder(nn.Module):
                 "candidate residual input requires residual_lstm or residual_gru"
             )
         self.residual_input = residual_input
+        if residual_dynamics not in ("pointwise", "leaky_velocity"):
+            raise ValueError(f"unsupported residual dynamics {residual_dynamics!r}")
+        if residual_dynamics != "pointwise" and recurrent_cell not in (
+            "residual_lstm",
+            "residual_gru",
+        ):
+            raise ValueError("leaky residual dynamics require a residual decoder")
+        if not 0.0 <= residual_decay <= 1.0:
+            raise ValueError("residual decay must be between zero and one")
+        self.residual_dynamics = residual_dynamics
+        self.residual_decay = float(residual_decay)
         if not 1 <= residual_history_bins <= HISTORY:
             raise ValueError(
                 f"residual_history_bins must be between 1 and {HISTORY}"
@@ -631,6 +673,8 @@ class SingleWaveletDecoder(nn.Module):
         recurrent, _ = self.lstm(recurrent_features)
         prediction = self.output(recurrent)
         if self.residual_decoder:
+            if self.residual_dynamics == "leaky_velocity":
+                prediction = leaky_integrate(prediction, self.residual_decay)
             prediction = direct_prediction + prediction
         trajectory = self.activate_output(prediction).squeeze(-1)
         if self.movement_modulation:

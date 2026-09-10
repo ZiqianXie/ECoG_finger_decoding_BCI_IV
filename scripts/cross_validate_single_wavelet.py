@@ -1044,6 +1044,8 @@ def make_model(
         movement_modulation=args.movement_modulation,
         wavelet_signed_pooling=args.wavelet_signed_pooling,
         residual_output_init_std=args.residual_output_init_std,
+        residual_dynamics=args.residual_dynamics,
+        residual_decay=args.residual_decay,
     )
 
 
@@ -1933,6 +1935,21 @@ def main() -> None:
             "input so the same LSTM can learn state-dependent corrections"
         ),
     )
+    parser.add_argument(
+        "--residual-dynamics",
+        choices=("pointwise", "leaky_velocity"),
+        default="pointwise",
+        help=(
+            "interpret the recurrent output as a pointwise correction or as a "
+            "causal innovation accumulated by a GPU-vectorized leaky state"
+        ),
+    )
+    parser.add_argument(
+        "--residual-decay",
+        type=float,
+        default=0.95,
+        help="fixed decay of the leaky residual state",
+    )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
     parser.add_argument("--sequence-steps", type=int, default=100)
     parser.add_argument("--sequence-stride", type=int, default=25)
@@ -2069,6 +2086,7 @@ def main() -> None:
         or args.movement_trajectory_weight <= 0
         or args.velocity_loss_weight < 0
         or args.residual_output_init_std < 0
+        or not 0.0 <= args.residual_decay <= 1.0
         or args.correlation_loss_weight < 0
         or args.derivative_correlation_weight < 0
         or args.raw_movement_correlation_weight < 0
@@ -2704,6 +2722,8 @@ def main() -> None:
             + (["target_finger_velocity"] if args.velocity_loss_weight else []),
             "residual_recurrent_sees_direct_lars_logit": args.residual_include_direct,
             "residual_output_initialization_std": args.residual_output_init_std,
+            "residual_dynamics": args.residual_dynamics,
+            "residual_decay": args.residual_decay,
         },
         "learning_rates": {
             "head": args.head_learning_rate,

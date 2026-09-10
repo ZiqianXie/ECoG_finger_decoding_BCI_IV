@@ -63,6 +63,8 @@ def build_command(
     wavelet_frontend: str = "depth3",
     residual_output_init_std: float = 0.0,
     head_learning_rate: float = 3.0e-4,
+    residual_dynamics: str = "pointwise",
+    residual_decay: float = 0.95,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -174,6 +176,10 @@ def build_command(
         "0.0",
         "--residual-output-init-std",
         str(residual_output_init_std),
+        "--residual-dynamics",
+        residual_dynamics,
+        "--residual-decay",
+        str(residual_decay),
         "--correlation-loss-weight",
         str(correlation_loss_weight),
         "--derivative-correlation-weight",
@@ -228,6 +234,12 @@ def main() -> None:
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
     parser.add_argument("--head-learning-rate", type=float, default=3.0e-4)
+    parser.add_argument(
+        "--residual-dynamics",
+        choices=("pointwise", "leaky_velocity"),
+        default="pointwise",
+    )
+    parser.add_argument("--residual-decay", type=float, default=0.95)
     parser.add_argument(
         "--wavelet-frontend",
         choices=(
@@ -288,6 +300,8 @@ def main() -> None:
             args.wavelet_frontend,
             args.residual_output_init_std,
             args.head_learning_rate,
+            args.residual_dynamics,
+            args.residual_decay,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
