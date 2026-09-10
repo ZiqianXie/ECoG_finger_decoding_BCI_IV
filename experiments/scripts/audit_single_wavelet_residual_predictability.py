@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import torch
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import GroupKFold
@@ -22,6 +23,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ecog_decoding.training import FINGER_NAMES
+from gpu_ridge import fit_torch_ridge_cv
 
 
 ALPHAS = tuple(float(value) for value in np.logspace(-2, 5, 8))
@@ -88,13 +90,30 @@ def select_ridge(
     features: np.ndarray,
     target: np.ndarray,
     training_intervals: list[list[int]],
+    *,
+    backend: str,
+    device: torch.device,
 ) -> tuple[object, float, dict[str, float]]:
     training, groups = grouped_rows(training_intervals)
     splitter = GroupKFold(n_splits=min(5, len(training_intervals)))
+    splits = list(splitter.split(training, target[training], groups))
+    if backend == "torch":
+        model = fit_torch_ridge_cv(
+            features[training],
+            target[training],
+            splits,
+            alphas=np.asarray(ALPHAS, dtype=np.float32),
+            device=device,
+        )
+        means = {
+            str(float(alpha)): float(loss)
+            for alpha, loss in zip(model.alphas_, model.mean_validation_mse_)
+        }
+        return model, model.alpha_, means
+    if backend != "sklearn":
+        raise ValueError(f"unsupported ridge backend {backend!r}")
     losses = {alpha: [] for alpha in ALPHAS}
-    for train_local, validation_local in splitter.split(
-        training, target[training], groups
-    ):
+    for train_local, validation_local in splits:
         train_rows = training[train_local]
         validation_rows = training[validation_local]
         for alpha in ALPHAS:
@@ -137,8 +156,13 @@ def main() -> None:
     )
     parser.add_argument("--outer-folds", type=int, nargs="+", default=(0, 1, 2))
     parser.add_argument("--softplus-beta", type=float, default=10.0)
+    parser.add_argument(
+        "--ridge-backend", choices=("sklearn", "torch"), default="torch"
+    )
+    parser.add_argument("--device", default="cuda")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    device = torch.device(args.device)
     finger_index = list(FINGER_NAMES).index(args.finger)
 
     stitched: dict[str, np.ndarray] = {}
@@ -179,10 +203,18 @@ def main() -> None:
         residual = target - base
 
         ridge_all, ridge_all_alpha, ridge_all_curve = select_ridge(
-            standardized, target, training_intervals
+            standardized,
+            target,
+            training_intervals,
+            backend=args.ridge_backend,
+            device=device,
         )
         ridge_current, ridge_current_alpha, ridge_current_curve = select_ridge(
-            temporal, residual, training_intervals
+            temporal,
+            residual,
+            training_intervals,
+            backend=args.ridge_backend,
+            device=device,
         )
         ridge_all_prediction = np.maximum(ridge_all.predict(standardized), 0.0)
         ridge_current_prediction = np.maximum(
@@ -251,6 +283,7 @@ def main() -> None:
         "released_test_touched": False,
         "subject": args.subject,
         "finger": args.finger,
+        "ridge_backend": args.ridge_backend,
         "outer_records": outer_records,
         "stitched_raw_pcc": {
             name: pearson(prediction[observed], stitched_raw[observed])
