@@ -961,11 +961,12 @@ class DenseSequenceSampler:
 def make_sampler(
     args: argparse.Namespace, groups: list[list[int]], seed: int
 ) -> UniformGroupSampler | DenseSequenceSampler:
+    sampled_steps = args.sequence_steps + args.warmup_steps
     if args.sampler_mode == "dense_sequences":
         return DenseSequenceSampler(
-            groups, args.sequence_steps, args.sequence_stride, seed
+            groups, sampled_steps, args.sequence_stride, seed
         )
-    return UniformGroupSampler(groups, args.sequence_steps, seed)
+    return UniformGroupSampler(groups, sampled_steps, seed)
 
 
 def optimizer(
@@ -1181,6 +1182,7 @@ def train_updates(
     sampler: UniformGroupSampler,
     updates: int,
     steps: int,
+    warmup_steps: int,
     batch_size: int,
     target_scale: torch.Tensor,
     raw_stem: bool,
@@ -1225,6 +1227,14 @@ def train_updates(
                 velocity_prediction = auxiliary[auxiliary_index]
         else:
             result = result_or_pair
+        if warmup_steps:
+            result = result[:, warmup_steps:]
+            observed = observed[:, warmup_steps:]
+            trajectory_observed = trajectory_observed[:, warmup_steps:]
+            if movement_loss_weight:
+                movement_logit = movement_logit[:, warmup_steps:]
+            if velocity_loss_weight:
+                velocity_prediction = velocity_prediction[:, warmup_steps:]
         loss = trajectory_mse_loss(
             result,
             trajectory_observed,
@@ -1262,6 +1272,8 @@ def train_updates(
             if raw_target is None:
                 raise ValueError("raw target is required for raw movement correlation")
             raw_observed = raw_target[index]
+            if warmup_steps:
+                raw_observed = raw_observed[:, warmup_steps:]
             moving = observed >= movement_threshold
             if raw_movement_correlation_weight:
                 loss = loss + raw_movement_correlation_weight * (
@@ -1483,7 +1495,8 @@ def monitor_inner_fold(
             trajectory_target=trajectory_target,
             sampler=sampler,
             updates=checkpoint - completed,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=False,
@@ -1548,7 +1561,8 @@ def monitor_inner_fold(
             trajectory_target=trajectory_target,
             sampler=sampler,
             updates=checkpoint - completed,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=True,
@@ -1702,7 +1716,8 @@ def train_final_schedule(
             trajectory_target=trajectory_target,
             sampler=sampler,
             updates=frozen_updates,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=False,
@@ -1749,7 +1764,8 @@ def train_final_schedule(
             trajectory_target=trajectory_target,
             sampler=sampler,
             updates=unfrozen_updates,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=True,
@@ -2003,6 +2019,15 @@ def main() -> None:
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
     parser.add_argument("--sequence-steps", type=int, default=100)
+    parser.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=0,
+        help=(
+            "causal prefix presented to the recurrent cell before the scored "
+            "sequence; prefix outputs do not contribute to any loss"
+        ),
+    )
     parser.add_argument("--sequence-stride", type=int, default=25)
     parser.add_argument(
         "--sampler-mode",
@@ -2144,6 +2169,7 @@ def main() -> None:
     if (
         args.movement_loss_weight < 0
         or args.movement_trajectory_weight <= 0
+        or args.warmup_steps < 0
         or not 0.0 <= args.raw_trajectory_blend <= 1.0
         or args.velocity_loss_weight < 0
         or args.residual_output_init_std < 0

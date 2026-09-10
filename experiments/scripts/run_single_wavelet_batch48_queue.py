@@ -66,6 +66,7 @@ def build_command(
     residual_dynamics: str = "pointwise",
     residual_decay: float = 0.95,
     raw_trajectory_blend: float = 0.0,
+    warmup_steps: int = 0,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -156,6 +157,8 @@ def build_command(
         "10.0",
         "--sequence-steps",
         "100",
+        "--warmup-steps",
+        str(warmup_steps),
         "--sequence-stride",
         "25",
         "--sampler-mode",
@@ -244,6 +247,7 @@ def main() -> None:
     )
     parser.add_argument("--residual-decay", type=float, default=0.95)
     parser.add_argument("--raw-trajectory-blend", type=float, default=0.0)
+    parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument(
         "--wavelet-frontend",
         choices=(
@@ -307,6 +311,7 @@ def main() -> None:
             args.residual_dynamics,
             args.residual_decay,
             args.raw_trajectory_blend,
+            args.warmup_steps,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
