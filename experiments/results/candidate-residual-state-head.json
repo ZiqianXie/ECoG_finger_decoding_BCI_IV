@@ -752,6 +752,41 @@
     "morphology_pattern": "Several PCC failures still reduce resting RMS and raise amplitude slope or movement-state accuracy. The recurrent head is learning a smoother movement envelope, but often loses within-event timing or movement amplitude sufficiently to reduce raw PCC.",
     "decision": "Reject the batch-48 current-bin recipe as a universal decoder. Preserve S2-middle and S3-thumb as numerical passes, retain S1-index as the best sub-threshold residual result, and use finger-specific spectral-spatial initialization or objectives for the remaining pairs."
   },
+  "S2_little_interlevel_normalization_lr_selection": {
+    "description": "The near-threshold hidden-level normalization result was bracketed with interlevel-path learning rates of 3e-4 and 3e-3. Each learning rate selected its optimizer-update schedule using only inner folds. A second nested decision selected among learning rates from the chosen schedule's inner mean raw PCC before untouched outer predictions were stitched.",
+    "released_test_touched": false,
+    "outer_validation_used_for_selection": false,
+    "initialization_pcc": 0.326494257,
+    "fixed_lr_outer_diagnostics": {
+      "interlevel_lr3e-4": {
+        "tuned_pcc": 0.418843399,
+        "gain": 0.092349142
+      },
+      "interlevel_lr1e-3": {
+        "tuned_pcc": 0.426453594,
+        "gain": 0.099959337
+      },
+      "interlevel_lr3e-3": {
+        "tuned_pcc": 0.394396774,
+        "gain": 0.067902517
+      }
+    },
+    "inner_selected_result": {
+      "selected_learning_rate_by_outer_fold": [
+        "3e-3",
+        "3e-4",
+        "1e-3"
+      ],
+      "selected_schedule_by_outer_fold": [
+        "unfrozen_100_10",
+        "unfrozen_100_100",
+        "unfrozen_100_10"
+      ],
+      "tuned_pcc": 0.40836976,
+      "gain": 0.081875503
+    },
+    "decision": "Do not count S2-little as a pass. The fixed 1e-3 diagnostic misses +0.1 by 0.000041, and the leakage-safe inner-selected learning-rate route gains only +0.0819. Further generic interlevel-rate tuning is not justified."
+  },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The complete 15-pair screen has only two numerical passes: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 with the current-bin, batch-48 recipe. S1-index remains the best sub-threshold result at +0.059. None of the twelve fixed-recipe transfers reaches +0.1, and seven reduce raw PCC despite often improving rest suppression or movement-state accuracy. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat generic optimizer, batch-size, or wavelet-path sweeps."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The complete 15-pair screen has only two numerical passes: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 with the current-bin, batch-48 recipe. S1-index remains the best sub-threshold result at +0.059. None of the twelve fixed-recipe transfers reaches +0.1, and seven reduce raw PCC despite often improving rest suppression or movement-state accuracy. S2-little reaches +0.09996 under the fixed 1e-3 interlevel-path rate, but the inner-selected learning-rate route gains only +0.0819, so it is not promoted. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat generic optimizer, batch-size, or wavelet-path sweeps."
 }
