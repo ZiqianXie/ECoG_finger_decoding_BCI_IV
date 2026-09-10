@@ -42,6 +42,19 @@ def completed_summary(path: Path, outer_fold: int) -> bool:
     return observed == [outer_fold]
 
 
+def missing_designed_band_caches(
+    specs: list[tuple[int, str, int]], csp_band_mode: str, root: Path
+) -> list[Path]:
+    """Return missing node-local designed-band caches for requested subjects."""
+    if csp_band_mode != "designed_seven":
+        return []
+    return [
+        root / f"sub{subject}" / "train_filtered_bands.npy"
+        for subject in sorted({subject for subject, _, _ in specs})
+        if not (root / f"sub{subject}" / "train_filtered_bands.npy").is_file()
+    ]
+
+
 def build_command(
     python: str,
     script: Path,
@@ -52,6 +65,7 @@ def build_command(
     initialization_root: Path,
     ica_cache_root: Path,
     csp_band_mode: str = "joint_hhl_hhh",
+    csp_band_cache_root: Path = Path("/dev/shm/ecog_csp_band_cache"),
     residual_input_width: int = 64,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
@@ -134,6 +148,8 @@ def build_command(
         csp_contrast_mode,
         "--csp-band-mode",
         csp_band_mode,
+        "--csp-band-cache-root",
+        str(csp_band_cache_root),
         "--hidden-size",
         "64",
         "--head-initialization",
@@ -239,6 +255,11 @@ def main() -> None:
         default="joint_hhl_hhh",
     )
     parser.add_argument(
+        "--csp-band-cache-root",
+        type=Path,
+        default=Path("/dev/shm/ecog_csp_band_cache"),
+    )
+    parser.add_argument(
         "--csp-mode",
         choices=("ica_only", "movement_1", "movement_2", "movement_4", "tails_2x2", "tails_4x4"),
         default="movement_1",
@@ -296,6 +317,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    missing = missing_designed_band_caches(
+        args.spec, args.csp_band_mode, args.csp_band_cache_root
+    )
+    if missing:
+        joined = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(
+            "designed-seven CSP cache is missing: "
+            f"{joined}. Prepare it once with scripts/cache_csp_band_signals.py."
+        )
+
     for subject, finger, outer_fold in args.spec:
         output = args.output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
         summary = output / "summary.json"
@@ -313,6 +344,7 @@ def main() -> None:
             args.initialization_root,
             args.ica_cache_root,
             args.csp_band_mode,
+            args.csp_band_cache_root,
             args.residual_input_width,
             args.correlation_loss_weight,
             args.derivative_correlation_weight,

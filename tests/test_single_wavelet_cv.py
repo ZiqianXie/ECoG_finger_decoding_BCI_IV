@@ -15,6 +15,7 @@ from cross_validate_single_wavelet import (
     cached_initialization_features,
     load_initialization,
     load_or_create_initialization,
+    load_runtime_ecog,
     grouped_velocity_scale,
     masked_sequence_correlation_loss,
     movement_positive_weight,
@@ -289,6 +290,36 @@ def test_initialization_cache_creation_is_serialized(tmp_path) -> None:
     np.testing.assert_array_equal(
         results[0][0]["coefficients"], results[1][0]["coefficients"]
     )
+
+
+def test_same_rate_runtime_ecog_is_reused_from_node_local_cache(tmp_path) -> None:
+    source = tmp_path / "prepared" / "train_ecog.npy"
+    cache = tmp_path / "shm" / "train_ecog.npy"
+    source.parent.mkdir()
+    expected = np.arange(24, dtype=np.float32).reshape(8, 3)
+    np.save(source, expected)
+
+    first = load_runtime_ecog(source, cache, model_rate=1000)
+    np.testing.assert_array_equal(first, expected)
+    assert cache.is_file()
+
+    np.save(source, np.full_like(expected, -1.0))
+    second = load_runtime_ecog(source, cache, model_rate=1000)
+    np.testing.assert_array_equal(second, expected)
+
+
+def test_same_rate_runtime_ecog_repairs_invalid_cache(tmp_path) -> None:
+    source = tmp_path / "prepared" / "train_ecog.npy"
+    cache = tmp_path / "shm" / "train_ecog.npy"
+    source.parent.mkdir()
+    cache.parent.mkdir()
+    expected = np.arange(15, dtype=np.float32).reshape(5, 3)
+    np.save(source, expected)
+    np.save(cache, np.zeros((2, 3), dtype=np.float32))
+
+    observed = load_runtime_ecog(source, cache, model_rate=1000)
+
+    np.testing.assert_array_equal(observed, expected)
 
 
 def test_one_standard_error_prefers_earlier_checkpoint() -> None:

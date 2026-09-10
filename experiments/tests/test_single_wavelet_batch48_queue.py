@@ -7,6 +7,7 @@ import pytest
 from experiments.scripts.run_single_wavelet_batch48_queue import (
     build_command,
     completed_summary,
+    missing_designed_band_caches,
     parse_spec,
 )
 
@@ -24,6 +25,21 @@ def test_completed_summary_requires_requested_single_fold(tmp_path) -> None:
     path.write_text(json.dumps({"outer_folds": [{"outer_fold": 1}]}))
     assert completed_summary(path, 1)
     assert not completed_summary(path, 0)
+
+
+def test_designed_band_preflight_checks_each_subject_once(tmp_path) -> None:
+    specs = [(2, "index", 0), (2, "index", 1), (3, "little", 0)]
+    expected = [
+        tmp_path / "sub2" / "train_filtered_bands.npy",
+        tmp_path / "sub3" / "train_filtered_bands.npy",
+    ]
+    assert missing_designed_band_caches(specs, "designed_seven", tmp_path) == expected
+    expected[0].parent.mkdir(parents=True)
+    expected[0].touch()
+    assert missing_designed_band_caches(specs, "designed_seven", tmp_path) == [
+        expected[1]
+    ]
+    assert missing_designed_band_caches(specs, "joint_hhl_hhh", tmp_path) == []
 
 
 def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
@@ -135,13 +151,13 @@ def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
         tmp_path / "output",
         tmp_path / "initialization",
         tmp_path / "ica",
-        "separate_hhl_hhh",
-        96,
-        0.1,
-        0.1,
-        0.2,
-        0.3,
-        "torch_fista",
+        csp_band_mode="separate_hhl_hhh",
+        residual_input_width=96,
+        correlation_loss_weight=0.1,
+        derivative_correlation_weight=0.1,
+        raw_movement_correlation_weight=0.2,
+        raw_movement_derivative_correlation_weight=0.3,
+        lasso_backend="torch_fista",
     )
     joined = " ".join(command)
     assert "--csp-band-mode separate_hhl_hhh" in joined
@@ -164,12 +180,14 @@ def test_command_can_request_designed_band_csp_rows(tmp_path) -> None:
         tmp_path / "initialization",
         tmp_path / "ica",
         csp_band_mode="designed_seven",
+        csp_band_cache_root=tmp_path / "bands",
         csp_mode="tails_2x2",
         residual_input_width=256,
         wavelet_frontend="overcomplete_depth3_depth4",
     )
     joined = " ".join(command)
     assert "--csp-band-mode designed_seven" in joined
+    assert f"--csp-band-cache-root {tmp_path / 'bands'}" in joined
     assert "--csp-mode tails_2x2" in joined
     assert "--residual-input-width 256" in joined
     assert "--wavelet-frontend overcomplete_depth3_depth4" in joined

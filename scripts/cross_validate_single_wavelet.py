@@ -875,6 +875,27 @@ def initialization_cache_lock(root: Path):
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def load_runtime_ecog(source: Path, cache: Path, model_rate: int) -> np.ndarray:
+    """Load ECoG from one node-local cache, resampling only when requested."""
+    with initialization_cache_lock(cache):
+        if model_rate != SOURCE_RATE:
+            return np.asarray(resample_ecog(source, cache))
+        source_values = np.load(source, mmap_mode="r")
+        cache_is_valid = False
+        if cache.is_file():
+            try:
+                cached = np.load(cache, mmap_mode="r")
+                cache_is_valid = (
+                    cached.shape == source_values.shape
+                    and cached.dtype == source_values.dtype
+                )
+            except (EOFError, OSError, ValueError):
+                pass
+        if not cache_is_valid:
+            atomic_save_npy(cache, np.asarray(source_values))
+        return np.asarray(np.load(cache, mmap_mode="r"))
+
+
 def load_or_create_initialization(root: Path, create):
     """Load a complete cache or create it once while concurrent jobs wait."""
     with initialization_cache_lock(root):
@@ -2349,10 +2370,7 @@ def main() -> None:
     )
     rows = int(fold_definition["training_rows"])
     source_ecog = args.prepared_root / f"sub{args.subject}" / "train_ecog.npy"
-    if args.model_rate == SOURCE_RATE:
-        ecog = np.asarray(np.load(source_ecog, mmap_mode="r"))
-    else:
-        ecog = np.asarray(resample_ecog(source_ecog, args.resampled_cache))
+    ecog = load_runtime_ecog(source_ecog, args.resampled_cache, args.model_rate)
     raw_full = np.load(
         args.prepared_root / f"sub{args.subject}" / "train_glove_25hz_raw.npy",
         mmap_mode="r",
@@ -2397,27 +2415,31 @@ def main() -> None:
     )
     hhl_path = args.leaf_cache / "linear_hhl_100_125.npy"
     hhh_path = args.leaf_cache / "linear_hhh_125_150.npy"
-    if not (
-        valid_leaf_cache(hhl_path, ecog.shape[0])
-        and valid_leaf_cache(hhh_path, ecog.shape[0])
-    ):
-        hhl_values, hhh_values = linear_gamma_leaf_signals(
-            ecog, csp_frontend, device
-        )
-        atomic_save_npy(hhl_path, hhl_values)
-        atomic_save_npy(hhh_path, hhh_values)
     lower_first_path = args.leaf_cache / "linear_50_75.npy"
     lower_second_path = args.leaf_cache / "linear_75_100.npy"
     use_lower_high_gamma = args.csp_band_mode == "separate_50_100_hhl_hhh"
-    if use_lower_high_gamma and not (
-        valid_leaf_cache(lower_first_path, ecog.shape[0])
-        and valid_leaf_cache(lower_second_path, ecog.shape[0])
-    ):
-        lower_first, lower_second = linear_lower_high_gamma_leaf_signals(
-            ecog, csp_frontend, device
-        )
-        atomic_save_npy(lower_first_path, lower_first)
-        atomic_save_npy(lower_second_path, lower_second)
+    # Outer folds run concurrently, but these linear leaf signals depend only on
+    # the subject. Serialize their first construction so several GPUs do not
+    # perform the same convolution and race to publish identical cache files.
+    with initialization_cache_lock(args.leaf_cache):
+        if not (
+            valid_leaf_cache(hhl_path, ecog.shape[0])
+            and valid_leaf_cache(hhh_path, ecog.shape[0])
+        ):
+            hhl_values, hhh_values = linear_gamma_leaf_signals(
+                ecog, csp_frontend, device
+            )
+            atomic_save_npy(hhl_path, hhl_values)
+            atomic_save_npy(hhh_path, hhh_values)
+        if use_lower_high_gamma and not (
+            valid_leaf_cache(lower_first_path, ecog.shape[0])
+            and valid_leaf_cache(lower_second_path, ecog.shape[0])
+        ):
+            lower_first, lower_second = linear_lower_high_gamma_leaf_signals(
+                ecog, csp_frontend, device
+            )
+            atomic_save_npy(lower_first_path, lower_first)
+            atomic_save_npy(lower_second_path, lower_second)
     hhl = np.load(hhl_path, mmap_mode="r")
     hhh = np.load(hhh_path, mmap_mode="r")
     if args.prepare_shared_only:
