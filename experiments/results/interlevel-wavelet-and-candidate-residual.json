@@ -1,0 +1,73 @@
+{
+  "status": "experimental_not_promoted",
+  "selection_data": "event-grouped nested cross-validation on released competition training data",
+  "released_test_touched": false,
+  "primary_metric": "stitched out-of-fold raw-target PCC",
+  "requested_gain_threshold": 0.1,
+  "interlevel_paths": {
+    "s3_ring": {
+      "initialization_pcc": 0.404735799,
+      "skip_only_pcc": 0.408241559,
+      "normalization_only_pcc": 0.407841675,
+      "skip_and_normalization_pcc": 0.407731415
+    },
+    "hidden_level_normalization_only": {
+      "s1_index": {
+        "initialization_pcc": 0.721336640,
+        "tuned_pcc": 0.748285205,
+        "gain": 0.026948565
+      },
+      "s2_middle": {
+        "initialization_pcc": 0.364738224,
+        "tuned_pcc": 0.432349625,
+        "gain": 0.067611401
+      },
+      "s2_little": {
+        "initialization_pcc": 0.326494258,
+        "tuned_pcc": 0.426453594,
+        "gain": 0.099959337
+      },
+      "s3_thumb": {
+        "initialization_pcc": 0.572208110,
+        "tuned_pcc": 0.613781870,
+        "gain": 0.041573760
+      },
+      "s3_little": {
+        "initialization_pcc": 0.631942700,
+        "tuned_pcc": 0.674532855,
+        "gain": 0.042590155
+      }
+    }
+  },
+  "candidate_pool_residual": {
+    "description": "The immutable direct path uses only split-local LARS-selected features. A zero-initialized residual LSTM receives all 712 split-local pre-LARS candidates.",
+    "s1_index": {
+      "initialization_pcc": 0.721336642,
+      "tuned_pcc": 0.736630835,
+      "gain": 0.015294192
+    },
+    "s2_middle": {
+      "initialization_pcc": 0.364738224,
+      "tuned_pcc": 0.447053812,
+      "gain": 0.082315587
+    },
+    "s3_thumb": {
+      "initialization_pcc": 0.572208105,
+      "tuned_pcc": 0.604273150,
+      "gain": 0.032065045
+    },
+    "s2_middle_lower_learning_rate": {
+      "head_learning_rate": 0.00003,
+      "initialization_pcc": 0.364738224,
+      "tuned_pcc": 0.434666116,
+      "gain": 0.069927892
+    },
+    "s2_middle_with_hidden_level_normalization": {
+      "initialization_pcc": 0.364738224,
+      "tuned_pcc": 0.450953825,
+      "gain": 0.086215601
+    }
+  },
+  "visual_diagnostic": "S2-middle tuning reduced stationary offset and improved event amplitude slope, but still underestimated the largest flexions and introduced a conspicuous false transient.",
+  "decision": "Keep the implementation on an experimental branch. Skip connections are not useful, interlevel normalization is strongly finger dependent, and candidate visibility plus normalization does not achieve a universal 0.1 PCC gain."
+}
