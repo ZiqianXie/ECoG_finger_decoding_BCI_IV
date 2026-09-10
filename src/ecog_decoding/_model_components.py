@@ -283,6 +283,9 @@ class WaveletPacketEnergy(nn.Module):
         log_epsilon: float = 0.0,
         tap_resample_up: int = 1,
         tap_resample_down: int = 1,
+        interlevel_skip: bool = False,
+        interlevel_normalization: bool = False,
+        normalization_epsilon: float = 1.0e-5,
     ) -> None:
         super().__init__()
         if levels < 1:
@@ -293,6 +296,8 @@ class WaveletPacketEnergy(nn.Module):
             raise ValueError("log_epsilon must be nonnegative")
         if tap_resample_up < 1 or tap_resample_down < 1:
             raise ValueError("tap resampling factors must be positive integers")
+        if normalization_epsilon <= 0:
+            raise ValueError("normalization epsilon must be positive")
         if padding_mode not in {"constant", "reflect", "replicate", "circular"}:
             raise ValueError(f"unsupported padding mode {padding_mode!r}")
 
@@ -362,6 +367,8 @@ class WaveletPacketEnergy(nn.Module):
                 (base_lowpass, base_highpass, 2**level) for level in range(levels)
             ]
         self.layers = nn.ModuleList()
+        self.skip_gates = nn.ParameterList()
+        self.normalization_gates = nn.ParameterList()
         for level, (level_lowpass, level_highpass, dilation) in enumerate(layer_specs):
             parent_count = 2**level
             low_initial = torch.tensor(level_lowpass, dtype=torch.float32)
@@ -383,6 +390,19 @@ class WaveletPacketEnergy(nn.Module):
             layer.weight.requires_grad_(trainable)
             layer.bias.requires_grad_(trainable)
             self.layers.append(layer)
+            child_count = 2 * parent_count
+            if interlevel_skip:
+                self.skip_gates.append(
+                    nn.Parameter(
+                        torch.zeros(1, child_count, 1), requires_grad=trainable
+                    )
+                )
+            if interlevel_normalization:
+                self.normalization_gates.append(
+                    nn.Parameter(
+                        torch.zeros(1, child_count, 1), requires_grad=trainable
+                    )
+                )
         self.wavelet = wavelet
         self.levels = int(levels)
         self.kernel_size = int(self.layers[0].kernel_size[0])
@@ -394,6 +414,9 @@ class WaveletPacketEnergy(nn.Module):
         self.log_epsilon = float(log_epsilon)
         self.tap_resample_up = int(tap_resample_up)
         self.tap_resample_down = int(tap_resample_down)
+        self.interlevel_skip = bool(interlevel_skip)
+        self.interlevel_normalization = bool(interlevel_normalization)
+        self.normalization_epsilon = float(normalization_epsilon)
 
     @property
     def band_names(self) -> tuple[str, ...]:
@@ -431,6 +454,28 @@ class WaveletPacketEnergy(nn.Module):
         l2_norm = torch.sqrt(torch.clamp_min(squared_sum, 0.0))
         return torch.log1p(l2_norm + self.log_epsilon)
 
+    def transform(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the undecimated tree before energy pooling."""
+        bands = x
+        for level, layer in enumerate(self.layers):
+            parent = bands
+            bands = self._same_filter(parent, layer)
+            bands = 1.7156 * torch.tanh((2.0 / 3.0) * bands)
+            if self.interlevel_skip:
+                bands = bands + self.skip_gates[level] * parent.repeat_interleave(
+                    2, dim=1
+                )
+            if self.interlevel_normalization:
+                mean = bands.mean(dim=-1, keepdim=True)
+                variance = bands.var(dim=-1, keepdim=True, unbiased=False)
+                normalized = (bands - mean) * torch.rsqrt(
+                    variance + self.normalization_epsilon
+                )
+                bands = bands + self.normalization_gates[level] * (
+                    normalized - bands
+                )
+        return bands
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim != 3:
             raise ValueError(
@@ -439,10 +484,7 @@ class WaveletPacketEnergy(nn.Module):
         batch, electrodes, time = x.shape
         if time < self.energy_window_samples:
             raise ValueError("time dimension is shorter than the energy window")
-        bands = x.reshape(batch * electrodes, 1, time)
-        for layer in self.layers:
-            bands = self._same_filter(bands, layer)
-            bands = 1.7156 * torch.tanh((2.0 / 3.0) * bands)
+        bands = self.transform(x.reshape(batch * electrodes, 1, time))
         energy = self._energy(bands)
         return energy.reshape(batch, electrodes, 2**self.levels, energy.shape[-1])
 

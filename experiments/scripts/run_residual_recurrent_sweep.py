@@ -66,12 +66,66 @@ def main() -> None:
         "--base-update-grid", type=int, nargs="+", default=(20, 50, 100, 200, 400)
     )
     parser.add_argument("--reference-learning-rate", type=float, default=3e-4)
+    parser.add_argument(
+        "--scale-update-grid",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "scale checkpoint counts inversely with learning rate; disable this "
+            "to test genuinely smaller optimization distances at lower rates"
+        ),
+    )
     parser.add_argument("--hidden-size", type=int, default=32)
+    parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
+    parser.add_argument(
+        "--derivative-correlation-weight", type=float, default=0.0
+    )
+    parser.add_argument("--spatial-learning-rate", type=float, default=0.0)
+    parser.add_argument("--wavelet-learning-rate", type=float, default=0.0)
+    parser.add_argument("--interlevel-learning-rate", type=float, default=3.0e-4)
+    parser.add_argument(
+        "--frozen-only", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument("--unfreeze-after", type=int, default=50)
+    parser.add_argument(
+        "--unfrozen-update-grid", type=int, nargs="+", default=(20, 50, 100)
+    )
+    parser.add_argument(
+        "--wavelet-interlevel-skip",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--wavelet-interlevel-normalization",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--gpus", nargs="+", default=tuple(str(i) for i in range(8)))
     parser.add_argument(
         "--output-root",
         type=Path,
         default=Path("outputs/residual_recurrent_single_wavelet_oof_v1"),
+    )
+    parser.add_argument(
+        "--initialization-source-root",
+        type=Path,
+        help=(
+            "optional per-pair cache root laid out as sub<subject>/<finger>; "
+            "use it to compare schedules without refitting ICA/CSP/LARS"
+        ),
+    )
+    parser.add_argument(
+        "--reuse-inner-metrics-source-root",
+        type=Path,
+        help=(
+            "optional completed per-pair run laid out as sub<subject>/<finger>; "
+            "reuse its inner curves when evaluating a forced outer schedule"
+        ),
+    )
+    parser.add_argument(
+        "--force-schedule",
+        help="force one checkpoint such as frozen_10 after inner diagnostics",
     )
     parser.add_argument(
         "--fold-root",
@@ -152,8 +206,10 @@ def main() -> None:
                     status = "skipped_completed"
                 else:
                     route = resolve_route(route_map, subject, finger)
-                    update_grid = scaled_grid(
-                        base_grid, args.reference_learning_rate, rate
+                    update_grid = (
+                        scaled_grid(base_grid, args.reference_learning_rate, rate)
+                        if args.scale_update_grid
+                        else base_grid
                     )
                     command = [
                         sys.executable,
@@ -169,8 +225,10 @@ def main() -> None:
                         "--csp-mode", str(route.get("csp_mode", "movement_1")),
                         "--hidden-size", str(args.hidden_size),
                         "--head-learning-rate", str(rate),
-                        "--spatial-learning-rate", "0",
-                        "--wavelet-learning-rate", "0",
+                        "--spatial-learning-rate", str(args.spatial_learning_rate),
+                        "--wavelet-learning-rate", str(args.wavelet_learning_rate),
+                        "--interlevel-learning-rate",
+                        str(args.interlevel_learning_rate),
                         "--lars-candidate-scale", "1",
                         "--sequence-steps", "100",
                         "--sequence-stride", "25",
@@ -181,11 +239,52 @@ def main() -> None:
                         "--no-require-lstm-update",
                         "--output-activation", "softplus",
                         "--softplus-beta", "10",
+                        "--seed", str(args.seed),
+                        "--correlation-loss-weight",
+                        str(args.correlation_loss_weight),
+                        "--derivative-correlation-weight",
+                        str(args.derivative_correlation_weight),
                         "--frozen-update-grid", *[str(value) for value in update_grid],
-                        "--frozen-only",
                     ]
-                    if cache_root is not None:
-                        command.extend(["--initialization-cache-root", str(cache_root)])
+                    if args.frozen_only:
+                        command.append("--frozen-only")
+                    else:
+                        command.extend(
+                            [
+                                "--unfreeze-after", str(args.unfreeze_after),
+                                "--unfrozen-update-grid",
+                                *[str(value) for value in args.unfrozen_update_grid],
+                            ]
+                        )
+                    if args.wavelet_interlevel_skip:
+                        command.append("--wavelet-interlevel-skip")
+                    if args.wavelet_interlevel_normalization:
+                        command.append("--wavelet-interlevel-normalization")
+                    effective_cache_root = cache_root
+                    if (
+                        effective_cache_root is None
+                        and args.initialization_source_root is not None
+                    ):
+                        effective_cache_root = (
+                            args.initialization_source_root
+                            / f"sub{subject}"
+                            / finger
+                        )
+                    if effective_cache_root is not None:
+                        command.extend(
+                            ["--initialization-cache-root", str(effective_cache_root)]
+                        )
+                    if args.reuse_inner_metrics_source_root is not None:
+                        reuse_root = (
+                            args.reuse_inner_metrics_source_root
+                            / f"sub{subject}"
+                            / finger
+                        )
+                        command.extend(
+                            ["--reuse-inner-metrics-from", str(reuse_root)]
+                        )
+                    if args.force_schedule is not None:
+                        command.extend(["--force-schedule", args.force_schedule])
                     if route.get("little_event_decontamination", False):
                         command.append("--little-event-decontamination")
                     if not args.compile:

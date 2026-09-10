@@ -119,6 +119,34 @@ def test_wavelet_packet_zero_cross_connections_are_trainable() -> None:
     assert torch.count_nonzero(tree.layers[1].weight.grad[0, 1]) > 0
 
 
+def test_zero_gated_interlevel_paths_preserve_wavelet_initialization() -> None:
+    baseline = WaveletPacketEnergy(
+        levels=3, energy_window_samples=20, energy_stride_samples=20
+    )
+    augmented = WaveletPacketEnergy(
+        levels=3,
+        energy_window_samples=20,
+        energy_stride_samples=20,
+        interlevel_skip=True,
+        interlevel_normalization=True,
+    )
+    x = torch.randn(2, 2, 1000)
+    torch.testing.assert_close(augmented(x), baseline(x))
+
+
+def test_interlevel_skip_and_normalization_gates_receive_gradients() -> None:
+    tree = WaveletPacketEnergy(
+        levels=3,
+        energy_window_samples=20,
+        energy_stride_samples=20,
+        interlevel_skip=True,
+        interlevel_normalization=True,
+    )
+    tree(torch.randn(2, 2, 1000)).mean().backward()
+    assert all(gate.grad is not None for gate in tree.skip_gates)
+    assert all(gate.grad is not None for gate in tree.normalization_gates)
+
+
 def test_diagonal_ssm_is_causal() -> None:
     torch.manual_seed(4)
     block = DiagonalSSMBlock(width=8, state_size=4).eval()

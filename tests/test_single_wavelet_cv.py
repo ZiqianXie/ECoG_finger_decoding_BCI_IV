@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import cross_validate_single_wavelet as cv
 
 from cross_validate_single_wavelet import (
@@ -8,7 +9,10 @@ from cross_validate_single_wavelet import (
     UNFROZEN_UPDATES,
     UniformGroupSampler,
     one_standard_error_selection,
+    load_initialization,
+    save_initialization,
     scoped_event_groups,
+    sequence_correlation_loss,
     suppress_weak_little_events,
     validation_metrics,
 )
@@ -87,6 +91,46 @@ def test_validation_metrics_are_ideal_for_exact_prediction() -> None:
     assert np.isclose(metrics["amplitude_slope"], 1.0)
     assert np.isclose(metrics["velocity_pcc"], 1.0)
     assert np.isclose(metrics["movement_balanced_accuracy"], 1.0)
+
+
+def test_sequence_correlation_loss_rewards_shape_and_backpropagates() -> None:
+    target = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]])
+    exact = target.clone().requires_grad_(True)
+    reversed_values = torch.flip(target, dims=(1,))
+
+    exact_loss = sequence_correlation_loss(exact, target)
+    reversed_loss = sequence_correlation_loss(reversed_values, target)
+    exact_loss.backward()
+
+    assert torch.isclose(exact_loss, torch.tensor(0.0), atol=1.0e-6)
+    assert reversed_loss > exact_loss
+    assert exact.grad is not None
+    assert torch.isfinite(exact.grad).all()
+
+
+def test_initialization_cache_atomic_round_trip(tmp_path) -> None:
+    initialization = {
+        "selected_indices": np.asarray([1, 3], dtype=np.int64),
+        "coefficients": np.asarray([0.2, -0.4], dtype=np.float32),
+    }
+    spatial = np.arange(6, dtype=np.float32).reshape(2, 3)
+    target = np.asarray([[0.1], [0.2]], dtype=np.float32)
+    split = {"fold": 1}
+    audit = {"selected_features": 2}
+
+    save_initialization(tmp_path, initialization, spatial, target, split, audit)
+    loaded, loaded_spatial, loaded_target, loaded_split = load_initialization(
+        tmp_path
+    )
+
+    assert set(loaded) == set(initialization)
+    for name, values in initialization.items():
+        np.testing.assert_array_equal(loaded[name], values)
+    np.testing.assert_array_equal(loaded_spatial, spatial)
+    np.testing.assert_array_equal(loaded_target, target)
+    assert loaded_split["fold"] == 1
+    assert loaded_split["initialization_audit"] == audit
+    assert not list(tmp_path.glob(".*"))
 
 
 def test_one_standard_error_prefers_earlier_checkpoint() -> None:

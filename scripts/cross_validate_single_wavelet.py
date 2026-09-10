@@ -8,11 +8,11 @@ the glove target, ICA, joint HHL/HHH CSP, and LARS initialization.  Training
 uses a uniform event-group sampler and checkpoints are indexed by optimizer
 updates, making the chosen schedule transferable to the full outer fit.
 
-The nonlinear LSTM itself is initialized to reproduce the split-local LARS
-trajectory in its near-linear regime; it is not a residual correction head.
-Checkpoint selection uses one primary quantity: event-macro normalized MSE.
-PCC and morphology diagnostics are monitored but do not form a compound loss
-or selection score.  Released competition test labels are never loaded.
+The decoder can use either the paper-style near-linear LARS initialization or
+a nonlinear recurrent residual on the fixed split-local LARS trajectory.
+Checkpoint selection uses one configured primary quantity; PCC and morphology
+diagnostics remain separately visible.  Released competition test labels are
+never loaded.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import copy
 import json
 import os
 import random
+import tempfile
 import time
 from pathlib import Path
 
@@ -557,11 +558,39 @@ def save_initialization(
     audit: dict[str, object],
 ) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    np.savez(root / "initialization.npz", **initialization)
-    np.save(root / "spatial.npy", spatial, allow_pickle=False)
-    np.save(root / "target.npy", target, allow_pickle=False)
-    (root / "split.json").write_text(
-        json.dumps({**split, "initialization_audit": audit}, indent=2) + "\n"
+
+    def atomic_numpy(path: Path, write) -> None:
+        with tempfile.NamedTemporaryFile(
+            mode="w+b", dir=root, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            write(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+
+    atomic_numpy(
+        root / "spatial.npy",
+        lambda handle: np.save(handle, spatial, allow_pickle=False),
+    )
+    atomic_numpy(
+        root / "target.npy",
+        lambda handle: np.save(handle, target, allow_pickle=False),
+    )
+    split_text = json.dumps({**split, "initialization_audit": audit}, indent=2) + "\n"
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=root, prefix=".split.json.", delete=False
+    ) as handle:
+        split_temporary = Path(handle.name)
+        handle.write(split_text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    split_temporary.replace(root / "split.json")
+
+    # This is the file readers use as the completion marker, so publish it last.
+    atomic_numpy(
+        root / "initialization.npz",
+        lambda handle: np.savez(handle, **initialization),
     )
 
 
@@ -677,20 +706,26 @@ def optimizer(
     head_lr: float,
     spatial_lr: float,
     wavelet_lr: float,
+    interlevel_lr: float,
     weight_decay: float,
 ) -> torch.optim.Optimizer:
     head_parameters = list(model.lstm.parameters()) + list(model.output.parameters())
-    return torch.optim.AdamW(
-        [
-            {
-                "params": head_parameters,
-                "lr": head_lr,
-            },
-            {"params": model.spatial.parameters(), "lr": spatial_lr},
-            {"params": model.wavelet.parameters(), "lr": wavelet_lr},
-        ],
-        weight_decay=weight_decay,
+    parameter_groups = [
+        {
+            "params": head_parameters,
+            "lr": head_lr,
+        },
+        {"params": model.spatial.parameters(), "lr": spatial_lr},
+        {"params": model.wavelet.layers.parameters(), "lr": wavelet_lr},
+    ]
+    interlevel_parameters = list(model.wavelet.skip_gates.parameters()) + list(
+        model.wavelet.normalization_gates.parameters()
     )
+    if interlevel_parameters:
+        parameter_groups.append(
+            {"params": interlevel_parameters, "lr": interlevel_lr}
+        )
+    return torch.optim.AdamW(parameter_groups, weight_decay=weight_decay)
 
 
 def make_model(
@@ -712,7 +747,25 @@ def make_model(
         energy_window_samples=args.samples_per_bin,
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
+        wavelet_interlevel_skip=args.wavelet_interlevel_skip,
+        wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
     )
+
+
+def sequence_correlation_loss(
+    prediction: torch.Tensor, target: torch.Tensor
+) -> torch.Tensor:
+    """Return mean one-minus-Pearson correlation across sequence rows."""
+    centered_prediction = prediction - prediction.mean(dim=1, keepdim=True)
+    centered_target = target - target.mean(dim=1, keepdim=True)
+    denominator = (
+        torch.linalg.vector_norm(centered_prediction, dim=1)
+        * torch.linalg.vector_norm(centered_target, dim=1)
+    ).clamp_min(1.0e-8)
+    correlation = torch.sum(
+        centered_prediction * centered_target, dim=1
+    ) / denominator
+    return 1.0 - correlation.mean()
 
 
 def train_updates(
@@ -729,6 +782,8 @@ def train_updates(
     batch_size: int,
     target_scale: torch.Tensor,
     raw_stem: bool,
+    correlation_loss_weight: float = 0.0,
+    derivative_correlation_weight: float = 0.0,
 ) -> list[float]:
     offsets = torch.arange(steps, device=target.device)
     losses = []
@@ -746,6 +801,16 @@ def train_updates(
             else call(cached[index])
         )
         loss = ((result - observed) / target_scale).square().mean()
+        if correlation_loss_weight:
+            loss = loss + correlation_loss_weight * sequence_correlation_loss(
+                result, observed
+            )
+        if derivative_correlation_weight:
+            loss = loss + derivative_correlation_weight * (
+                sequence_correlation_loss(
+                    torch.diff(result, dim=1), torch.diff(observed, dim=1)
+                )
+            )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         optimizer_instance.step()
@@ -877,7 +942,7 @@ def monitor_inner_fold(
         args.movement_threshold,
         args.rest_threshold,
     )
-    opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, args.weight_decay)
+    opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay)
     decode = model.decode_features
     if args.compile:
         decode = torch.compile(decode, mode="reduce-overhead")
@@ -897,6 +962,8 @@ def monitor_inner_fold(
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=False,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
         )
         completed = checkpoint
         prediction = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -921,6 +988,7 @@ def monitor_inner_fold(
         args.head_learning_rate * 0.5,
         args.spatial_learning_rate,
         args.wavelet_learning_rate,
+        args.interlevel_learning_rate,
         args.weight_decay,
     )
     forward = model.forward
@@ -941,6 +1009,8 @@ def monitor_inner_fold(
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=True,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
         )
         completed = checkpoint
         prediction = raw_prediction(model, padded_ecog, validation_intervals, raw.size)
@@ -1036,7 +1106,9 @@ def train_final_schedule(
     unfrozen_updates = 0 if parts[0] == "frozen" else int(parts[2])
     if frozen_updates:
         sampler = make_sampler(args, training_groups, seed)
-        opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, args.weight_decay)
+        opt = optimizer(
+            model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay
+        )
         decode = model.decode_features
         if args.compile:
             decode = torch.compile(decode, mode="reduce-overhead")
@@ -1053,6 +1125,8 @@ def train_final_schedule(
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=False,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
         )
     if unfrozen_updates:
         sampler = make_sampler(args, training_groups, seed + 1000)
@@ -1061,6 +1135,7 @@ def train_final_schedule(
             args.head_learning_rate * 0.5,
             args.spatial_learning_rate,
             args.wavelet_learning_rate,
+            args.interlevel_learning_rate,
             args.weight_decay,
         )
         forward = model.forward
@@ -1079,6 +1154,8 @@ def train_final_schedule(
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=True,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
         )
 
 
@@ -1123,6 +1200,16 @@ def main() -> None:
     parser.add_argument("--model-rate", type=int, choices=(400, 1000), default=1000)
     parser.add_argument("--tap-resample-up", type=int, default=5)
     parser.add_argument("--tap-resample-down", type=int, default=2)
+    parser.add_argument(
+        "--wavelet-interlevel-skip",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--wavelet-interlevel-normalization",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -1222,6 +1309,12 @@ def main() -> None:
     parser.add_argument("--spatial-learning-rate", type=float, default=3.0e-6)
     parser.add_argument("--wavelet-learning-rate", type=float, default=3.0e-6)
     parser.add_argument(
+        "--interlevel-learning-rate",
+        type=float,
+        default=3.0e-4,
+        help="learning rate for zero-gated interlevel skip/normalization paths",
+    )
+    parser.add_argument(
         "--frozen-update-grid",
         type=int,
         nargs="+",
@@ -1247,6 +1340,10 @@ def main() -> None:
         help="compare the LARS initialization with LSTM-only updates; do not tune the stem",
     )
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
+    parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
+    parser.add_argument(
+        "--derivative-correlation-weight", type=float, default=0.0
+    )
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--feature-chunk", type=int, default=256)
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
@@ -1257,6 +1354,8 @@ def main() -> None:
         help="prepare the subject-level 400 Hz and fixed-leaf caches, then exit",
     )
     args = parser.parse_args()
+    if args.correlation_loss_weight < 0 or args.derivative_correlation_weight < 0:
+        raise ValueError("correlation loss weights must be nonnegative")
     if args.model_rate % 25:
         raise ValueError("model rate must be divisible by the 25 Hz target rate")
     args.samples_per_bin = args.model_rate // 25
@@ -1645,6 +1744,10 @@ def main() -> None:
             "nominal_frequency_edges_hz": list(range(0, 201, 25)),
             "auxiliary_temporal_branches": [],
             "lmp_branch": False,
+            "zero_initialized_interlevel_skip": args.wavelet_interlevel_skip,
+            "zero_initialized_interlevel_normalization": (
+                args.wavelet_interlevel_normalization
+            ),
             "energy_pool_samples": args.samples_per_bin,
         },
         "primary_selection_metric": args.selection_metric,
@@ -1679,7 +1782,17 @@ def main() -> None:
         "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
         "training_objective": {
             "trajectory": "normalized mean squared error",
+            "within_sequence_correlation_weight": args.correlation_loss_weight,
+            "within_sequence_velocity_correlation_weight": (
+                args.derivative_correlation_weight
+            ),
             "model_outputs": ["trajectory"],
+        },
+        "learning_rates": {
+            "head": args.head_learning_rate,
+            "spatial": args.spatial_learning_rate,
+            "wavelet_taps": args.wavelet_learning_rate,
+            "interlevel_paths": args.interlevel_learning_rate,
         },
         "initialization_cache_root": (
             str(args.initialization_cache_root)

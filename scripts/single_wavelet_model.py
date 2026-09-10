@@ -95,6 +95,8 @@ class SingleWaveletDecoder(nn.Module):
         energy_window_samples: int = SAMPLES_PER_BIN,
         tap_resample_up: int = 5,
         tap_resample_down: int = 2,
+        wavelet_interlevel_skip: bool = False,
+        wavelet_interlevel_normalization: bool = False,
     ) -> None:
         super().__init__()
         components, channels = spatial_weights.shape
@@ -112,6 +114,8 @@ class SingleWaveletDecoder(nn.Module):
             energy_stride_samples=energy_window_samples,
             tap_resample_up=tap_resample_up,
             tap_resample_down=tap_resample_down,
+            interlevel_skip=wavelet_interlevel_skip,
+            interlevel_normalization=wavelet_interlevel_normalization,
         )
         self.samples_per_bin = int(energy_window_samples)
         self.register_buffer(
@@ -274,9 +278,7 @@ class SingleWaveletDecoder(nn.Module):
         spatial = self.spatial(segments.transpose(1, 2))
         batch, components, _ = spatial.shape
         bands = spatial.reshape(batch * components, 1, length)
-        for layer in self.wavelet.layers:
-            bands = self.wavelet._same_filter(bands, layer)
-            bands = 1.7156 * torch.tanh((2.0 / 3.0) * bands)
+        bands = self.wavelet.transform(bands)
         bands = bands[..., context : context + samples]
 
         energy = self.wavelet._energy(bands)
