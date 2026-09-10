@@ -4,6 +4,12 @@
   "released_test_touched": false,
   "primary_metric": "stitched out-of-fold raw-target PCC",
   "requested_gain_threshold": 0.1,
+  "comparison_rule": {
+    "baseline": "strongest fixed pre-ablation split-local reference for the same subject and finger",
+    "primary_gain": "final candidate PCC minus the fixed reference PCC",
+    "candidate_self_gain": "final candidate PCC minus that candidate architecture's own initialization PCC; diagnostic only",
+    "prohibited_shortcut": "A weaker candidate-specific initialization never replaces the fixed reference and cannot manufacture a pass."
+  },
   "screened_pairs": [
     "S1 thumb",
     "S1 index",
