@@ -108,6 +108,23 @@ def test_command_can_request_one_overcomplete_wavelet_tree(tmp_path) -> None:
     assert "--recurrent-cell residual_lstm" in joined
 
 
+def test_command_can_request_depth5_overcomplete_wavelet_tree(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        wavelet_frontend="overcomplete_depth3_depth4_depth5",
+    )
+    joined = " ".join(command)
+    assert "--wavelet-frontend overcomplete_depth3_depth4_depth5" in joined
+    assert "--recurrent-cell residual_lstm" in joined
+
+
 def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
     command = build_command(
         "python",

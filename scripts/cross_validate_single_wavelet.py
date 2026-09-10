@@ -1759,11 +1759,16 @@ def main() -> None:
     parser.add_argument("--tap-resample-down", type=int, default=2)
     parser.add_argument(
         "--wavelet-frontend",
-        choices=("depth3", "overcomplete_depth3_depth4"),
+        choices=(
+            "depth3",
+            "overcomplete_depth3_depth4",
+            "overcomplete_depth3_depth4_depth5",
+        ),
         default="depth3",
         help=(
             "depth3 uses eight 0--200 Hz leaves; overcomplete_depth3_depth4 "
-            "retains those leaves and their sixteen depth-4 children in one tree"
+            "retains those leaves and their sixteen depth-4 children in one tree; "
+            "overcomplete_depth3_depth4_depth5 also retains 32 depth-5 children"
         ),
     )
     parser.add_argument(
@@ -2189,14 +2194,19 @@ def main() -> None:
     )
     raw_matrix = np.asarray(raw_full[OFFSET : OFFSET + rows], dtype=np.float64)
     raw = raw_matrix[:, finger_index].astype(np.float32)
+    frontend_levels = {
+        "depth3": 3,
+        "overcomplete_depth3_depth4": 4,
+        "overcomplete_depth3_depth4_depth5": 5,
+    }[args.wavelet_frontend]
     frontend_type = (
         OvercompleteWaveletPacketEnergy
-        if args.wavelet_frontend == "overcomplete_depth3_depth4"
+        if frontend_levels > 3
         else WaveletPacketEnergy
     )
     frontend = frontend_type(
         wavelet="bior6.8",
-        levels=3,
+        levels=frontend_levels,
         kernel_size=17,
         trainable=False,
         padding_mode="constant",
@@ -2590,11 +2600,15 @@ def main() -> None:
             f"{args.selection_metric}; outer fold evaluated once; released test untouched"
         ),
         "frontend": {
-            "name": (
-                "single_wavelet_frequency_compressed_depth3_depth4_overcomplete"
-                if args.wavelet_frontend == "overcomplete_depth3_depth4"
-                else "single_wavelet_frequency_compressed_depth3"
-            ),
+            "name": {
+                "depth3": "single_wavelet_frequency_compressed_depth3",
+                "overcomplete_depth3_depth4": (
+                    "single_wavelet_frequency_compressed_depth3_depth4_overcomplete"
+                ),
+                "overcomplete_depth3_depth4_depth5": (
+                    "single_wavelet_frequency_compressed_depth3_depth4_depth5_overcomplete"
+                ),
+            }[args.wavelet_frontend],
             "source_rate_hz": SOURCE_RATE,
             "model_rate_hz": args.model_rate,
             "input_resampling": (
@@ -2606,18 +2620,19 @@ def main() -> None:
                 "method": "polyphase_kaiser_8.6",
             },
             "wavelet": "bior6.8",
-            "levels": [3, 4]
-            if args.wavelet_frontend == "overcomplete_depth3_depth4"
-            else [3],
-            "leaf_count": 24
-            if args.wavelet_frontend == "overcomplete_depth3_depth4"
-            else 8,
-            "nominal_frequency_edges_hz": {
-                "depth3": list(range(0, 201, 25)),
-                "depth4": [12.5 * index for index in range(17)],
-            }
-            if args.wavelet_frontend == "overcomplete_depth3_depth4"
-            else list(range(0, 201, 25)),
+            "levels": list(range(3, frontend_levels + 1)),
+            "leaf_count": sum(2**level for level in range(3, frontend_levels + 1)),
+            "nominal_frequency_edges_hz": (
+                {
+                    f"depth{level}": [
+                        200.0 * index / (2**level)
+                        for index in range(2**level + 1)
+                    ]
+                    for level in range(3, frontend_levels + 1)
+                }
+                if frontend_levels > 3
+                else list(range(0, 201, 25))
+            ),
             "auxiliary_temporal_branches": [],
             "lmp_branch": False,
             "zero_initialized_interlevel_skip": args.wavelet_interlevel_skip,

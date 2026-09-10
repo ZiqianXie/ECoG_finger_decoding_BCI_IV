@@ -23,7 +23,11 @@ def main() -> None:
     parser.add_argument("--response-points", type=int, default=513)
     parser.add_argument(
         "--frontend",
-        choices=("depth3", "overcomplete_depth3_depth4"),
+        choices=(
+            "depth3",
+            "overcomplete_depth3_depth4",
+            "overcomplete_depth3_depth4_depth5",
+        ),
         default="depth3",
     )
     parser.add_argument("--output", default="outputs/audit/wavelet_frequency_response.json")
@@ -31,12 +35,14 @@ def main() -> None:
     if args.fft_size < 1024 or args.fft_size % 2:
         raise ValueError("fft-size must be an even integer of at least 1024")
 
-    frontend_type = (
-        OvercompleteWaveletPacketEnergy
-        if args.frontend == "overcomplete_depth3_depth4"
-        else WaveletPacketEnergy
-    )
+    frontend_levels = {
+        "depth3": 3,
+        "overcomplete_depth3_depth4": 4,
+        "overcomplete_depth3_depth4_depth5": 5,
+    }[args.frontend]
+    frontend_type = OvercompleteWaveletPacketEnergy if frontend_levels > 3 else WaveletPacketEnergy
     frontend = frontend_type(
+        levels=frontend_levels,
         trainable=False,
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
@@ -86,8 +92,8 @@ def main() -> None:
         "frontend": args.frontend,
         "method": (
             "actual initialized PyTorch cascade with scaled tanh in its linear "
-            "regime; the overcomplete variant retains depth-3 parents and their "
-            "depth-4 children from one tree"
+            "regime; an overcomplete variant retains every complete level from "
+            "depth 3 through its configured maximum in one tree"
         ),
         "band_order": list(frontend.band_names),
         "frequency_hz": np.round(frequency[sample_indices], 5).tolist(),

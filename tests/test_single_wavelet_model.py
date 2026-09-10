@@ -81,6 +81,34 @@ def test_overcomplete_tree_retains_coarse_parents_and_fine_children() -> None:
     )
 
 
+def test_depth5_overcomplete_tree_retains_all_three_resolutions() -> None:
+    kwargs = {
+        "wavelet": "bior6.8",
+        "kernel_size": 17,
+        "trainable": False,
+        "padding_mode": "constant",
+        "energy_window_samples": 40,
+        "energy_stride_samples": 40,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+    }
+    overcomplete = OvercompleteWaveletPacketEnergy(levels=5, **kwargs)
+    depth3 = WaveletPacketEnergy(levels=3, **kwargs)
+    depth4 = WaveletPacketEnergy(levels=4, **kwargs)
+    depth5 = WaveletPacketEnergy(levels=5, **kwargs)
+    values = torch.randn(1, 2, 640)
+
+    observed = overcomplete(values)
+
+    assert observed.shape == (1, 2, 56, 16)
+    torch.testing.assert_close(observed[:, :, :8], depth3(values))
+    torch.testing.assert_close(observed[:, :, 8:24], depth4(values))
+    torch.testing.assert_close(observed[:, :, 24:], depth5(values))
+    order = frontend_frequency_order(overcomplete)
+    assert order.shape == (56,)
+    np.testing.assert_array_equal(np.sort(order), np.arange(56))
+
+
 def test_lars_is_embedded_in_a_standard_nonlinear_lstm() -> None:
     torch.manual_seed(13)
     coefficients = np.asarray([0.35, -0.20, 0.10, 0.05], dtype=np.float32)

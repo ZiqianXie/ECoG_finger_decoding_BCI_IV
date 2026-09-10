@@ -228,7 +228,11 @@ def main() -> None:
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
     parser.add_argument(
         "--wavelet-frontend",
-        choices=("depth3", "overcomplete_depth3_depth4"),
+        choices=(
+            "depth3",
+            "overcomplete_depth3_depth4",
+            "overcomplete_depth3_depth4_depth5",
+        ),
         default="depth3",
     )
     parser.add_argument(

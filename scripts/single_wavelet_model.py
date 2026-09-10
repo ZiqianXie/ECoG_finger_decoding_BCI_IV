@@ -17,18 +17,20 @@ from single_wavelet_support import (
 
 
 class OvercompleteWaveletPacketEnergy(WaveletPacketEnergy):
-    """One depth-4 packet tree retaining both depth-3 parents and children.
+    """One packet tree retaining every complete level from depth 3 onward.
 
-    The 8 coarse and 16 fine packet atoms overlap in frequency, so split-local
-    sparse selection can choose the resolution supported by each finger.  This
-    is still one temporal tree: the depth-4 children are computed directly
-    from the retained depth-3 activations, with no parallel feature branch.
+    Parent and child packet atoms overlap in frequency, so split-local sparse
+    selection can choose the resolution supported by each finger. This is still
+    one temporal tree: every deeper level is computed directly from the prior
+    activations, with no parallel feature branch.
     """
 
-    def __init__(self, **kwargs: object) -> None:
-        kwargs.pop("levels", None)
-        super().__init__(levels=4, **kwargs)
-        self.output_band_level_counts = (8, 16)
+    def __init__(self, levels: int = 4, **kwargs: object) -> None:
+        if levels < 4:
+            raise ValueError("overcomplete tree must extend beyond depth 3")
+        super().__init__(levels=levels, **kwargs)
+        self.retained_levels = tuple(range(3, levels + 1))
+        self.output_band_level_counts = tuple(2**level for level in self.retained_levels)
 
     @property
     def output_band_count(self) -> int:
@@ -36,20 +38,19 @@ class OvercompleteWaveletPacketEnergy(WaveletPacketEnergy):
 
     @property
     def band_names(self) -> tuple[str, ...]:
-        coarse = tuple(
-            "d3_"
+        return tuple(
+            f"d{level}_"
             + "".join(
                 "L" if (band >> bit) & 1 == 0 else "H"
-                for bit in reversed(range(3))
+                for bit in reversed(range(level))
             )
-            for band in range(8)
+            for level in self.retained_levels
+            for band in range(2**level)
         )
-        fine = tuple(f"d4_{name}" for name in super().band_names)
-        return coarse + fine
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         bands = x
-        coarse = None
+        retained = []
         for level, layer in enumerate(self.layers):
             parent = bands
             bands = self._same_filter(parent, layer)
@@ -69,11 +70,11 @@ class OvercompleteWaveletPacketEnergy(WaveletPacketEnergy):
                 bands = bands + self.normalization_gates[level] * (
                     normalized - bands
                 )
-            if level == 2:
-                coarse = bands
-        if coarse is None:
+            if level >= 2:
+                retained.append(bands)
+        if not retained:
             raise RuntimeError("overcomplete tree did not produce depth-3 atoms")
-        return torch.cat((coarse, bands), dim=1)
+        return torch.cat(retained, dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim != 3:
@@ -193,16 +194,21 @@ class SingleWaveletDecoder(nn.Module):
         with torch.no_grad():
             self.spatial.weight.copy_(torch.from_numpy(spatial_weights)[:, :, None])
 
-        if wavelet_frontend not in ("depth3", "overcomplete_depth3_depth4"):
+        frontend_levels = {
+            "depth3": 3,
+            "overcomplete_depth3_depth4": 4,
+            "overcomplete_depth3_depth4_depth5": 5,
+        }
+        if wavelet_frontend not in frontend_levels:
             raise ValueError(f"unsupported wavelet frontend {wavelet_frontend!r}")
         wavelet_type = (
             OvercompleteWaveletPacketEnergy
-            if wavelet_frontend == "overcomplete_depth3_depth4"
+            if frontend_levels[wavelet_frontend] > 3
             else WaveletPacketEnergy
         )
         self.wavelet = wavelet_type(
             wavelet="bior6.8",
-            levels=3,
+            levels=frontend_levels[wavelet_frontend],
             kernel_size=17,
             trainable=True,
             padding_mode="constant",
