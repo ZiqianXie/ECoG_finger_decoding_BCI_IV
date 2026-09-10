@@ -302,6 +302,8 @@ The code caches reconstructed wavelet leaves in `/dev/shm` and uses
 `torch.compile(mode="reduce-overhead")` for repeated training calls. On the H100
 server, the final S1 full-development refits took 17–101 seconds after the
 shared cache was prepared; the eight-CSP-row little-finger model is the slowest.
+For new GPU runs, `--lasso-backend torch_fista` evaluates the sparse Lasso path
+in parallel; the default CPU LARS path remains available for exact reproduction.
 
 ## Repository layout
 

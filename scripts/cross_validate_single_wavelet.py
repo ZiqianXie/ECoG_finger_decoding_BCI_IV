@@ -56,6 +56,7 @@ from ecog_decoding.models import WaveletPacketEnergy, fit_fastica_spatial_weight
 from ecog_decoding.preprocessing import local_baseline_correct
 from ecog_decoding.regression import lagged
 from ecog_decoding.training import FINGER_NAMES
+from gpu_lasso import fit_torch_lasso_cv
 from train_event_grouped_lars_lstm import indices_from_intervals
 from train_event_grouped_lars_lstm_nested import intervals_from_mask
 from single_wavelet_model import (
@@ -439,6 +440,7 @@ def fit_initialization(
     csp_mode: str = "movement_1",
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
+    lasso_backend: str = "sklearn_lars",
 ) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, object]]:
     training = indices_from_intervals(training_intervals)
     if csp_mode not in CSP_MODES:
@@ -498,17 +500,43 @@ def fit_initialization(
         np.float64, copy=False
     )
     lars_splits = grouped_lars_subfolds(training, training_groups, target.shape[0])
-    lars = LassoLarsCV(
-        cv=lars_splits,
-        max_iter=500,
-        n_jobs=1,
-    )
-    lars.fit(train_x, target[training, finger_index])
-    nonzero = np.flatnonzero(lars.coef_)
-    if nonzero.size == 0:
-        centered_target = target[training, finger_index] - np.mean(
-            target[training, finger_index]
+    train_y = target[training, finger_index]
+    lasso_audit: dict[str, object]
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    lasso_started = time.perf_counter()
+    if lasso_backend == "sklearn_lars":
+        lasso = LassoLarsCV(cv=lars_splits, max_iter=500, n_jobs=1)
+        lasso.fit(train_x, train_y)
+        lasso_coefficients = np.asarray(lasso.coef_, dtype=np.float32)
+        lasso_intercept = float(lasso.intercept_)
+        lasso_alpha = float(lasso.alpha_)
+        lasso_audit = {"backend": "sklearn_lars"}
+        selection_method = "lasso_lars_cv"
+    elif lasso_backend == "torch_fista":
+        lasso = fit_torch_lasso_cv(
+            train_x, train_y, lars_splits, device=device
         )
+        lasso_coefficients = lasso.coef_
+        lasso_intercept = float(lasso.intercept_)
+        lasso_alpha = float(lasso.alpha_)
+        lasso_audit = {
+            "backend": "torch_fista",
+            "alpha_count": int(lasso.alphas_.size),
+            "iterations": int(lasso.iterations_),
+            "minimum_mean_validation_mse": float(
+                np.min(lasso.mean_validation_mse_)
+            ),
+        }
+        selection_method = "torch_fista_lasso_cv"
+    else:
+        raise ValueError(f"unsupported Lasso backend {lasso_backend!r}")
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    lasso_audit["elapsed_seconds"] = float(time.perf_counter() - lasso_started)
+    nonzero = np.flatnonzero(np.abs(lasso_coefficients) > 1.0e-7)
+    if nonzero.size == 0:
+        centered_target = train_y - np.mean(train_y)
         ranked = np.argsort(np.abs(train_x.T @ centered_target))[::-1]
         selected_nonzero = ranked[: min(64, ranked.size)]
         ridge = RidgeCV(
@@ -516,17 +544,16 @@ def fit_initialization(
             cv=lars_splits,
             scoring="neg_mean_squared_error",
         )
-        ridge.fit(train_x[:, selected_nonzero], target[training, finger_index])
+        ridge.fit(train_x[:, selected_nonzero], train_y)
         coefficients = np.asarray(ridge.coef_, dtype=np.float32)
         intercept = float(ridge.intercept_)
         fitted_alpha = float(ridge.alpha_)
-        selection_method = "ridge_fallback_after_null_lars"
+        selection_method = f"ridge_fallback_after_null_{lasso_backend}"
     else:
         selected_nonzero = nonzero
-        coefficients = lars.coef_[nonzero].astype(np.float32)
-        intercept = float(lars.intercept_)
-        fitted_alpha = float(lars.alpha_)
-        selection_method = "lasso_lars_cv"
+        coefficients = lasso_coefficients[nonzero].astype(np.float32)
+        intercept = lasso_intercept
+        fitted_alpha = lasso_alpha
     selected = candidates[selected_nonzero]
     initialization = {
         "selected_indices": selected.astype(np.int64),
@@ -541,6 +568,7 @@ def fit_initialization(
         "selected_features": int(selected_nonzero.size),
         "selection_method": selection_method,
         "selection_alpha": fitted_alpha,
+        "lasso": lasso_audit,
         "csp_mode": csp_mode,
         "csp": {**csp_audit, "pre_normalization_std": csp_stds},
         **candidate_audit,
@@ -1179,6 +1207,12 @@ def main() -> None:
     parser.add_argument("--purge-bins", type=int, default=95)
     parser.add_argument("--ica-prescreen", type=int, default=512)
     parser.add_argument("--component-chunk", type=int, default=16)
+    parser.add_argument(
+        "--lasso-backend",
+        choices=("sklearn_lars", "torch_fista"),
+        default="sklearn_lars",
+        help="use exact CPU LARS or a batched GPU FISTA Lasso path",
+    )
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument(
         "--ica-cache-root",
@@ -1454,6 +1488,7 @@ def main() -> None:
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
+                    lasso_backend=args.lasso_backend,
                 )
                 save_initialization(cache, initialization, spatial, target_np, split, audit)
             torch.manual_seed(args.seed)
@@ -1535,6 +1570,7 @@ def main() -> None:
                     ecog.shape[1],
                 ),
                 samples_per_bin=args.samples_per_bin,
+                lasso_backend=args.lasso_backend,
             )
             save_initialization(
                 outer_cache,

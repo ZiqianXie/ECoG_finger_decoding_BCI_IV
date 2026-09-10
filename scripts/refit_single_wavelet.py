@@ -191,6 +191,11 @@ def main() -> None:
     parser.add_argument("--maximum-rest-group-bins", type=int, default=250)
     parser.add_argument("--ica-prescreen", type=int, default=512)
     parser.add_argument("--component-chunk", type=int, default=16)
+    parser.add_argument(
+        "--lasso-backend",
+        choices=("sklearn_lars", "torch_fista"),
+        default="sklearn_lars",
+    )
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
     parser.add_argument(
         "--ica-initialization-root",
@@ -397,6 +402,7 @@ def main() -> None:
             finger_index=finger_index,
             csp_mode=args.csp_mode,
             samples_per_bin=args.samples_per_bin,
+            lasso_backend=args.lasso_backend,
             ica_weights=(
                 np.load(
                     args.ica_initialization_root
