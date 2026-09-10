@@ -810,8 +810,63 @@
       }
     },
     "diagnostic": "For S3 middle and ring, tuning reduces rest RMS and improves movement-state balanced accuracy, but movement RMSE or velocity tracking worsens enough to reduce PCC. Only S3 ring receives a material fixed-LARS benefit from leaf-specific CSP.",
-    "decision": "Do not promote separate gamma CSP as a general residual decoder. Retain it only as an S3-ring initialization candidate and test whether the predeclared level-plus-velocity correlation objective prevents the residual head from sacrificing within-event timing."
+    "level_plus_velocity_correlation_objective": {
+      "weights": {
+        "within_sequence_level_correlation": 0.1,
+        "within_sequence_velocity_correlation": 0.1
+      },
+      "S3_middle": {
+        "tuned_pcc": 0.568636853,
+        "gain": -0.021155538
+      },
+      "S3_ring": {
+        "tuned_pcc": 0.44881837,
+        "gain": -0.003047864
+      }
+    },
+    "decision": "Do not promote separate gamma CSP as a general residual decoder. The predeclared level-plus-velocity correlation objective recovers 0.0131 PCC on S3 ring relative to the state-only residual run, but neither S3 pair beats its fixed LARS initialization."
+  },
+  "S2_little_batch_capacity_checks": {
+    "shared_initialization_pcc": 0.326494257,
+    "batch_48_hidden_32": {
+      "tuned_pcc": 0.418055945,
+      "gain": 0.091561688
+    },
+    "batch_24_hidden_64": {
+      "tuned_pcc": 0.378624761,
+      "gain": 0.052130504
+    },
+    "decision": "Keep batch 24 and 32 hidden units for S2 little. Doubling either batch size or recurrent width moves the result farther from the requested gain."
+  },
+  "S2_little_fixed_data_six_seed_ensemble": {
+    "description": "Six replicas use identical event folds, sampler order, preprocessing, architecture, and hyperparameters; only model initialization differs. Every finite nonconstant seed is included without consulting its held-out PCC.",
+    "released_test_touched": false,
+    "outer_validation_used_for_seed_exclusion": false,
+    "included_seed_count": 6,
+    "collapsed_seed_count": 0,
+    "initialization_pcc": 0.326494257,
+    "member_pcc_mean": 0.439235907,
+    "member_pcc_population_sd": 0.0245106,
+    "ensemble_pcc": 0.46560119,
+    "ensemble_gain": 0.139106933,
+    "initialized_morphology": {
+      "event_macro_nmse": 0.940646028,
+      "rest_false_positive_rms": 0.095595621,
+      "movement_rmse": 0.537953973,
+      "amplitude_slope": 0.110074677,
+      "velocity_pcc": 0.185324813,
+      "movement_balanced_accuracy": 0.80025261
+    },
+    "ensemble_morphology": {
+      "event_macro_nmse": 0.677263319,
+      "rest_false_positive_rms": 0.06017169,
+      "movement_rmse": 0.492473483,
+      "amplitude_slope": 0.261957616,
+      "velocity_pcc": 0.299880286,
+      "movement_balanced_accuracy": 0.802991868
+    },
+    "decision": "Count S2 little as the third numerical pass. Its +0.1391 PCC gain exceeds the requested threshold and every recorded morphology diagnostic improves over the split-local LARS initialization."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The new S3-thumb OOF trace also shows the remaining limitation clearly: it tracks the event envelope better than individual flexion-extension cycles and retains an isolated resting false-positive episode.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. The complete 15-pair screen has only two numerical passes: S2-middle reaches +0.103 with its cross-fold-selected correlation/velocity objective, and S3-thumb reaches +0.1034 with the current-bin, batch-48 recipe. S1-index remains the best sub-threshold result at +0.059. None of the twelve fixed-recipe transfers reaches +0.1, and seven reduce raw PCC despite often improving rest suppression or movement-state accuracy. S2-little reaches +0.09996 under the fixed 1e-3 interlevel-path rate, but the inner-selected learning-rate route gains only +0.0819, so it is not promoted. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. Four explicit lag bins, causal closure, two-stage stem tuning, and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization. On the current-best S1 geometry, zero-gated interlevel normalization and skip connections are both rejected because every inner selection retains the unchanged frozen checkpoint. Softplus gradients are healthy, and a nonlinear frozen-feature probe is only 0.0027 PCC above the best S1 LSTM. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat generic optimizer, batch-size, or wavelet-path sweeps."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, and concurrency-safe initialization cache experimental. Three of fifteen subject-finger models now exceed the requested +0.1 gain over split-local LARS: S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). The S2-little ensemble improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold result at +0.059. Generic learning-rate, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, and auxiliary-velocity changes do not close the other gaps. The next improvement attempt must change finger-specific spectral-spatial evidence or the target objective rather than repeat those saturated sweeps."
 }

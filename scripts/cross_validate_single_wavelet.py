@@ -82,6 +82,17 @@ CSP_MODES = {
 CSP_BAND_MODES = ("joint_hhl_hhh", "separate_hhl_hhh")
 
 
+def resolve_seed_roles(
+    model_seed: int, split_seed: int | None, sampler_seed: int | None
+) -> tuple[int, int, int]:
+    """Keep historical coupled behavior unless data seeds are explicit."""
+    return (
+        model_seed,
+        model_seed if split_seed is None else split_seed,
+        model_seed if sampler_seed is None else sampler_seed,
+    )
+
+
 def split_intervals(
     definition: dict[str, object], outer_fold: int
 ) -> dict[str, dict[str, object]]:
@@ -1807,6 +1818,18 @@ def main() -> None:
         "--derivative-correlation-weight", type=float, default=0.0
     )
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument(
+        "--split-seed",
+        type=int,
+        default=None,
+        help="fix event-fold construction while varying only model initialization",
+    )
+    parser.add_argument(
+        "--sampler-seed",
+        type=int,
+        default=None,
+        help="fix minibatch order while varying only model initialization",
+    )
     parser.add_argument("--feature-chunk", type=int, default=256)
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--device", default="cuda")
@@ -1905,6 +1928,9 @@ def main() -> None:
         )
 
     started = time.perf_counter()
+    model_seed, split_seed, sampler_seed = resolve_seed_roles(
+        args.seed, args.split_seed, args.sampler_seed
+    )
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -2021,7 +2047,7 @@ def main() -> None:
             minimum_event_bins=args.minimum_event_bins,
             maximum_rest_group_bins=args.maximum_rest_group_bins,
             purge_bins=args.purge_bins,
-            seed=args.seed + outer_fold,
+            seed=split_seed + outer_fold,
             finger_index=finger_index,
         )
         inner_records = []
@@ -2078,7 +2104,7 @@ def main() -> None:
             initialization, spatial, target_np, split = load_or_create_initialization(
                 cache, create_inner_initialization
             )
-            torch.manual_seed(args.seed)
+            torch.manual_seed(model_seed)
             model = make_model(spatial, initialization, args).to(device)
             cached = torch.from_numpy(
                 cached_initialization_features(initialization, args.residual_input)
@@ -2094,7 +2120,7 @@ def main() -> None:
                 training_groups=split["training_groups"],
                 validation_intervals=split["validation_intervals"],
                 args=args,
-                seed=args.seed + int(split["fold"]),
+                seed=sampler_seed + int(split["fold"]),
                 finger_index=finger_index,
             )
             inner_records.append(
@@ -2181,7 +2207,7 @@ def main() -> None:
         initialization, spatial, outer_target, _ = load_or_create_initialization(
             outer_cache, create_outer_initialization
         )
-        torch.manual_seed(args.seed)
+        torch.manual_seed(model_seed)
         model = make_model(spatial, initialization, args).to(device)
         cached = torch.from_numpy(
             cached_initialization_features(initialization, args.residual_input)
@@ -2198,7 +2224,7 @@ def main() -> None:
             training_groups=[[int(start), int(stop)] for start, stop in groups],
             schedule=selected_schedule,
             args=args,
-            seed=args.seed,
+            seed=sampler_seed,
             finger_index=finger_index,
         )
         if selected_schedule.startswith("unfrozen"):
@@ -2368,6 +2394,11 @@ def main() -> None:
             "open_gate_bias": args.lars_open_gate_bias,
             "forget_gate_bias": args.lars_forget_gate_bias,
             "recurrent_cell": args.recurrent_cell,
+        },
+        "randomization_seeds": {
+            "model_initialization": model_seed,
+            "event_split": split_seed,
+            "minibatch_sampler": sampler_seed,
         },
         "schedule_candidates": schedule_order(),
         "outer_folds": outer_records,

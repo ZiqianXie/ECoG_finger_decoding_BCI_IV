@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from cross_validate_single_wavelet import fit_csp_band_rows
+from cross_validate_single_wavelet import fit_csp_band_rows, resolve_seed_roles
 from single_wavelet_support import OFFSET
 
 
@@ -50,3 +50,8 @@ def test_joint_gamma_mode_retains_one_row() -> None:
     )
     assert weights.shape == (1, 3)
     assert audit["band_mode"] == "joint_hhl_hhh"
+
+
+def test_seed_roles_can_hold_data_order_fixed() -> None:
+    assert resolve_seed_roles(4, 2026, 2026) == (4, 2026, 2026)
+    assert resolve_seed_roles(4, None, None) == (4, 4, 4)
