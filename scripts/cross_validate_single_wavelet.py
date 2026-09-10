@@ -63,6 +63,7 @@ from gpu_lasso import fit_torch_lasso_cv
 from train_event_grouped_lars_lstm import indices_from_intervals
 from train_event_grouped_lars_lstm_nested import intervals_from_mask
 from single_wavelet_model import (
+    OvercompleteWaveletPacketEnergy,
     SingleWaveletDecoder,
     extract_all,
     predict_intervals,
@@ -578,7 +579,7 @@ def fit_initialization(
         target,
         training,
         stream.shape[1],
-        ica_energy.shape[1] * 8,
+        ica_energy.shape[1] * ica_energy.shape[2],
         ica_prescreen,
         finger_index,
     )
@@ -975,6 +976,7 @@ def make_model(
         energy_window_samples=args.samples_per_bin,
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
+        wavelet_frontend=args.wavelet_frontend,
         wavelet_interlevel_skip=args.wavelet_interlevel_skip,
         wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
         wavelet_final_normalization=args.wavelet_final_normalization,
@@ -1701,6 +1703,15 @@ def main() -> None:
     parser.add_argument("--tap-resample-up", type=int, default=5)
     parser.add_argument("--tap-resample-down", type=int, default=2)
     parser.add_argument(
+        "--wavelet-frontend",
+        choices=("depth3", "overcomplete_depth3_depth4"),
+        default="depth3",
+        help=(
+            "depth3 uses eight 0--200 Hz leaves; overcomplete_depth3_depth4 "
+            "retains those leaves and their sixteen depth-4 children in one tree"
+        ),
+    )
+    parser.add_argument(
         "--wavelet-interlevel-skip",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -2117,7 +2128,12 @@ def main() -> None:
     )
     raw_matrix = np.asarray(raw_full[OFFSET : OFFSET + rows], dtype=np.float64)
     raw = raw_matrix[:, finger_index].astype(np.float32)
-    frontend = WaveletPacketEnergy(
+    frontend_type = (
+        OvercompleteWaveletPacketEnergy
+        if args.wavelet_frontend == "overcomplete_depth3_depth4"
+        else WaveletPacketEnergy
+    )
+    frontend = frontend_type(
         wavelet="bior6.8",
         levels=3,
         kernel_size=17,
@@ -2128,13 +2144,30 @@ def main() -> None:
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
     ).to(device).eval()
+    csp_frontend = (
+        frontend
+        if args.wavelet_frontend == "depth3"
+        else WaveletPacketEnergy(
+            wavelet="bior6.8",
+            levels=3,
+            kernel_size=17,
+            trainable=False,
+            padding_mode="constant",
+            energy_window_samples=args.samples_per_bin,
+            energy_stride_samples=args.samples_per_bin,
+            tap_resample_up=args.tap_resample_up,
+            tap_resample_down=args.tap_resample_down,
+        ).to(device).eval()
+    )
     hhl_path = args.leaf_cache / "linear_hhl_100_125.npy"
     hhh_path = args.leaf_cache / "linear_hhh_125_150.npy"
     if not (
         valid_leaf_cache(hhl_path, ecog.shape[0])
         and valid_leaf_cache(hhh_path, ecog.shape[0])
     ):
-        hhl_values, hhh_values = linear_gamma_leaf_signals(ecog, frontend, device)
+        hhl_values, hhh_values = linear_gamma_leaf_signals(
+            ecog, csp_frontend, device
+        )
         atomic_save_npy(hhl_path, hhl_values)
         atomic_save_npy(hhh_path, hhh_values)
     lower_first_path = args.leaf_cache / "linear_50_75.npy"
@@ -2145,7 +2178,7 @@ def main() -> None:
         and valid_leaf_cache(lower_second_path, ecog.shape[0])
     ):
         lower_first, lower_second = linear_lower_high_gamma_leaf_signals(
-            ecog, frontend, device
+            ecog, csp_frontend, device
         )
         atomic_save_npy(lower_first_path, lower_first)
         atomic_save_npy(lower_second_path, lower_second)
@@ -2474,7 +2507,11 @@ def main() -> None:
             f"{args.selection_metric}; outer fold evaluated once; released test untouched"
         ),
         "frontend": {
-            "name": "single_wavelet_frequency_compressed_depth3",
+            "name": (
+                "single_wavelet_frequency_compressed_depth3_depth4_overcomplete"
+                if args.wavelet_frontend == "overcomplete_depth3_depth4"
+                else "single_wavelet_frequency_compressed_depth3"
+            ),
             "source_rate_hz": SOURCE_RATE,
             "model_rate_hz": args.model_rate,
             "input_resampling": (
@@ -2486,9 +2523,18 @@ def main() -> None:
                 "method": "polyphase_kaiser_8.6",
             },
             "wavelet": "bior6.8",
-            "levels": 3,
-            "leaf_count": 8,
-            "nominal_frequency_edges_hz": list(range(0, 201, 25)),
+            "levels": [3, 4]
+            if args.wavelet_frontend == "overcomplete_depth3_depth4"
+            else [3],
+            "leaf_count": 24
+            if args.wavelet_frontend == "overcomplete_depth3_depth4"
+            else 8,
+            "nominal_frequency_edges_hz": {
+                "depth3": list(range(0, 201, 25)),
+                "depth4": [12.5 * index for index in range(17)],
+            }
+            if args.wavelet_frontend == "overcomplete_depth3_depth4"
+            else list(range(0, 201, 25)),
             "auxiliary_temporal_branches": [],
             "lmp_branch": False,
             "zero_initialized_interlevel_skip": args.wavelet_interlevel_skip,

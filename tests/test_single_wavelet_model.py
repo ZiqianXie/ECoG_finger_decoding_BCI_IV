@@ -1,7 +1,13 @@
 import numpy as np
 import torch
 
-from single_wavelet_model import PaperEquationLSTM, SingleWaveletDecoder
+from ecog_decoding.models import WaveletPacketEnergy
+from single_wavelet_model import (
+    OvercompleteWaveletPacketEnergy,
+    PaperEquationLSTM,
+    SingleWaveletDecoder,
+)
+from single_wavelet_support import frontend_frequency_order
 
 
 def make_initialization(coefficients: np.ndarray) -> dict[str, np.ndarray]:
@@ -38,6 +44,41 @@ def make_candidate_initialization(
         }
     )
     return initialization
+
+
+def test_overcomplete_tree_retains_coarse_parents_and_fine_children() -> None:
+    kwargs = {
+        "wavelet": "bior6.8",
+        "kernel_size": 17,
+        "trainable": False,
+        "padding_mode": "constant",
+        "energy_window_samples": 40,
+        "energy_stride_samples": 40,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+    }
+    overcomplete = OvercompleteWaveletPacketEnergy(**kwargs)
+    depth3 = WaveletPacketEnergy(levels=3, **kwargs)
+    depth4 = WaveletPacketEnergy(levels=4, **kwargs)
+    values = torch.randn(2, 3, 640)
+
+    observed = overcomplete(values)
+
+    assert observed.shape == (2, 3, 24, 16)
+    torch.testing.assert_close(observed[:, :, :8], depth3(values))
+    torch.testing.assert_close(observed[:, :, 8:], depth4(values))
+    np.testing.assert_array_equal(
+        frontend_frequency_order(overcomplete),
+        np.concatenate(
+            (
+                np.asarray((0, 1, 3, 2, 6, 7, 5, 4)),
+                8
+                + np.asarray(
+                    (0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8)
+                ),
+            )
+        ),
+    )
 
 
 def test_lars_is_embedded_in_a_standard_nonlinear_lstm() -> None:

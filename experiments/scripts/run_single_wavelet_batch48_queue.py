@@ -60,6 +60,7 @@ def build_command(
     lasso_backend: str = "torch_fista",
     csp_mode: str = "movement_1",
     frozen_update_grid: tuple[int, ...] = (10, 25, 50, 100, 200),
+    wavelet_frontend: str = "depth3",
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -86,6 +87,8 @@ def build_command(
         "5",
         "--tap-resample-down",
         "2",
+        "--wavelet-frontend",
+        wavelet_frontend,
         "--output",
         str(output),
         "--initialization-cache-root",
@@ -221,6 +224,11 @@ def main() -> None:
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument(
+        "--wavelet-frontend",
+        choices=("depth3", "overcomplete_depth3_depth4"),
+        default="depth3",
+    )
+    parser.add_argument(
         "--frozen-update-grid",
         type=int,
         nargs="+",
@@ -268,6 +276,7 @@ def main() -> None:
             args.lasso_backend,
             args.csp_mode,
             tuple(args.frozen_update_grid),
+            args.wavelet_frontend,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

@@ -9,7 +9,85 @@ from torch import nn
 from torch.nn import functional as F
 
 from ecog_decoding.models import WaveletPacketEnergy
-from single_wavelet_support import FREQUENCY_ORDER, HISTORY, SAMPLES_PER_BIN
+from single_wavelet_support import (
+    HISTORY,
+    SAMPLES_PER_BIN,
+    frontend_frequency_order,
+)
+
+
+class OvercompleteWaveletPacketEnergy(WaveletPacketEnergy):
+    """One depth-4 packet tree retaining both depth-3 parents and children.
+
+    The 8 coarse and 16 fine packet atoms overlap in frequency, so split-local
+    sparse selection can choose the resolution supported by each finger.  This
+    is still one temporal tree: the depth-4 children are computed directly
+    from the retained depth-3 activations, with no parallel feature branch.
+    """
+
+    def __init__(self, **kwargs: object) -> None:
+        kwargs.pop("levels", None)
+        super().__init__(levels=4, **kwargs)
+        self.output_band_level_counts = (8, 16)
+
+    @property
+    def output_band_count(self) -> int:
+        return sum(self.output_band_level_counts)
+
+    @property
+    def band_names(self) -> tuple[str, ...]:
+        coarse = tuple(
+            "d3_"
+            + "".join(
+                "L" if (band >> bit) & 1 == 0 else "H"
+                for bit in reversed(range(3))
+            )
+            for band in range(8)
+        )
+        fine = tuple(f"d4_{name}" for name in super().band_names)
+        return coarse + fine
+
+    def transform(self, x: torch.Tensor) -> torch.Tensor:
+        bands = x
+        coarse = None
+        for level, layer in enumerate(self.layers):
+            parent = bands
+            bands = self._same_filter(parent, layer)
+            bands = 1.7156 * torch.tanh((2.0 / 3.0) * bands)
+            if self.interlevel_skip:
+                bands = bands + self.skip_gates[level] * parent.repeat_interleave(
+                    2, dim=1
+                )
+            if self.interlevel_normalization and (
+                level < self.levels - 1 or self.normalize_final_level
+            ):
+                mean = bands.mean(dim=-1, keepdim=True)
+                variance = bands.var(dim=-1, keepdim=True, unbiased=False)
+                normalized = (bands - mean) * torch.rsqrt(
+                    variance + self.normalization_epsilon
+                )
+                bands = bands + self.normalization_gates[level] * (
+                    normalized - bands
+                )
+            if level == 2:
+                coarse = bands
+        if coarse is None:
+            raise RuntimeError("overcomplete tree did not produce depth-3 atoms")
+        return torch.cat((coarse, bands), dim=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 3:
+            raise ValueError(
+                f"x must have shape (batch, electrode, time); got {tuple(x.shape)}"
+            )
+        batch, electrodes, time = x.shape
+        if time < self.energy_window_samples:
+            raise ValueError("time dimension is shorter than the energy window")
+        bands = self.transform(x.reshape(batch * electrodes, 1, time))
+        energy = self._energy(bands)
+        return energy.reshape(
+            batch, electrodes, self.output_band_count, energy.shape[-1]
+        )
 
 
 class PaperEquationLSTM(nn.Module):
@@ -95,6 +173,7 @@ class SingleWaveletDecoder(nn.Module):
         energy_window_samples: int = SAMPLES_PER_BIN,
         tap_resample_up: int = 5,
         tap_resample_down: int = 2,
+        wavelet_frontend: str = "depth3",
         wavelet_interlevel_skip: bool = False,
         wavelet_interlevel_normalization: bool = False,
         wavelet_final_normalization: bool = True,
@@ -114,7 +193,14 @@ class SingleWaveletDecoder(nn.Module):
         with torch.no_grad():
             self.spatial.weight.copy_(torch.from_numpy(spatial_weights)[:, :, None])
 
-        self.wavelet = WaveletPacketEnergy(
+        if wavelet_frontend not in ("depth3", "overcomplete_depth3_depth4"):
+            raise ValueError(f"unsupported wavelet frontend {wavelet_frontend!r}")
+        wavelet_type = (
+            OvercompleteWaveletPacketEnergy
+            if wavelet_frontend == "overcomplete_depth3_depth4"
+            else WaveletPacketEnergy
+        )
+        self.wavelet = wavelet_type(
             wavelet="bior6.8",
             levels=3,
             kernel_size=17,
@@ -128,13 +214,18 @@ class SingleWaveletDecoder(nn.Module):
             interlevel_normalization=wavelet_interlevel_normalization,
             normalize_final_level=wavelet_final_normalization,
         )
+        self.wavelet_frontend = wavelet_frontend
+        self.wavelet_band_count = int(
+            getattr(self.wavelet, "output_band_count", 2**self.wavelet.levels)
+        )
         self.samples_per_bin = int(energy_window_samples)
         self.register_buffer(
             "selected_indices",
             torch.as_tensor(initialization["selected_indices"], dtype=torch.long),
         )
         self.register_buffer(
-            "frequency_order", torch.as_tensor(FREQUENCY_ORDER, dtype=torch.long)
+            "frequency_order",
+            torch.as_tensor(frontend_frequency_order(self.wavelet), dtype=torch.long),
         )
         self.register_buffer(
             "feature_mean",
@@ -230,7 +321,7 @@ class SingleWaveletDecoder(nn.Module):
                 ),
             )
             if residual_input == "current_candidate":
-                per_bin = components * 8
+                per_bin = components * self.wavelet_band_count
                 current_positions = (
                     np.asarray(initialization["current_candidate_positions"])
                     if self.residual_history_bins == 1
@@ -382,7 +473,9 @@ class SingleWaveletDecoder(nn.Module):
             nn.Parameter(torch.zeros(())) if movement_modulation else None
         )
         self.signed_pooling_gates = (
-            nn.Parameter(torch.zeros(8)) if wavelet_signed_pooling else None
+            nn.Parameter(torch.zeros(self.wavelet_band_count))
+            if wavelet_signed_pooling
+            else None
         )
         if residual_output_init_std < 0:
             raise ValueError("residual output initialization scale must be nonnegative")
@@ -678,7 +771,9 @@ class SingleWaveletDecoder(nn.Module):
                 stride=self.samples_per_bin,
             )
             energy = energy + self.signed_pooling_gates[None, :, None] * signed_mean
-        energy = energy.reshape(batch, components, 8, filtered_bins)
+        energy = energy.reshape(
+            batch, components, self.wavelet_band_count, filtered_bins
+        )
         per_bin = (
             energy.index_select(2, self.frequency_order)
             .permute(0, 3, 1, 2)

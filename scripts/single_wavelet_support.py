@@ -19,9 +19,32 @@ HISTORY = 25
 OFFSET = HISTORY - 1
 LITTLE = 4
 
-# Literal QMF paths are Gray-coded after a high-pass split.  This index maps
-# lexicographic path order to ascending physical frequency.
-FREQUENCY_ORDER = np.asarray((0, 1, 3, 2, 6, 7, 5, 4), dtype=np.int64)
+def gray_frequency_order(levels: int) -> np.ndarray:
+    """Map literal QMF path order to ascending physical frequency."""
+    if levels < 1:
+        raise ValueError("wavelet levels must be positive")
+    indices = np.arange(2**levels, dtype=np.int64)
+    return indices ^ (indices >> 1)
+
+
+# Literal QMF paths are Gray-coded after a high-pass split.
+FREQUENCY_ORDER = gray_frequency_order(3)
+
+
+def frontend_frequency_order(frontend: WaveletPacketEnergy) -> np.ndarray:
+    """Return ascending-frequency indices for every retained packet level."""
+    level_counts = getattr(frontend, "output_band_level_counts", None)
+    if level_counts is None:
+        level_counts = (2**frontend.levels,)
+    result = []
+    offset = 0
+    for count in level_counts:
+        levels = int(np.log2(count))
+        if 2**levels != count:
+            raise ValueError("retained wavelet level must contain a power-of-two band count")
+        result.append(offset + gray_frequency_order(levels))
+        offset += count
+    return np.concatenate(result)
 
 
 def pearson(x: np.ndarray, y: np.ndarray) -> float:
@@ -64,7 +87,9 @@ def extract_energy(
 ) -> np.ndarray:
     values = torch.from_numpy(np.asarray(ecog).T.copy()).unsqueeze(0).to(device)
     parts: list[np.ndarray] = []
-    order = torch.as_tensor(FREQUENCY_ORDER, dtype=torch.long, device=device)
+    order = torch.as_tensor(
+        frontend_frequency_order(frontend), dtype=torch.long, device=device
+    )
     for begin in range(0, weights.shape[0], component_chunk):
         spatial = torch.nn.functional.conv1d(
             values,
@@ -98,16 +123,19 @@ def linear_wavelet_leaf_signals(
     physical_positions: tuple[int, ...],
 ) -> tuple[np.ndarray, ...]:
     """Return initialized tree leaves in ascending-frequency positions."""
+    order = frontend_frequency_order(frontend)
     if not physical_positions or any(
-        position < 0 or position >= FREQUENCY_ORDER.size
+        position < 0 or position >= order.size
         for position in physical_positions
     ):
-        raise ValueError("physical leaf positions must be nonempty values from 0 to 7")
+        raise ValueError(
+            f"physical leaf positions must be nonempty values from 0 to {order.size - 1}"
+        )
     values = torch.from_numpy(np.asarray(ecog).T.copy()).to(device)[:, None]
     bands = values
     for layer in frontend.layers:
         bands = frontend._same_filter(bands, layer)
-    indices = FREQUENCY_ORDER[np.asarray(physical_positions, dtype=np.int64)]
+    indices = order[np.asarray(physical_positions, dtype=np.int64)]
     return tuple(
         bands[:, int(index)].T.float().cpu().numpy() for index in indices
     )
