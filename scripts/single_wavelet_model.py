@@ -102,6 +102,7 @@ class SingleWaveletDecoder(nn.Module):
         movement_head: bool = False,
         velocity_head: bool = False,
         movement_modulation: bool = False,
+        wavelet_signed_pooling: bool = False,
         residual_output_init_std: float = 0.0,
     ) -> None:
         super().__init__()
@@ -221,6 +222,9 @@ class SingleWaveletDecoder(nn.Module):
         self.movement_modulation = bool(movement_modulation)
         self.movement_gain = (
             nn.Parameter(torch.zeros(())) if movement_modulation else None
+        )
+        self.signed_pooling_gates = (
+            nn.Parameter(torch.zeros(8)) if wavelet_signed_pooling else None
         )
         if residual_output_init_std < 0:
             raise ValueError("residual output initialization scale must be nonnegative")
@@ -455,6 +459,13 @@ class SingleWaveletDecoder(nn.Module):
         bands = bands[..., context : context + samples]
 
         energy = self.wavelet._energy(bands)
+        if self.signed_pooling_gates is not None:
+            signed_mean = F.avg_pool1d(
+                bands,
+                kernel_size=self.samples_per_bin,
+                stride=self.samples_per_bin,
+            )
+            energy = energy + self.signed_pooling_gates[None, :, None] * signed_mean
         energy = energy.reshape(batch, components, 8, filtered_bins)
         per_bin = (
             energy.index_select(2, self.frequency_order)

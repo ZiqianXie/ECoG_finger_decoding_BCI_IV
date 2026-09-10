@@ -765,6 +765,7 @@ def optimizer(
     interlevel_lr: float,
     weight_decay: float,
     movement_gain_lr: float | None = None,
+    signed_pooling_lr: float = 0.0,
 ) -> torch.optim.Optimizer:
     head_parameters = list(model.lstm.parameters()) + list(model.output.parameters())
     if model.movement_output is not None:
@@ -792,6 +793,10 @@ def optimizer(
                 "params": [model.movement_gain],
                 "lr": head_lr if movement_gain_lr is None else movement_gain_lr,
             }
+        )
+    if model.signed_pooling_gates is not None:
+        parameter_groups.append(
+            {"params": [model.signed_pooling_gates], "lr": signed_pooling_lr}
         )
     return torch.optim.AdamW(parameter_groups, weight_decay=weight_decay)
 
@@ -822,6 +827,7 @@ def make_model(
         movement_head=args.movement_loss_weight > 0,
         velocity_head=args.velocity_loss_weight > 0,
         movement_modulation=args.movement_modulation,
+        wavelet_signed_pooling=args.wavelet_signed_pooling,
         residual_output_init_std=args.residual_output_init_std,
     )
 
@@ -1191,6 +1197,7 @@ def monitor_inner_fold(
         args.interlevel_learning_rate,
         args.weight_decay,
         args.movement_modulation_learning_rate,
+        args.signed_pooling_learning_rate,
     )
     forward = (
         model.forward_with_auxiliary
@@ -1374,6 +1381,7 @@ def train_final_schedule(
             args.interlevel_learning_rate,
             args.weight_decay,
             args.movement_modulation_learning_rate,
+            args.signed_pooling_learning_rate,
         )
         forward = (
             model.forward_with_auxiliary
@@ -1632,6 +1640,17 @@ def main() -> None:
         help="optional learning rate for the scalar movement modulation gain",
     )
     parser.add_argument(
+        "--wavelet-signed-pooling",
+        action="store_true",
+        help="add a zero-gated signed mean to each existing leaf-energy statistic",
+    )
+    parser.add_argument(
+        "--signed-pooling-learning-rate",
+        type=float,
+        default=3.0e-4,
+        help="learning rate for the eight zero-initialized signed-pooling gates",
+    )
+    parser.add_argument(
         "--residual-output-init-std",
         type=float,
         default=0.0,
@@ -1665,6 +1684,7 @@ def main() -> None:
             args.movement_modulation_learning_rate is not None
             and args.movement_modulation_learning_rate <= 0
         )
+        or args.signed_pooling_learning_rate <= 0
     ):
         raise ValueError("auxiliary loss weights must be nonnegative")
     if args.residual_input == "candidate" and args.recurrent_cell not in (
@@ -1677,10 +1697,12 @@ def main() -> None:
     if args.movement_modulation and args.movement_loss_weight <= 0:
         raise ValueError("--movement-modulation requires --movement-loss-weight")
     if args.frozen_only and (
-        args.wavelet_interlevel_skip or args.wavelet_interlevel_normalization
+        args.wavelet_interlevel_skip
+        or args.wavelet_interlevel_normalization
+        or args.wavelet_signed_pooling
     ):
         raise ValueError(
-            "interlevel wavelet paths require end-to-end raw-stem updates; "
+            "trainable wavelet paths require end-to-end raw-stem updates; "
             "they cannot affect --frozen-only cached-feature training"
         )
     if args.model_rate % 25:
@@ -2082,6 +2104,7 @@ def main() -> None:
                 args.wavelet_interlevel_normalization
             ),
             "final_leaf_normalization": args.wavelet_final_normalization,
+            "zero_initialized_signed_leaf_pooling": args.wavelet_signed_pooling,
             "energy_pool_samples": args.samples_per_bin,
         },
         "primary_selection_metric": args.selection_metric,
@@ -2141,6 +2164,7 @@ def main() -> None:
             "movement_modulation": args.movement_modulation_learning_rate,
             "spatial": args.spatial_learning_rate,
             "wavelet_taps": args.wavelet_learning_rate,
+            "signed_leaf_pooling": args.signed_pooling_learning_rate,
             "interlevel_paths": args.interlevel_learning_rate,
         },
         "initialization_cache_root": (

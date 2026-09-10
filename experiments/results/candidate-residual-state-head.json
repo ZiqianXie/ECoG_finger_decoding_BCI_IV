@@ -264,6 +264,35 @@
     "best_global_lag_bins": 0,
     "visual_finding": "The late high-amplitude event is detected with largely correct flexion timing, but peak amplitudes remain compressed and isolated resting transients remain. Global lag zero is optimal, so a fixed alignment correction is not indicated."
   },
+  "S1_index_signed_leaf_pooling": {
+    "description": "Each existing wavelet leaf retains one scalar statistic: initialized log-energy plus a zero-gated signed within-bin mean. Spatial filters and wavelet taps are frozen, so this isolates phase-sensitive pooling without adding a filter branch.",
+    "shared_initialization_pcc": 0.725545068,
+    "energy_only_hidden_64_pcc": 0.757245129,
+    "signed_gate_lr_3e-3": {
+      "tuned_pcc": 0.75880946,
+      "gain": 0.033264392,
+      "selected_schedules": ["unfrozen_100_120", "unfrozen_100_80", "unfrozen_100_40"]
+    },
+    "signed_gate_lr_1e-2": {
+      "tuned_pcc": 0.758942103,
+      "gain": 0.033397036,
+      "selected_schedules": ["unfrozen_100_120", "unfrozen_100_80", "unfrozen_100_40"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.362105,
+        "rest_false_positive_rms": 0.07186,
+        "movement_rmse": 0.235258,
+        "amplitude_slope": 0.57299,
+        "velocity_pcc": 0.514923,
+        "movement_balanced_accuracy": 0.764556
+      },
+      "learned_leaf_gates_by_outer_fold": [
+        [0.0532, -0.0977, 0.0755, 0.1119, -0.3812, -0.4037, -0.1967, 0.0459],
+        [-0.0088, -0.0266, 0.4711, 0.3511, 0.5381, 0.3792, 0.2013, 0.37],
+        [0.0116, -0.1395, 0.3387, 0.2378, -0.2157, 0.0911, 0.2752, -0.0594]
+      ]
+    },
+    "decision": "Do not promote: signed pooling adds only 0.0017 PCC over the energy-only 64-unit model, worsens most morphology diagnostics, costs about 13--14 minutes, and learns inconsistent leaf signs across outer folds."
+  },
   "movement_state_generalization": {
     "S1_index": {
       "initialization_pcc": 0.721336642,
@@ -351,5 +380,5 @@
     "decision": "Keep: the matched control and two auxiliary-velocity runs loaded identical split-local initializations while training concurrently."
   },
   "visual_diagnostic": "Across S1 index, S2 middle, and S3 thumb, the state head lowers stationary offset and increases event amplitudes. It still retains isolated false peaks, underestimates the largest flexions, and barely changes S3-thumb velocity correlation.",
-  "decision": "Keep the auxiliary state head, fixed-width candidate implementation, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. A 64-unit residual LSTM at 3e-4 is the best clean-cache S1 setting at 0.757 PCC (+0.032), while two-stage stem tuning and state-conditioned output gain are worse. Reject near-zero residual initialization and reject stacking end-to-end interlevel normalization onto the state model."
+  "decision": "Keep the auxiliary state head, fixed-width candidate implementation, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. A 64-unit residual LSTM at 3e-4 is the best clean-cache energy-only S1 setting at 0.757 PCC (+0.032); two-stage stem tuning and state-conditioned output gain are worse, while signed leaf pooling adds only 0.0017 PCC with unstable fold-wise signs. Reject near-zero residual initialization and reject stacking end-to-end interlevel normalization onto the state model."
 }

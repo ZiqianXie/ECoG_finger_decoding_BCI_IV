@@ -185,6 +185,40 @@ def test_movement_modulation_starts_as_an_exact_identity_gain() -> None:
     assert torch.all(modulated > model.direct_features(features))
 
 
+def test_signed_leaf_pooling_starts_as_exact_energy_and_can_change_features() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    initialization = make_initialization(coefficients)
+    plain = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        output_activation="softplus",
+    )
+    signed = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        wavelet_signed_pooling=True,
+        output_activation="softplus",
+    )
+    samples = (3 + 25 - 1) * plain.samples_per_bin
+    ecog = torch.randn(samples, 2)
+    padded = torch.nn.functional.pad(
+        ecog.T[None], (plain.context_samples, plain.context_samples)
+    ).squeeze(0).T
+    starts = torch.tensor([0])
+
+    expected = plain.extract_sequences(padded, starts, 3)
+    torch.testing.assert_close(signed.extract_sequences(padded, starts, 3), expected)
+
+    with torch.no_grad():
+        signed.signed_pooling_gates[0] = 0.5
+    observed = signed.extract_sequences(padded, starts, 3)
+    assert not torch.equal(observed, expected)
+
+
 def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
     coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
     model = SingleWaveletDecoder(
