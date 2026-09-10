@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Run resumable outer-fold queues for the fixed batch-48 residual screen."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from ecog_decoding.training import FINGER_NAMES
+
+
+def parse_spec(value: str) -> tuple[int, str, int]:
+    pieces = value.split(":")
+    if len(pieces) != 3:
+        raise argparse.ArgumentTypeError("spec must be SUBJECT:FINGER:OUTER_FOLD")
+    try:
+        subject = int(pieces[0])
+        outer_fold = int(pieces[2])
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("subject and outer fold must be integers") from error
+    finger = pieces[1]
+    if subject not in (1, 2, 3):
+        raise argparse.ArgumentTypeError("subject must be 1, 2, or 3")
+    if finger not in FINGER_NAMES:
+        raise argparse.ArgumentTypeError(f"unknown finger: {finger}")
+    if outer_fold not in (0, 1, 2):
+        raise argparse.ArgumentTypeError("outer fold must be 0, 1, or 2")
+    return subject, finger, outer_fold
+
+
+def completed_summary(path: Path, outer_fold: int) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        report = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    observed = [int(item["outer_fold"]) for item in report.get("outer_folds", [])]
+    return observed == [outer_fold]
+
+
+def build_command(
+    python: str,
+    script: Path,
+    subject: int,
+    finger: str,
+    outer_fold: int,
+    output_root: Path,
+    initialization_root: Path,
+    ica_cache_root: Path,
+) -> list[str]:
+    output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
+    initialization = initialization_root / f"sub{subject}" / finger
+    return [
+        python,
+        str(script),
+        "--subject",
+        str(subject),
+        "--finger",
+        finger,
+        "--outer-folds",
+        str(outer_fold),
+        "--prepared-root",
+        "outputs/preprocessed_v2",
+        "--fold-root",
+        "outputs/event_stratified_folds_fulldev_targetsafe_conservative_v1",
+        "--resampled-cache",
+        f"/dev/shm/ecog_wavelet_1000hz/sub{subject}/train_ecog.npy",
+        "--leaf-cache",
+        f"/dev/shm/ecog_wavelet_1000hz_taps5over2/sub{subject}",
+        "--model-rate",
+        "1000",
+        "--tap-resample-up",
+        "5",
+        "--tap-resample-down",
+        "2",
+        "--output",
+        str(output),
+        "--initialization-cache-root",
+        str(initialization),
+        "--ica-cache-root",
+        str(ica_cache_root),
+        "--require-lstm-update",
+        "--selection-metric",
+        "raw_pcc",
+        "--selection-rule",
+        "best",
+        "--threshold",
+        "0.08",
+        "--movement-threshold",
+        "0.1",
+        "--rest-threshold",
+        "0.05",
+        "--merge-gap-bins",
+        "12",
+        "--minimum-event-bins",
+        "3",
+        "--maximum-rest-group-bins",
+        "250",
+        "--purge-bins",
+        "95",
+        "--ica-prescreen",
+        "512",
+        "--component-chunk",
+        "16",
+        "--csp-mode",
+        "movement_1",
+        "--hidden-size",
+        "64",
+        "--head-initialization",
+        "lars_linear_regime",
+        "--lars-candidate-scale",
+        "1.0",
+        "--lars-near-zero-std",
+        "0.001",
+        "--lars-open-gate-bias",
+        "5.0",
+        "--lars-forget-gate-bias",
+        "-5.0",
+        "--recurrent-cell",
+        "residual_lstm",
+        "--residual-input",
+        "current_candidate",
+        "--output-activation",
+        "softplus",
+        "--residual-history-bins",
+        "1",
+        "--residual-input-width",
+        "64",
+        "--residual-include-direct",
+        "--softplus-beta",
+        "10.0",
+        "--sequence-steps",
+        "100",
+        "--sequence-stride",
+        "25",
+        "--sampler-mode",
+        "dense_sequences",
+        "--batch-size",
+        "48",
+        "--head-learning-rate",
+        "0.0003",
+        "--frozen-update-grid",
+        "10",
+        "25",
+        "50",
+        "100",
+        "200",
+        "--frozen-only",
+        "--weight-decay",
+        "0.0001",
+        "--movement-loss-weight",
+        "0.5",
+        "--movement-trajectory-weight",
+        "1.0",
+        "--velocity-loss-weight",
+        "0.0",
+        "--residual-output-init-std",
+        "0.0",
+        "--correlation-loss-weight",
+        "0.0",
+        "--derivative-correlation-weight",
+        "0.0",
+        "--seed",
+        "2026",
+        "--feature-chunk",
+        "256",
+        "--compile",
+        "--device",
+        "cuda",
+    ]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--spec", action="append", type=parse_spec, required=True)
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path("outputs/candidate_residual_current_bin_batch48_oof_all_v1"),
+    )
+    parser.add_argument(
+        "--initialization-root",
+        type=Path,
+        default=Path("/dev/shm/ecog_candidate_pool_batch48_all_v1"),
+    )
+    parser.add_argument(
+        "--ica-cache-root",
+        type=Path,
+        default=Path("outputs/single_wavelet_1000hz_tap5over2_nested_v2"),
+    )
+    parser.add_argument("--python", default=sys.executable)
+    parser.add_argument(
+        "--script", type=Path, default=Path("scripts/cross_validate_single_wavelet.py")
+    )
+    args = parser.parse_args()
+
+    for subject, finger, outer_fold in args.spec:
+        output = args.output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
+        summary = output / "summary.json"
+        label = f"S{subject}-{finger}-outer{outer_fold}"
+        if completed_summary(summary, outer_fold):
+            print(f"skip completed {label}", flush=True)
+            continue
+        command = build_command(
+            args.python,
+            args.script,
+            subject,
+            finger,
+            outer_fold,
+            args.output_root,
+            args.initialization_root,
+            args.ica_cache_root,
+        )
+        print(f"start {label}", flush=True)
+        subprocess.run(command, check=True)
+        if not completed_summary(summary, outer_fold):
+            raise RuntimeError(f"{label} exited without a complete summary")
+        print(f"finish {label}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

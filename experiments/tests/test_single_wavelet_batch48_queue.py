@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from experiments.scripts.run_single_wavelet_batch48_queue import (
+    build_command,
+    completed_summary,
+    parse_spec,
+)
+
+
+def test_parse_spec_validates_all_fields() -> None:
+    assert parse_spec("3:little:2") == (3, "little", 2)
+    with pytest.raises(Exception):
+        parse_spec("4:little:2")
+    with pytest.raises(Exception):
+        parse_spec("3:toe:2")
+
+
+def test_completed_summary_requires_requested_single_fold(tmp_path) -> None:
+    path = tmp_path / "summary.json"
+    path.write_text(json.dumps({"outer_folds": [{"outer_fold": 1}]}))
+    assert completed_summary(path, 1)
+    assert not completed_summary(path, 0)
+
+
+def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "ring",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+    )
+    joined = " ".join(command)
+    assert "--recurrent-cell residual_lstm" in joined
+    assert "--residual-input current_candidate" in joined
+    assert "--residual-include-direct" in command
+    assert "--frozen-only" in command
+    assert "--wavelet-interlevel-skip" not in command
+    assert "--wavelet-interlevel-normalization" not in command
