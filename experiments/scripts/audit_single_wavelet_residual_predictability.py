@@ -37,6 +37,22 @@ def rows_from_intervals(intervals: list[list[int]]) -> np.ndarray:
     )
 
 
+def finite_intervals(
+    intervals: list[list[int]], target: np.ndarray
+) -> list[list[int]]:
+    """Intersect intervals with contiguous rows having a finite scalar target."""
+    finite = np.isfinite(np.asarray(target))
+    result: list[list[int]] = []
+    for start, stop in intervals:
+        observed = np.flatnonzero(finite[start:stop])
+        if observed.size == 0:
+            continue
+        boundaries = np.flatnonzero(np.diff(observed) > 1) + 1
+        for block in np.split(observed, boundaries):
+            result.append([int(start + block[0]), int(start + block[-1] + 1)])
+    return result
+
+
 def grouped_rows(
     intervals: list[list[int]],
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -196,8 +212,11 @@ def main() -> None:
             stitched_target = np.full(rows, np.nan, dtype=np.float32)
             stitched_raw = raw
 
-        training_intervals = split["training_intervals"]
-        validation_intervals = split["validation_intervals"]
+        # Older caches recorded the unfiltered outer-fold definition rather than
+        # the exact intervals used by the fit.  Intersecting with finite target
+        # runs makes those caches safe while newer caches store the fitted scope.
+        training_intervals = finite_intervals(split["training_intervals"], target)
+        validation_intervals = finite_intervals(split["validation_intervals"], target)
         validation = rows_from_intervals(validation_intervals)
         all_intervals = training_intervals + validation_intervals
         base, standardized, _ = direct_lars(

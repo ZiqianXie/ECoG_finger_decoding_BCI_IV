@@ -6,6 +6,9 @@ from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from experiments.scripts.audit_single_wavelet_residual_predictability import (
+    finite_intervals,
+)
 from gpu_ridge import fit_torch_ridge_cv, ridge_path_eigendecomposition
 
 
@@ -49,3 +52,14 @@ def test_gpu_ridge_cv_selects_a_deterministic_predictive_model() -> None:
     assert np.corrcoef(first.predict(features), target)[0, 1] > 0.99
     assert first.alpha_ == second.alpha_
     assert np.array_equal(first.coef_, second.coef_)
+
+
+def test_finite_intervals_excludes_undefined_target_rows() -> None:
+    target = np.arange(11, dtype=np.float32)
+    target[[2, 8]] = np.nan
+    assert finite_intervals([[0, 5], [7, 10]], target) == [
+        [0, 2],
+        [3, 5],
+        [7, 8],
+        [9, 10],
+    ]

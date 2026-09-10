@@ -2637,6 +2637,11 @@ def main() -> None:
 
         outer_cache_root = args.initialization_cache_root or args.output
         outer_cache = outer_cache_root / "cache" / f"outer{outer_fold}" / "outer"
+        fitted_outer_definition = {
+            **outer_definition,
+            "training_intervals": outer_training_intervals,
+        }
+
         def create_outer_initialization():
             initialization, spatial, audit = fit_initialization(
                 ecog=ecog,
@@ -2674,7 +2679,13 @@ def main() -> None:
                     "selected_causal",
                 ),
             )
-            return initialization, spatial, outer_target, outer_definition, audit
+            return (
+                initialization,
+                spatial,
+                outer_target,
+                fitted_outer_definition,
+                audit,
+            )
 
         initialization, spatial, outer_target, _ = load_or_create_initialization(
             outer_cache, create_outer_initialization
