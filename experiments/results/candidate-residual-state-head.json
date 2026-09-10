@@ -1411,6 +1411,36 @@
     },
     "decision": "The target-versus-other-movement row is materially selected by LARS and makes residual tuning weakly positive while improving every recorded morphology diagnostic when paired with the rest-CSP row. Removing the rest contrast makes stitched OOF PCC worse despite better average morphology, confirming that the two contrasts are complementary. Keep the dual representation for any later S1-ring work, but its gain is far below the requested +0.1."
   },
+  "S1_ring_capacity_matched_dual_CSP": {
+    "description": "A larger single spatial layer uses four joint-HHL/HHH CSP rows for ring movement versus rest and four for ring movement versus other-finger-only movement, followed by the same depth-3 wavelet tree and residual LSTM.",
+    "released_test_touched": false,
+    "reference_initialization_pcc": 0.495994608,
+    "candidate_own_initialization_pcc": 0.489826177,
+    "tuned_pcc": 0.476150021,
+    "gain_over_reference": -0.019844587,
+    "candidate_self_gain": -0.013676156,
+    "outer_raw_pcc_initialized": [0.524792747, 0.530485975, 0.457071202],
+    "outer_raw_pcc_tuned": [0.534741842, 0.537825305, 0.456782832],
+    "selected_schedules": ["frozen_25", "frozen_10", "frozen_10"],
+    "initialized_morphology": {
+      "event_macro_nmse": 0.846938622,
+      "rest_false_positive_rms": 0.1135032,
+      "movement_rmse": 0.307981501,
+      "amplitude_slope": 0.16156055,
+      "velocity_pcc": 0.244326611,
+      "movement_balanced_accuracy": 0.741519446
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 0.816668372,
+      "rest_false_positive_rms": 0.112952898,
+      "movement_rmse": 0.299896727,
+      "amplitude_slope": 0.197542146,
+      "velocity_pcc": 0.259918706,
+      "movement_balanced_accuracy": 0.762776582
+    },
+    "runtime_seconds": 583.508546,
+    "decision": "Reject. Average fold-wise morphology and PCC improve slightly, but the declared stitched OOF PCC worsens both relative to this candidate's own initializer and to the fixed pre-ablation reference. Increasing dual-contrast CSP capacity does not transfer the S1-little success to S1 ring."
+  },
   "S1_little_high_gamma_CSP_and_decontamination": {
     "description": "A single FastICA-plus-CSP spatial convolution feeds one depth-3 wavelet tree and one residual LSTM. Eight decoded-finger CSP rows use the joint HHL/HHH high-frequency wavelet bands, and target decontamination is applied only to the little finger. The split-local LARS initializer uses GPU FISTA; the released test labels remain untouched.",
     "released_test_touched": false,
@@ -1519,5 +1549,5 @@
     "decision": "Count S1 little as the fourth numerical and morphology pass against the fixed pre-ablation reference initialization. The fair stitched gain is +0.1017; the larger +0.1079 self-gain is reported only as a diagnostic because the dual-contrast candidate has a slightly lower own initializer. Every recorded morphology metric improves, and the cross-finger diagnostic shows that the gain is not produced by increased leakage from other-finger movement."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Four of fifteen subject-finger models exceed the requested +0.1 gain over their fixed pre-ablation split-local LARS references: S1 little (+0.1017 with capacity-matched dual rest/other-movement CSP), S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). Candidate-specific lower initializers are never used to manufacture a pass. The S1-little model improves every recorded morphology diagnostic and sharply reduces high predictions during cleaned rest; the S2-little ensemble also improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information for S1 ring but adds less than 0.001 tuned PCC there; in contrast, the capacity-matched dual contrast closes the S1-little fold-specific gap. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Four of fifteen subject-finger models exceed the requested +0.1 gain over their fixed pre-ablation split-local LARS references: S1 little (+0.1017 with capacity-matched dual rest/other-movement CSP), S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), and S3 thumb (+0.1034). Candidate-specific lower initializers are never used to manufacture a pass. The S1-little model improves every recorded morphology diagnostic and sharply reduces high predictions during cleaned rest; the S2-little ensemble also improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S1 index remains the strongest sub-threshold ensemble result at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. A depth-5 extension and lower head rate raise its absolute tuned PCC further, but residual gain saturates at +0.0403 and movement RMSE worsens. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information for S1 ring but adds less than 0.001 tuned PCC there; increasing that dual representation to eight rows worsens stitched PCC. In contrast, the capacity-matched dual contrast closes the S1-little fold-specific gap. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."
 }
