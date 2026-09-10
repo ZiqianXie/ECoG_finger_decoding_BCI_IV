@@ -21,6 +21,7 @@ from cross_validate_single_wavelet import (
     save_initialization,
     scoped_event_groups,
     sequence_correlation_loss,
+    split_local_raw_trajectory_blend,
     suppress_weak_little_events,
     trajectory_mse_loss,
     validation_metrics,
@@ -181,6 +182,18 @@ def test_trajectory_mse_loss_changes_relative_bin_contribution() -> None:
 
     torch.testing.assert_close(unweighted, torch.tensor(0.5))
     torch.testing.assert_close(movement_weighted, torch.tensor(0.25))
+
+
+def test_raw_trajectory_blend_fits_affine_map_on_training_rows_only() -> None:
+    cleaned = torch.tensor([0.0, 1.0, 2.0, 100.0])
+    raw = torch.tensor([1.0, 3.0, 5.0, 7.0])
+    training_rows = torch.tensor([0, 1, 2])
+
+    blended = split_local_raw_trajectory_blend(
+        cleaned, raw, training_rows, blend=1.0
+    )
+
+    torch.testing.assert_close(blended, torch.tensor([0.0, 1.0, 2.0, 3.0]))
 
 
 def test_initialization_cache_atomic_round_trip(tmp_path) -> None:

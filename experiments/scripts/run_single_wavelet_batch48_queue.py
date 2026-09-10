@@ -65,6 +65,7 @@ def build_command(
     head_learning_rate: float = 3.0e-4,
     residual_dynamics: str = "pointwise",
     residual_decay: float = 0.95,
+    raw_trajectory_blend: float = 0.0,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -180,6 +181,8 @@ def build_command(
         residual_dynamics,
         "--residual-decay",
         str(residual_decay),
+        "--raw-trajectory-blend",
+        str(raw_trajectory_blend),
         "--correlation-loss-weight",
         str(correlation_loss_weight),
         "--derivative-correlation-weight",
@@ -240,6 +243,7 @@ def main() -> None:
         default="pointwise",
     )
     parser.add_argument("--residual-decay", type=float, default=0.95)
+    parser.add_argument("--raw-trajectory-blend", type=float, default=0.0)
     parser.add_argument(
         "--wavelet-frontend",
         choices=(
@@ -302,6 +306,7 @@ def main() -> None:
             args.head_learning_rate,
             args.residual_dynamics,
             args.residual_decay,
+            args.raw_trajectory_blend,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

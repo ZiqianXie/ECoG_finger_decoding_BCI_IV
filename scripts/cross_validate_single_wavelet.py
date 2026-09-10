@@ -1139,6 +1139,36 @@ def trajectory_mse_loss(
     return torch.sum(weights * squared_error) / torch.sum(weights)
 
 
+def split_local_raw_trajectory_blend(
+    cleaned: torch.Tensor,
+    raw: torch.Tensor,
+    training_rows: torch.Tensor,
+    blend: float,
+) -> torch.Tensor:
+    """Blend cleaned motion with a training-only affine copy of raw glove shape.
+
+    The affine map is fitted only on the current inner/outer training rows.  It
+    puts the raw trace on the cleaned target scale without using held-out target
+    statistics, and all operations remain on the active Torch device.
+    """
+    if cleaned.shape != raw.shape:
+        raise ValueError("cleaned and raw trajectory shapes must match")
+    if not 0.0 <= blend <= 1.0:
+        raise ValueError("raw trajectory blend must be between zero and one")
+    if blend == 0.0:
+        return cleaned
+    training_raw = raw.index_select(0, training_rows)
+    training_cleaned = cleaned.index_select(0, training_rows)
+    centered_raw = training_raw - training_raw.mean()
+    centered_cleaned = training_cleaned - training_cleaned.mean()
+    slope = torch.sum(centered_raw * centered_cleaned) / torch.sum(
+        centered_raw.square()
+    ).clamp_min(1.0e-8)
+    intercept = training_cleaned.mean() - slope * training_raw.mean()
+    aligned_raw = slope * raw + intercept
+    return torch.lerp(cleaned, aligned_raw, blend)
+
+
 def train_updates(
     *,
     model: SingleWaveletDecoder,
@@ -1147,6 +1177,7 @@ def train_updates(
     cached: torch.Tensor,
     padded_ecog: torch.Tensor,
     target: torch.Tensor,
+    trajectory_target: torch.Tensor | None,
     sampler: UniformGroupSampler,
     updates: int,
     steps: int,
@@ -1174,6 +1205,9 @@ def train_updates(
         )
         index = starts[:, None] + offsets[None]
         observed = target[index]
+        trajectory_observed = (
+            observed if trajectory_target is None else trajectory_target[index]
+        )
         optimizer_instance.zero_grad(set_to_none=True)
         result_or_pair = (
             call(padded_ecog, starts, steps)
@@ -1193,7 +1227,7 @@ def train_updates(
             result = result_or_pair
         loss = trajectory_mse_loss(
             result,
-            observed,
+            trajectory_observed,
             target_scale,
             movement_threshold,
             movement_trajectory_weight,
@@ -1215,12 +1249,13 @@ def train_updates(
             ).square().mean()
         if correlation_loss_weight:
             loss = loss + correlation_loss_weight * sequence_correlation_loss(
-                result, observed
+                result, trajectory_observed
             )
         if derivative_correlation_weight:
             loss = loss + derivative_correlation_weight * (
                 sequence_correlation_loss(
-                    torch.diff(result, dim=1), torch.diff(observed, dim=1)
+                    torch.diff(result, dim=1),
+                    torch.diff(trajectory_observed, dim=1),
                 )
             )
         if raw_movement_correlation_weight or raw_movement_derivative_correlation_weight:
@@ -1389,9 +1424,16 @@ def monitor_inner_fold(
 ) -> dict[str, dict[str, float]]:
     raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
     training_rows = indices_from_intervals(training_groups)
-    target_scale = target[
-        torch.as_tensor(training_rows, device=target.device), finger_index
-    ].std().clamp_min(0.1)
+    training_index = torch.as_tensor(training_rows, device=target.device)
+    trajectory_target = split_local_raw_trajectory_blend(
+        target[:, finger_index],
+        raw_target,
+        training_index,
+        args.raw_trajectory_blend,
+    )
+    target_scale = (
+        trajectory_target.index_select(0, training_index).std().clamp_min(0.1)
+    )
     positive_weight = movement_positive_weight(
         target,
         training_rows,
@@ -1438,6 +1480,7 @@ def monitor_inner_fold(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=checkpoint - completed,
             steps=args.sequence_steps,
@@ -1502,6 +1545,7 @@ def monitor_inner_fold(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=checkpoint - completed,
             steps=args.sequence_steps,
@@ -1610,9 +1654,14 @@ def train_final_schedule(
 ) -> None:
     raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
     training_rows = indices_from_intervals(training_groups)
-    scale = target[
-        torch.as_tensor(training_rows, device=target.device), finger_index
-    ].std().clamp_min(0.1)
+    training_index = torch.as_tensor(training_rows, device=target.device)
+    trajectory_target = split_local_raw_trajectory_blend(
+        target[:, finger_index],
+        raw_target,
+        training_index,
+        args.raw_trajectory_blend,
+    )
+    scale = trajectory_target.index_select(0, training_index).std().clamp_min(0.1)
     positive_weight = movement_positive_weight(
         target,
         training_rows,
@@ -1650,6 +1699,7 @@ def train_final_schedule(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=frozen_updates,
             steps=args.sequence_steps,
@@ -1696,6 +1746,7 @@ def train_final_schedule(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=unfrozen_updates,
             steps=args.sequence_steps,
@@ -2007,6 +2058,15 @@ def main() -> None:
         help="relative trajectory-MSE weight for bins at or above the movement threshold",
     )
     parser.add_argument(
+        "--raw-trajectory-blend",
+        type=float,
+        default=0.0,
+        help=(
+            "blend the cleaned training target with an affine-aligned raw glove "
+            "trace; the affine map is fitted only on each split's training rows"
+        ),
+    )
+    parser.add_argument(
         "--velocity-loss-weight",
         type=float,
         default=0.0,
@@ -2084,6 +2144,7 @@ def main() -> None:
     if (
         args.movement_loss_weight < 0
         or args.movement_trajectory_weight <= 0
+        or not 0.0 <= args.raw_trajectory_blend <= 1.0
         or args.velocity_loss_weight < 0
         or args.residual_output_init_std < 0
         or not 0.0 <= args.residual_decay <= 1.0
@@ -2724,6 +2785,7 @@ def main() -> None:
             "residual_output_initialization_std": args.residual_output_init_std,
             "residual_dynamics": args.residual_dynamics,
             "residual_decay": args.residual_decay,
+            "raw_trajectory_blend": args.raw_trajectory_blend,
         },
         "learning_rates": {
             "head": args.head_learning_rate,

@@ -223,3 +223,18 @@ def test_command_can_use_gpu_vectorized_leaky_residual_state(tmp_path) -> None:
     joined = " ".join(command)
     assert "--residual-dynamics leaky_velocity" in joined
     assert "--residual-decay 0.95" in joined
+
+
+def test_command_can_blend_split_local_raw_trajectory_target(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "middle",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        raw_trajectory_blend=0.25,
+    )
+    assert "--raw-trajectory-blend 0.25" in " ".join(command)
