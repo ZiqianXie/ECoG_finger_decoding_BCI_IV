@@ -24,6 +24,7 @@ import os
 import random
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -617,6 +618,48 @@ def load_initialization(root: Path):
     )
 
 
+@contextmanager
+def initialization_cache_lock(root: Path):
+    """Serialize creation and loading of one split-local initialization."""
+    root.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = root.with_name(f".{root.name}.lock")
+    with lock_path.open("a+b") as handle:
+        if os.name == "posix":
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        else:
+            import msvcrt
+
+            if lock_path.stat().st_size == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def load_or_create_initialization(root: Path, create):
+    """Load a complete cache or create it once while concurrent jobs wait."""
+    with initialization_cache_lock(root):
+        if (root / "initialization.npz").exists():
+            return load_initialization(root)
+        initialization, spatial, target, split, audit = create()
+        save_initialization(root, initialization, spatial, target, split, audit)
+        return initialization, spatial, target, {
+            **split,
+            "initialization_audit": audit,
+        }
+
+
 def load_cached_ica(
     root: Path | None,
     subject: int,
@@ -725,6 +768,8 @@ def optimizer(
     head_parameters = list(model.lstm.parameters()) + list(model.output.parameters())
     if model.movement_output is not None:
         head_parameters += list(model.movement_output.parameters())
+    if model.velocity_output is not None:
+        head_parameters += list(model.velocity_output.parameters())
     parameter_groups = [
         {
             "params": head_parameters,
@@ -767,6 +812,7 @@ def make_model(
         wavelet_final_normalization=args.wavelet_final_normalization,
         residual_input=args.residual_input,
         movement_head=args.movement_loss_weight > 0,
+        velocity_head=args.velocity_loss_weight > 0,
         residual_output_init_std=args.residual_output_init_std,
     )
 
@@ -836,6 +882,8 @@ def train_updates(
     movement_trajectory_weight: float = 1.0,
     movement_threshold: float = 0.10,
     movement_positive_weight: torch.Tensor | None = None,
+    velocity_loss_weight: float = 0.0,
+    velocity_scale: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
 ) -> list[float]:
@@ -854,8 +902,15 @@ def train_updates(
             if raw_stem
             else call(cached[index])
         )
-        if movement_loss_weight:
-            result, movement_logit = result_or_pair
+        if movement_loss_weight or velocity_loss_weight:
+            auxiliary = result_or_pair
+            result = auxiliary[0]
+            auxiliary_index = 1
+            if movement_loss_weight:
+                movement_logit = auxiliary[auxiliary_index]
+                auxiliary_index += 1
+            if velocity_loss_weight:
+                velocity_prediction = auxiliary[auxiliary_index]
         else:
             result = result_or_pair
         loss = trajectory_mse_loss(
@@ -872,6 +927,14 @@ def train_updates(
                 movement_target,
                 pos_weight=movement_positive_weight,
             )
+        if velocity_loss_weight:
+            if velocity_scale is None:
+                raise ValueError("velocity scale is required for auxiliary velocity loss")
+            observed_velocity = torch.diff(observed, dim=1)
+            predicted_velocity = velocity_prediction[:, 1:]
+            loss = loss + velocity_loss_weight * (
+                (predicted_velocity - observed_velocity) / velocity_scale
+            ).square().mean()
         if correlation_loss_weight:
             loss = loss + correlation_loss_weight * sequence_correlation_loss(
                 result, observed
@@ -902,6 +965,21 @@ def movement_positive_weight(
     positive = (scoped >= movement_threshold).sum().clamp_min(1)
     negative = (scoped < movement_threshold).sum().clamp_min(1)
     return (negative / positive).to(target.dtype)
+
+
+def grouped_velocity_scale(
+    target: torch.Tensor,
+    groups: list[list[int]],
+) -> torch.Tensor:
+    """Estimate velocity scale without differencing across event boundaries."""
+    differences = [
+        torch.diff(target[start:stop])
+        for start, stop in groups
+        if stop - start >= 2
+    ]
+    if not differences:
+        return torch.as_tensor(0.01, dtype=target.dtype, device=target.device)
+    return torch.cat(differences).std().clamp_min(0.01)
 
 
 def balanced_accuracy(truth: np.ndarray, prediction: np.ndarray) -> float:
@@ -1023,6 +1101,9 @@ def monitor_inner_fold(
         finger_index,
         args.movement_threshold,
     )
+    velocity_scale = grouped_velocity_scale(
+        target[:, finger_index], training_groups
+    )
     sampler = make_sampler(args, training_groups, seed)
     metrics = {}
     baseline = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -1036,8 +1117,8 @@ def monitor_inner_fold(
     )
     opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay)
     decode = (
-        model.decode_features_with_movement
-        if args.movement_loss_weight
+        model.decode_features_with_auxiliary
+        if args.movement_loss_weight or args.velocity_loss_weight
         else model.decode_features
     )
     if args.compile:
@@ -1062,6 +1143,8 @@ def monitor_inner_fold(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1092,7 +1175,9 @@ def monitor_inner_fold(
         args.weight_decay,
     )
     forward = (
-        model.forward_with_movement if args.movement_loss_weight else model.forward
+        model.forward_with_auxiliary
+        if args.movement_loss_weight or args.velocity_loss_weight
+        else model.forward
     )
     if args.compile:
         forward = torch.compile(forward, mode="reduce-overhead")
@@ -1115,6 +1200,8 @@ def monitor_inner_fold(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1213,6 +1300,9 @@ def train_final_schedule(
         finger_index,
         args.movement_threshold,
     )
+    velocity_scale = grouped_velocity_scale(
+        target[:, finger_index], training_groups
+    )
     parts = schedule.split("_")
     frozen_updates = int(parts[1])
     unfrozen_updates = 0 if parts[0] == "frozen" else int(parts[2])
@@ -1222,8 +1312,8 @@ def train_final_schedule(
             model, args.head_learning_rate, 0.0, 0.0, 0.0, args.weight_decay
         )
         decode = (
-            model.decode_features_with_movement
-            if args.movement_loss_weight
+            model.decode_features_with_auxiliary
+            if args.movement_loss_weight or args.velocity_loss_weight
             else model.decode_features
         )
         if args.compile:
@@ -1245,6 +1335,8 @@ def train_final_schedule(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1259,7 +1351,9 @@ def train_final_schedule(
             args.weight_decay,
         )
         forward = (
-            model.forward_with_movement if args.movement_loss_weight else model.forward
+            model.forward_with_auxiliary
+            if args.movement_loss_weight or args.velocity_loss_weight
+            else model.forward
         )
         if args.compile:
             forward = torch.compile(forward, mode="reduce-overhead")
@@ -1280,6 +1374,8 @@ def train_final_schedule(
             movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
             derivative_correlation_weight=args.derivative_correlation_weight,
         )
@@ -1494,6 +1590,12 @@ def main() -> None:
         help="relative trajectory-MSE weight for bins at or above the movement threshold",
     )
     parser.add_argument(
+        "--velocity-loss-weight",
+        type=float,
+        default=0.0,
+        help="weight of an auxiliary velocity-regression head on the shared LSTM state",
+    )
+    parser.add_argument(
         "--residual-output-init-std",
         type=float,
         default=0.0,
@@ -1519,6 +1621,7 @@ def main() -> None:
     if (
         args.movement_loss_weight < 0
         or args.movement_trajectory_weight <= 0
+        or args.velocity_loss_weight < 0
         or args.residual_output_init_std < 0
         or args.correlation_loss_weight < 0
         or args.derivative_correlation_weight < 0
@@ -1700,14 +1803,13 @@ def main() -> None:
         for split in ([] if reused_report is not None else splits):
             cache_root = args.initialization_cache_root or args.output
             cache = cache_root / "cache" / f"outer{outer_fold}" / f"inner{split['fold']}"
-            if (cache / "initialization.npz").exists():
-                initialization, spatial, target_np, cached_split = load_initialization(cache)
-                split = cached_split
-            else:
+            requested_split = split
+
+            def create_inner_initialization():
                 target_np = make_subject_target(
                     raw_matrix,
-                    split["training_intervals"],
-                    split["validation_intervals"],
+                    requested_split["training_intervals"],
+                    requested_split["validation_intervals"],
                     args.subject,
                     finger_index=finger_index,
                     little_event_decontamination=args.little_event_decontamination,
@@ -1718,8 +1820,8 @@ def main() -> None:
                     ecog=ecog,
                     joint_bins=joint_bins,
                     target=target_np,
-                    training_intervals=split["training_intervals"],
-                    training_groups=split["training_groups"],
+                    training_intervals=requested_split["training_intervals"],
+                    training_groups=requested_split["training_groups"],
                     frontend=frontend,
                     device=device,
                     ica_prescreen=args.ica_prescreen,
@@ -1731,13 +1833,17 @@ def main() -> None:
                         args.subject,
                         args.finger,
                         outer_fold,
-                        f"inner{split['fold']}",
+                        f"inner{requested_split['fold']}",
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
                     include_candidate_pool=args.residual_input == "candidate",
                 )
-                save_initialization(cache, initialization, spatial, target_np, split, audit)
+                return initialization, spatial, target_np, requested_split, audit
+
+            initialization, spatial, target_np, split = load_or_create_initialization(
+                cache, create_inner_initialization
+            )
             torch.manual_seed(args.seed)
             model = make_model(spatial, initialization, args).to(device)
             cached = torch.from_numpy(
@@ -1796,11 +1902,7 @@ def main() -> None:
 
         outer_cache_root = args.initialization_cache_root or args.output
         outer_cache = outer_cache_root / "cache" / f"outer{outer_fold}" / "outer"
-        if (outer_cache / "initialization.npz").exists():
-            initialization, spatial, outer_target, _ = load_initialization(
-                outer_cache
-            )
-        else:
+        def create_outer_initialization():
             initialization, spatial, audit = fit_initialization(
                 ecog=ecog,
                 joint_bins=joint_bins,
@@ -1824,14 +1926,11 @@ def main() -> None:
                 samples_per_bin=args.samples_per_bin,
                 include_candidate_pool=args.residual_input == "candidate",
             )
-            save_initialization(
-                outer_cache,
-                initialization,
-                spatial,
-                outer_target,
-                outer_definition,
-                audit,
-            )
+            return initialization, spatial, outer_target, outer_definition, audit
+
+        initialization, spatial, outer_target, _ = load_or_create_initialization(
+            outer_cache, create_outer_initialization
+        )
         torch.manual_seed(args.seed)
         model = make_model(spatial, initialization, args).to(device)
         cached = torch.from_numpy(
@@ -1980,15 +2079,18 @@ def main() -> None:
             "trajectory": "normalized mean squared error",
             "movement_trajectory_weight": args.movement_trajectory_weight,
             "movement_state_bce_weight": args.movement_loss_weight,
+            "auxiliary_velocity_mse_weight": args.velocity_loss_weight,
             "within_sequence_correlation_weight": args.correlation_loss_weight,
             "within_sequence_velocity_correlation_weight": (
                 args.derivative_correlation_weight
             ),
-            "model_outputs": (
-                ["trajectory", "target_finger_movement_logit"]
+            "model_outputs": ["trajectory"]
+            + (
+                ["target_finger_movement_logit"]
                 if args.movement_loss_weight
-                else ["trajectory"]
-            ),
+                else []
+            )
+            + (["target_finger_velocity"] if args.velocity_loss_weight else []),
             "residual_output_initialization_std": args.residual_output_init_std,
         },
         "learning_rates": {

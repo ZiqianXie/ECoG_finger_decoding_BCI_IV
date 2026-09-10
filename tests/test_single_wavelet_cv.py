@@ -1,6 +1,9 @@
 import numpy as np
 import torch
 import cross_validate_single_wavelet as cv
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+from time import sleep
 
 from cross_validate_single_wavelet import (
     DenseSequenceSampler,
@@ -10,6 +13,8 @@ from cross_validate_single_wavelet import (
     UniformGroupSampler,
     one_standard_error_selection,
     load_initialization,
+    load_or_create_initialization,
+    grouped_velocity_scale,
     movement_positive_weight,
     save_initialization,
     scoped_event_groups,
@@ -27,6 +32,14 @@ def test_movement_positive_weight_balances_training_scope() -> None:
     weight = movement_positive_weight(target, np.arange(6), 2, 0.1)
 
     torch.testing.assert_close(weight, torch.tensor(2.0))
+
+
+def test_grouped_velocity_scale_excludes_interval_jumps() -> None:
+    target = torch.tensor([0.0, 1.0, 2.0, 100.0, 101.0, 102.0])
+
+    scale = grouped_velocity_scale(target, [[0, 3], [3, 6]])
+
+    torch.testing.assert_close(scale, torch.tensor(0.01))
 
 
 def schedules() -> list[str]:
@@ -166,6 +179,38 @@ def test_initialization_cache_atomic_round_trip(tmp_path) -> None:
     assert loaded_split["fold"] == 1
     assert loaded_split["initialization_audit"] == audit
     assert not list(tmp_path.glob(".*"))
+
+
+def test_initialization_cache_creation_is_serialized(tmp_path) -> None:
+    calls = 0
+    calls_lock = Lock()
+
+    def create():
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        sleep(0.05)
+        return (
+            {"coefficients": np.asarray([0.3], dtype=np.float32)},
+            np.asarray([[1.0]], dtype=np.float32),
+            np.asarray([[0.2]], dtype=np.float32),
+            {"fold": 0},
+            {"selected_features": 1},
+        )
+
+    cache = tmp_path / "outer0" / "inner0"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda _: load_or_create_initialization(cache, create), range(2)
+            )
+        )
+
+    assert calls == 1
+    assert [result[3]["fold"] for result in results] == [0, 0]
+    np.testing.assert_array_equal(
+        results[0][0]["coefficients"], results[1][0]["coefficients"]
+    )
 
 
 def test_one_standard_error_prefers_earlier_checkpoint() -> None:

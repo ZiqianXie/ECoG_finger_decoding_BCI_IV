@@ -100,6 +100,7 @@ class SingleWaveletDecoder(nn.Module):
         wavelet_final_normalization: bool = True,
         residual_input: str = "selected",
         movement_head: bool = False,
+        velocity_head: bool = False,
         residual_output_init_std: float = 0.0,
     ) -> None:
         super().__init__()
@@ -213,6 +214,7 @@ class SingleWaveletDecoder(nn.Module):
         self.recurrent_cell = recurrent_cell
         self.output = nn.Linear(hidden_size, 1)
         self.movement_output = nn.Linear(hidden_size, 1) if movement_head else None
+        self.velocity_output = nn.Linear(hidden_size, 1) if velocity_head else None
         if residual_output_init_std < 0:
             raise ValueError("residual output initialization scale must be nonnegative")
         with torch.no_grad():
@@ -272,6 +274,10 @@ class SingleWaveletDecoder(nn.Module):
             with torch.no_grad():
                 self.movement_output.weight.normal_(0.0, near_zero_std)
                 self.movement_output.bias.zero_()
+        if self.velocity_output is not None:
+            with torch.no_grad():
+                self.velocity_output.weight.normal_(0.0, near_zero_std)
+                self.velocity_output.bias.zero_()
 
     @torch.no_grad()
     def _initialize_lars_linear_regime(
@@ -366,6 +372,20 @@ class SingleWaveletDecoder(nn.Module):
         prediction, recurrent = self._decode_features(features)
         return prediction, self.movement_output(recurrent).squeeze(-1)
 
+    def decode_features_with_auxiliary(
+        self, features: torch.Tensor
+    ) -> tuple[torch.Tensor, ...]:
+        """Return trajectory followed by the enabled training-only outputs."""
+        prediction, recurrent = self._decode_features(features)
+        outputs = [prediction]
+        if self.movement_output is not None:
+            outputs.append(self.movement_output(recurrent).squeeze(-1))
+        if self.velocity_output is not None:
+            outputs.append(self.velocity_output(recurrent).squeeze(-1))
+        if len(outputs) == 1:
+            raise RuntimeError("decoder has no auxiliary output head")
+        return tuple(outputs)
+
     def _prepare_features(
         self, features: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -451,6 +471,16 @@ class SingleWaveletDecoder(nn.Module):
         steps: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         return self.decode_features_with_movement(
+            self.extract_sequences(padded_ecog, starts, steps)
+        )
+
+    def forward_with_auxiliary(
+        self,
+        padded_ecog: torch.Tensor,
+        starts: torch.Tensor,
+        steps: int,
+    ) -> tuple[torch.Tensor, ...]:
+        return self.decode_features_with_auxiliary(
             self.extract_sequences(padded_ecog, starts, steps)
         )
 

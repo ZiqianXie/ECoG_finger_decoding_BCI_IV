@@ -105,6 +105,101 @@
     "excluded_preliminary_runs": "Concurrent 2x and 4x screens accidentally used the script defaults of hidden size 10 and a different checkpoint grid. They are excluded from model comparison.",
     "decision": "Reject: emphasizing movement-bin squared error does not address the S1-index tuning gap and remains well below the requested +0.1 PCC gain."
   },
+  "auxiliary_velocity_head_ablation": {
+    "description": "A training-only velocity regressor reads the same LSTM state as the trajectory and movement outputs; it adds no temporal or spatial feature branch.",
+    "screen_pair": "S1 index",
+    "shared_initialization_pcc": 0.725545068,
+    "matched_control": {
+      "velocity_loss_weight": 0.0,
+      "tuned_pcc": 0.739379031,
+      "gain": 0.013833964,
+      "selected_schedules": ["frozen_50", "frozen_400", "frozen_400"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.428806,
+        "rest_false_positive_rms": 0.093149,
+        "movement_rmse": 0.236308,
+        "amplitude_slope": 0.484119,
+        "velocity_pcc": 0.450046,
+        "movement_balanced_accuracy": 0.761577
+      }
+    },
+    "velocity_weight_0.1": {
+      "tuned_pcc": 0.730019362,
+      "gain": 0.004474294,
+      "selected_schedules": ["frozen_50", "frozen_100", "frozen_400"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.459999,
+        "rest_false_positive_rms": 0.101927,
+        "movement_rmse": 0.241338,
+        "amplitude_slope": 0.450015,
+        "velocity_pcc": 0.44043,
+        "movement_balanced_accuracy": 0.753037
+      }
+    },
+    "velocity_weight_0.5": {
+      "tuned_pcc": 0.719092974,
+      "gain": -0.006452094,
+      "selected_schedules": ["frozen_50", "frozen_50", "frozen_400"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.477363,
+        "rest_false_positive_rms": 0.106139,
+        "movement_rmse": 0.242324,
+        "amplitude_slope": 0.448427,
+        "velocity_pcc": 0.436913,
+        "movement_balanced_accuracy": 0.744838
+      }
+    },
+    "decision": "Reject: auxiliary velocity regression worsens trajectory PCC, event NMSE, rest-state error, amplitude slope, and trajectory velocity PCC relative to the matched state-head control."
+  },
+  "S1_index_head_learning_rate_screen": {
+    "shared_initialization_pcc": 0.725545068,
+    "matched_1e-4_control_pcc": 0.739379031,
+    "lr_3e-4": {
+      "tuned_pcc": 0.752557618,
+      "gain": 0.02701255,
+      "selected_schedules": ["frozen_100", "frozen_200", "frozen_200"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.376376,
+        "rest_false_positive_rms": 0.081152,
+        "movement_rmse": 0.233484,
+        "amplitude_slope": 0.542316,
+        "velocity_pcc": 0.458269,
+        "movement_balanced_accuracy": 0.771684
+      }
+    },
+    "lr_1e-3": {
+      "tuned_pcc": 0.735181219,
+      "gain": 0.009636151,
+      "selected_schedules": ["frozen_50", "frozen_20", "frozen_50"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.402458,
+        "rest_false_positive_rms": 0.084345,
+        "movement_rmse": 0.242099,
+        "amplitude_slope": 0.509703,
+        "velocity_pcc": 0.435217,
+        "movement_balanced_accuracy": 0.764948
+      }
+    },
+    "decision": "Use 3e-4 for further S1-index candidate-residual diagnostics. It improves every monitored trajectory diagnostic over the matched 1e-4 control, but its +0.027 PCC gain remains far below +0.1."
+  },
+  "S1_index_two_stage_stem_tuning": {
+    "head_learning_rate": 0.0003,
+    "spatial_learning_rate": 0.000003,
+    "wavelet_learning_rate": 0.000003,
+    "shared_initialization_pcc": 0.725545068,
+    "tuned_pcc": 0.747625763,
+    "gain": 0.022080695,
+    "selected_schedules": ["frozen_100", "unfrozen_100_200", "unfrozen_100_80"],
+    "mean_selected_outer_diagnostics": {
+      "event_macro_nmse": 0.386935,
+      "rest_false_positive_rms": 0.082186,
+      "movement_rmse": 0.236106,
+      "amplitude_slope": 0.536302,
+      "velocity_pcc": 0.44375,
+      "movement_balanced_accuracy": 0.768528
+    },
+    "decision": "Reject: two-stage end-to-end tuning is 0.0049 PCC below the matched frozen-stem 3e-4 run and does not close the requested gain."
+  },
   "movement_state_generalization": {
     "S1_index": {
       "initialization_pcc": 0.721336642,
@@ -185,6 +280,12 @@
     "compiled_S1_index_three_outer_fold_runtime_seconds": 181.223,
     "compiled_S3_thumb_three_outer_fold_runtime_seconds": 177.189
   },
+  "concurrent_initialization_cache": {
+    "implementation": "An OS-level split lock now serializes cache creation and readers recheck the completion marker after acquiring it.",
+    "verified_shared_initialization_pcc": 0.725545068,
+    "parallel_jobs_compared": 3,
+    "decision": "Keep: the matched control and two auxiliary-velocity runs loaded identical split-local initializations while training concurrently."
+  },
   "visual_diagnostic": "Across S1 index, S2 middle, and S3 thumb, the state head lowers stationary offset and increases event amplitudes. It still retains isolated false peaks, underestimates the largest flexions, and barely changes S3-thumb velocity correlation.",
-  "decision": "Keep the auxiliary state head and fixed-width candidate implementation experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE also fails on S1-index. Reject near-zero residual initialization and reject stacking end-to-end interlevel normalization onto the state model."
+  "decision": "Keep the auxiliary state head, fixed-width candidate implementation, and concurrency-safe initialization cache experimental. The state objective improves PCC and multiple morphology diagnostics across all three screened pairs, but gains of 0.033, 0.090, and 0.048 remain below the requested 0.1 PCC threshold. Adding fixed correlation and velocity-correlation losses reaches +0.103 only on S2-middle and does not generalize to S1-index or S3-thumb. Movement-weighted trajectory MSE and explicit auxiliary velocity regression both fail on S1-index. A 3e-4 head rate is the best clean-cache S1 setting, but gives only +0.027; subsequent two-stage stem tuning is worse. Reject near-zero residual initialization and reject stacking end-to-end interlevel normalization onto the state model."
 }

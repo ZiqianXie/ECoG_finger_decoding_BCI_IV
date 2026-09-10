@@ -136,6 +136,29 @@ def test_residual_lstm_starts_exactly_at_softplus_lars() -> None:
     assert isinstance(model.lstm, torch.nn.LSTM)
 
 
+def test_auxiliary_velocity_uses_the_same_recurrent_state() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        movement_head=True,
+        velocity_head=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+
+    trajectory, movement_logit, velocity = model.decode_features_with_auxiliary(
+        features
+    )
+
+    torch.testing.assert_close(trajectory, model.decode_features(features))
+    assert movement_logit.shape == trajectory.shape
+    assert velocity.shape == trajectory.shape
+    assert model.velocity_output.in_features == model.lstm.hidden_size
+
+
 def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
     coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
     model = SingleWaveletDecoder(
