@@ -799,6 +799,25 @@ def sequence_correlation_loss(
     return 1.0 - correlation.mean()
 
 
+def trajectory_mse_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    target_scale: torch.Tensor,
+    movement_threshold: float,
+    movement_weight: float,
+) -> torch.Tensor:
+    """Return scale-normalized MSE with optional emphasis on movement bins."""
+    squared_error = ((prediction - target) / target_scale).square()
+    if movement_weight == 1.0:
+        return squared_error.mean()
+    weights = torch.where(
+        target >= movement_threshold,
+        torch.as_tensor(movement_weight, dtype=target.dtype, device=target.device),
+        torch.ones((), dtype=target.dtype, device=target.device),
+    )
+    return torch.sum(weights * squared_error) / torch.sum(weights)
+
+
 def train_updates(
     *,
     model: SingleWaveletDecoder,
@@ -814,6 +833,7 @@ def train_updates(
     target_scale: torch.Tensor,
     raw_stem: bool,
     movement_loss_weight: float = 0.0,
+    movement_trajectory_weight: float = 1.0,
     movement_threshold: float = 0.10,
     movement_positive_weight: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
@@ -838,7 +858,13 @@ def train_updates(
             result, movement_logit = result_or_pair
         else:
             result = result_or_pair
-        loss = ((result - observed) / target_scale).square().mean()
+        loss = trajectory_mse_loss(
+            result,
+            observed,
+            target_scale,
+            movement_threshold,
+            movement_trajectory_weight,
+        )
         if movement_loss_weight:
             movement_target = (observed >= movement_threshold).to(result.dtype)
             loss = loss + movement_loss_weight * F.binary_cross_entropy_with_logits(
@@ -1033,6 +1059,7 @@ def monitor_inner_fold(
             target_scale=target_scale,
             raw_stem=False,
             movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1085,6 +1112,7 @@ def monitor_inner_fold(
             target_scale=target_scale,
             raw_stem=True,
             movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1214,6 +1242,7 @@ def train_final_schedule(
             target_scale=scale,
             raw_stem=False,
             movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1248,6 +1277,7 @@ def train_final_schedule(
             target_scale=scale,
             raw_stem=True,
             movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
             movement_threshold=args.movement_threshold,
             movement_positive_weight=positive_weight,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1458,6 +1488,12 @@ def main() -> None:
         help="weight of a balanced target-finger movement/rest BCE auxiliary head",
     )
     parser.add_argument(
+        "--movement-trajectory-weight",
+        type=float,
+        default=1.0,
+        help="relative trajectory-MSE weight for bins at or above the movement threshold",
+    )
+    parser.add_argument(
         "--residual-output-init-std",
         type=float,
         default=0.0,
@@ -1482,6 +1518,7 @@ def main() -> None:
     args = parser.parse_args()
     if (
         args.movement_loss_weight < 0
+        or args.movement_trajectory_weight <= 0
         or args.residual_output_init_std < 0
         or args.correlation_loss_weight < 0
         or args.derivative_correlation_weight < 0
@@ -1941,6 +1978,7 @@ def main() -> None:
         ),
         "training_objective": {
             "trajectory": "normalized mean squared error",
+            "movement_trajectory_weight": args.movement_trajectory_weight,
             "movement_state_bce_weight": args.movement_loss_weight,
             "within_sequence_correlation_weight": args.correlation_loss_weight,
             "within_sequence_velocity_correlation_weight": (

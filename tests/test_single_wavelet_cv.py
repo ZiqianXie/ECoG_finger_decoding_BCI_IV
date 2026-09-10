@@ -15,6 +15,7 @@ from cross_validate_single_wavelet import (
     scoped_event_groups,
     sequence_correlation_loss,
     suppress_weak_little_events,
+    trajectory_mse_loss,
     validation_metrics,
 )
 
@@ -116,6 +117,30 @@ def test_sequence_correlation_loss_rewards_shape_and_backpropagates() -> None:
     assert reversed_loss > exact_loss
     assert exact.grad is not None
     assert torch.isfinite(exact.grad).all()
+
+
+def test_trajectory_mse_loss_can_emphasize_movement_bins() -> None:
+    target = torch.tensor([[0.0, 0.2]])
+    prediction = torch.tensor([[1.0, 1.2]])
+
+    unweighted = trajectory_mse_loss(prediction, target, torch.tensor(1.0), 0.1, 1.0)
+    weighted = trajectory_mse_loss(prediction, target, torch.tensor(1.0), 0.1, 3.0)
+
+    torch.testing.assert_close(unweighted, torch.tensor(1.0))
+    torch.testing.assert_close(weighted, torch.tensor(1.0))
+
+
+def test_trajectory_mse_loss_changes_relative_bin_contribution() -> None:
+    target = torch.tensor([[0.0, 0.2]])
+    prediction = torch.tensor([[1.0, 0.2]])
+
+    unweighted = trajectory_mse_loss(prediction, target, torch.tensor(1.0), 0.1, 1.0)
+    movement_weighted = trajectory_mse_loss(
+        prediction, target, torch.tensor(1.0), 0.1, 3.0
+    )
+
+    torch.testing.assert_close(unweighted, torch.tensor(0.5))
+    torch.testing.assert_close(movement_weighted, torch.tensor(0.25))
 
 
 def test_initialization_cache_atomic_round_trip(tmp_path) -> None:
