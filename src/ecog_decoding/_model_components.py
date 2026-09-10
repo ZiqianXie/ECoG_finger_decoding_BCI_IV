@@ -285,6 +285,7 @@ class WaveletPacketEnergy(nn.Module):
         tap_resample_down: int = 1,
         interlevel_skip: bool = False,
         interlevel_normalization: bool = False,
+        normalize_final_level: bool = True,
         normalization_epsilon: float = 1.0e-5,
     ) -> None:
         super().__init__()
@@ -400,7 +401,10 @@ class WaveletPacketEnergy(nn.Module):
             if interlevel_normalization:
                 self.normalization_gates.append(
                     nn.Parameter(
-                        torch.zeros(1, child_count, 1), requires_grad=trainable
+                        torch.zeros(1, child_count, 1),
+                        requires_grad=(
+                            trainable and (level < levels - 1 or normalize_final_level)
+                        ),
                     )
                 )
         self.wavelet = wavelet
@@ -416,6 +420,7 @@ class WaveletPacketEnergy(nn.Module):
         self.tap_resample_down = int(tap_resample_down)
         self.interlevel_skip = bool(interlevel_skip)
         self.interlevel_normalization = bool(interlevel_normalization)
+        self.normalize_final_level = bool(normalize_final_level)
         self.normalization_epsilon = float(normalization_epsilon)
 
     @property
@@ -465,7 +470,9 @@ class WaveletPacketEnergy(nn.Module):
                 bands = bands + self.skip_gates[level] * parent.repeat_interleave(
                     2, dim=1
                 )
-            if self.interlevel_normalization:
+            if self.interlevel_normalization and (
+                level < self.levels - 1 or self.normalize_final_level
+            ):
                 mean = bands.mean(dim=-1, keepdim=True)
                 variance = bands.var(dim=-1, keepdim=True, unbiased=False)
                 normalized = (bands - mean) * torch.rsqrt(

@@ -101,6 +101,11 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=False,
     )
+    parser.add_argument(
+        "--wavelet-final-normalization",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--gpus", nargs="+", default=tuple(str(i) for i in range(8)))
     parser.add_argument(
         "--output-root",
@@ -260,6 +265,8 @@ def main() -> None:
                         command.append("--wavelet-interlevel-skip")
                     if args.wavelet_interlevel_normalization:
                         command.append("--wavelet-interlevel-normalization")
+                    if not args.wavelet_final_normalization:
+                        command.append("--no-wavelet-final-normalization")
                     effective_cache_root = cache_root
                     if (
                         effective_cache_root is None

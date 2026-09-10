@@ -147,6 +147,19 @@ def test_interlevel_skip_and_normalization_gates_receive_gradients() -> None:
     assert all(gate.grad is not None for gate in tree.normalization_gates)
 
 
+def test_hidden_only_normalization_does_not_train_final_leaf_gate() -> None:
+    tree = WaveletPacketEnergy(
+        levels=3,
+        energy_window_samples=20,
+        energy_stride_samples=20,
+        interlevel_normalization=True,
+        normalize_final_level=False,
+    )
+    tree(torch.randn(2, 2, 1000)).mean().backward()
+    assert all(gate.grad is not None for gate in tree.normalization_gates[:-1])
+    assert tree.normalization_gates[-1].grad is None
+
+
 def test_diagonal_ssm_is_causal() -> None:
     torch.manual_seed(4)
     block = DiagonalSSMBlock(width=8, state_size=4).eval()

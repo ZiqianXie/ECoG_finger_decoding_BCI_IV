@@ -749,6 +749,7 @@ def make_model(
         tap_resample_down=args.tap_resample_down,
         wavelet_interlevel_skip=args.wavelet_interlevel_skip,
         wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
+        wavelet_final_normalization=args.wavelet_final_normalization,
     )
 
 
@@ -1209,6 +1210,12 @@ def main() -> None:
         "--wavelet-interlevel-normalization",
         action=argparse.BooleanOptionalAction,
         default=False,
+    )
+    parser.add_argument(
+        "--wavelet-final-normalization",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="also learn normalization on the final leaves before energy pooling",
     )
     parser.add_argument(
         "--output",
@@ -1748,6 +1755,7 @@ def main() -> None:
             "zero_initialized_interlevel_normalization": (
                 args.wavelet_interlevel_normalization
             ),
+            "final_leaf_normalization": args.wavelet_final_normalization,
             "energy_pool_samples": args.samples_per_bin,
         },
         "primary_selection_metric": args.selection_metric,

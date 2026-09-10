@@ -97,6 +97,7 @@ class SingleWaveletDecoder(nn.Module):
         tap_resample_down: int = 2,
         wavelet_interlevel_skip: bool = False,
         wavelet_interlevel_normalization: bool = False,
+        wavelet_final_normalization: bool = True,
     ) -> None:
         super().__init__()
         components, channels = spatial_weights.shape
@@ -116,6 +117,7 @@ class SingleWaveletDecoder(nn.Module):
             tap_resample_down=tap_resample_down,
             interlevel_skip=wavelet_interlevel_skip,
             interlevel_normalization=wavelet_interlevel_normalization,
+            normalize_final_level=wavelet_final_normalization,
         )
         self.samples_per_bin = int(energy_window_samples)
         self.register_buffer(
