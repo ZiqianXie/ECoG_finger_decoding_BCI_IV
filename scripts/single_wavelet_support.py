@@ -179,8 +179,9 @@ def finger_csp_bank(
     training: np.ndarray,
     finger_index: int,
     component_indices: tuple[int, ...],
+    negative_class: str = "common_rest",
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Fit selected rows from one finger-versus-common-rest CSP eigensystem."""
+    """Fit selected rows from one target-finger CSP eigensystem."""
     if not component_indices:
         return np.empty((0, filtered_bins.shape[-1]), dtype=np.float32), {
             "active_bins": 0,
@@ -188,23 +189,31 @@ def finger_csp_bank(
             "component_indices": [],
             "eigenvalues": [],
         }
+    if negative_class not in ("common_rest", "other_movement"):
+        raise ValueError(f"unsupported CSP negative class {negative_class!r}")
     rest = np.max(np.nan_to_num(target, nan=np.inf), axis=1) < 0.05
     active = target[:, finger_index] > 0.20
+    other = np.delete(target, finger_index, axis=1)
+    other_movement = (
+        (np.max(np.nan_to_num(other, nan=-np.inf), axis=1) > 0.20)
+        & (target[:, finger_index] < 0.05)
+    )
+    negative = rest if negative_class == "common_rest" else other_movement
     active_rows = training[active[training]]
-    rest_rows = training[rest[training]]
-    if active_rows.size < 2 or rest_rows.size < 2:
-        raise RuntimeError("too few movement or common-rest bins for CSP")
+    negative_rows = training[negative[training]]
+    if active_rows.size < 2 or negative_rows.size < 2:
+        raise RuntimeError("too few positive or negative bins for CSP")
     active_values = filtered_bins[active_rows + OFFSET].reshape(
         -1, filtered_bins.shape[-1]
     )
-    rest_values = filtered_bins[rest_rows + OFFSET].reshape(
+    negative_values = filtered_bins[negative_rows + OFFSET].reshape(
         -1, filtered_bins.shape[-1]
     )
     active_covariance = regularized_covariance(active_values)
-    rest_covariance = regularized_covariance(rest_values)
+    negative_covariance = regularized_covariance(negative_values)
     eigenvalues, eigenvectors = linalg.eigh(
         active_covariance,
-        active_covariance + rest_covariance,
+        active_covariance + negative_covariance,
         check_finite=False,
     )
     selected = [index % eigenvalues.size for index in component_indices]
@@ -212,7 +221,11 @@ def finger_csp_bank(
     weights /= np.linalg.norm(weights, axis=1, keepdims=True).clip(min=1.0e-12)
     return weights.astype(np.float32), {
         "active_bins": int(active_rows.size),
-        "rest_bins": int(rest_rows.size),
+        "rest_bins": int(negative_rows.size) if negative_class == "common_rest" else 0,
+        "other_movement_bins": (
+            int(negative_rows.size) if negative_class == "other_movement" else 0
+        ),
+        "negative_class": negative_class,
         "component_indices": list(component_indices),
         "eigenvalues": [float(eigenvalues[index]) for index in selected],
     }

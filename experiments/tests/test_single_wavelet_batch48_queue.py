@@ -270,3 +270,18 @@ def test_command_can_train_all_finger_movement_context(tmp_path) -> None:
         movement_head_scope="all_fingers",
     )
     assert "--movement-head-scope all_fingers" in " ".join(command)
+
+
+def test_command_can_initialize_csp_against_other_finger_movement(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_contrast_mode="dual_rest_other",
+    )
+    assert "--csp-contrast-mode dual_rest_other" in " ".join(command)

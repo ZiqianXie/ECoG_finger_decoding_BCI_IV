@@ -60,6 +60,35 @@ def test_joint_gamma_mode_retains_one_row() -> None:
     assert audit["band_mode"] == "joint_hhl_hhh"
 
 
+def test_dual_csp_contrast_retains_rest_and_other_movement_rows() -> None:
+    rng = np.random.default_rng(17)
+    rows = 60
+    target = np.zeros((rows, 5), dtype=np.float32)
+    target[20:40, 4] = 1.0
+    target[40:, 0] = 1.0
+    joint = rng.normal(size=(OFFSET + rows, 8, 3)).astype(np.float32)
+    joint[OFFSET + 20 : OFFSET + 40, :, 0] *= 4.0
+    joint[OFFSET + 40 :, :, 2] *= 3.0
+
+    weights, audit = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=target,
+        training=np.arange(rows),
+        finger_index=4,
+        component_indices=(-1,),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="dual_rest_other",
+    )
+
+    assert weights.shape == (2, 3)
+    assert audit["contrast_mode"] == "dual_rest_other"
+    assert audit["contrasts"]["common_rest"]["rest_bins"] == 20
+    assert audit["contrasts"]["other_movement"]["other_movement_bins"] == 20
+    assert not np.allclose(weights[0], weights[1])
+
+
 def test_lower_high_gamma_mode_adds_one_spatial_row_to_same_bank() -> None:
     target, training, hhl, hhh = synthetic_inputs()
     lower = np.random.default_rng(9).normal(size=hhl.shape).astype(np.float32)

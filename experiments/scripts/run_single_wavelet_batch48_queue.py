@@ -68,6 +68,7 @@ def build_command(
     raw_trajectory_blend: float = 0.0,
     warmup_steps: int = 0,
     movement_head_scope: str = "target",
+    csp_contrast_mode: str = "common_rest",
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -129,6 +130,8 @@ def build_command(
         lasso_backend,
         "--csp-mode",
         csp_mode,
+        "--csp-contrast-mode",
+        csp_contrast_mode,
         "--csp-band-mode",
         csp_band_mode,
         "--hidden-size",
@@ -240,6 +243,11 @@ def main() -> None:
         choices=("ica_only", "movement_1", "movement_2", "movement_4", "tails_2x2", "tails_4x4"),
         default="movement_1",
     )
+    parser.add_argument(
+        "--csp-contrast-mode",
+        choices=("common_rest", "other_movement", "dual_rest_other"),
+        default="common_rest",
+    )
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
     parser.add_argument("--head-learning-rate", type=float, default=3.0e-4)
@@ -321,6 +329,7 @@ def main() -> None:
             args.raw_trajectory_blend,
             args.warmup_steps,
             args.movement_head_scope,
+            args.csp_contrast_mode,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

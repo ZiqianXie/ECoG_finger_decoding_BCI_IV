@@ -89,6 +89,7 @@ CSP_BAND_MODES = (
     "separate_50_100_hhl_hhh",
     "designed_seven",
 )
+CSP_CONTRAST_MODES = ("common_rest", "other_movement", "dual_rest_other")
 
 
 def resolve_seed_roles(
@@ -459,10 +460,42 @@ def fit_csp_band_rows(
     csp_band_mode: str,
     lower_high_gamma_bins: np.ndarray | None = None,
     designed_band_bins: np.ndarray | None = None,
+    csp_contrast_mode: str = "common_rest",
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Fit joint or leaf-specific gamma CSP rows for one spatial layer."""
     if csp_band_mode not in CSP_BAND_MODES:
         raise ValueError(f"unsupported CSP band mode {csp_band_mode!r}")
+    if csp_contrast_mode not in CSP_CONTRAST_MODES:
+        raise ValueError(f"unsupported CSP contrast mode {csp_contrast_mode!r}")
+
+    def fit_band(values: np.ndarray) -> tuple[np.ndarray, dict[str, object]]:
+        negative_classes = (
+            ("common_rest", "other_movement")
+            if csp_contrast_mode == "dual_rest_other"
+            else (csp_contrast_mode,)
+        )
+        fitted = [
+            finger_csp_bank(
+                values,
+                target,
+                training,
+                finger_index,
+                component_indices,
+                negative_class=negative_class,
+            )
+            for negative_class in negative_classes
+        ]
+        if len(fitted) == 1:
+            weights, audit = fitted[0]
+            return weights, {"contrast_mode": csp_contrast_mode, **audit}
+        weights = np.concatenate([item[0] for item in fitted], axis=0)
+        return weights, {
+            "contrast_mode": csp_contrast_mode,
+            "contrasts": {
+                negative_class: audit
+                for negative_class, (_, audit) in zip(negative_classes, fitted)
+            },
+        }
     if csp_band_mode == "designed_seven":
         if designed_band_bins is None or designed_band_bins.shape[0] != len(
             CSP_BANDS_HZ
@@ -472,13 +505,7 @@ def fit_csp_band_rows(
         audits = []
         source_band_indices = []
         for band_index, (low, high) in enumerate(CSP_BANDS_HZ):
-            weights, audit = finger_csp_bank(
-                designed_band_bins[band_index],
-                target,
-                training,
-                finger_index,
-                component_indices,
-            )
+            weights, audit = fit_band(designed_band_bins[band_index])
             rows.append(weights)
             source_band_indices.extend([band_index] * weights.shape[0])
             audits.append({"band_hz": [low, high], **audit})
@@ -490,18 +517,12 @@ def fit_csp_band_rows(
             "bands": audits,
         }
     if csp_band_mode == "joint_hhl_hhh":
-        weights, audit = finger_csp_bank(
-            joint_bins, target, training, finger_index, component_indices
-        )
+        weights, audit = fit_band(joint_bins)
         return weights, {"band_mode": csp_band_mode, **audit}
     if hhl_bins is None or hhh_bins is None:
         raise ValueError("separate CSP modes require HHL and HHH bins")
-    hhl_weights, hhl_audit = finger_csp_bank(
-        hhl_bins, target, training, finger_index, component_indices
-    )
-    hhh_weights, hhh_audit = finger_csp_bank(
-        hhh_bins, target, training, finger_index, component_indices
-    )
+    hhl_weights, hhl_audit = fit_band(hhl_bins)
+    hhh_weights, hhh_audit = fit_band(hhh_bins)
     band_weights = []
     band_audits: dict[str, object] = {}
     if csp_band_mode == "separate_50_100_hhl_hhh":
@@ -509,13 +530,7 @@ def fit_csp_band_rows(
             raise ValueError(
                 "separate_50_100_hhl_hhh requires aggregated 50--100 Hz bins"
             )
-        lower_weights, lower_audit = finger_csp_bank(
-            lower_high_gamma_bins,
-            target,
-            training,
-            finger_index,
-            component_indices,
-        )
+        lower_weights, lower_audit = fit_band(lower_high_gamma_bins)
         band_weights.append(lower_weights)
         band_audits["wavelet_50_100_hz"] = lower_audit
     band_weights.extend((hhl_weights, hhh_weights))
@@ -543,6 +558,7 @@ def fit_initialization(
     finger_index: int = LITTLE,
     csp_mode: str = "movement_1",
     csp_band_mode: str = "joint_hhl_hhh",
+    csp_contrast_mode: str = "common_rest",
     hhl_bins: np.ndarray | None = None,
     hhh_bins: np.ndarray | None = None,
     lower_high_gamma_bins: np.ndarray | None = None,
@@ -580,6 +596,7 @@ def fit_initialization(
         finger_index=finger_index,
         component_indices=CSP_MODES[csp_mode],
         csp_band_mode=csp_band_mode,
+        csp_contrast_mode=csp_contrast_mode,
     )
     normalized_rows = []
     csp_stds = []
@@ -1946,6 +1963,15 @@ def main() -> None:
         "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
     )
     parser.add_argument(
+        "--csp-contrast-mode",
+        choices=CSP_CONTRAST_MODES,
+        default="common_rest",
+        help=(
+            "fit target-finger CSP against common rest, other-finger-only "
+            "movement, or retain one row from each contrast in the same spatial layer"
+        ),
+    )
+    parser.add_argument(
         "--csp-band-cache-root",
         type=Path,
         default=Path("/dev/shm/ecog_csp_band_cache"),
@@ -2518,6 +2544,7 @@ def main() -> None:
                     finger_index=finger_index,
                     csp_mode=args.csp_mode,
                     csp_band_mode=args.csp_band_mode,
+                    csp_contrast_mode=args.csp_contrast_mode,
                     hhl_bins=hhl_bins,
                     hhh_bins=hhh_bins,
                     lower_high_gamma_bins=lower_high_gamma_bins,
@@ -2624,6 +2651,7 @@ def main() -> None:
                 finger_index=finger_index,
                 csp_mode=args.csp_mode,
                 csp_band_mode=args.csp_band_mode,
+                csp_contrast_mode=args.csp_contrast_mode,
                 hhl_bins=hhl_bins,
                 hhh_bins=hhh_bins,
                 lower_high_gamma_bins=lower_high_gamma_bins,
