@@ -189,16 +189,37 @@ def finger_csp_bank(
             "component_indices": [],
             "eigenvalues": [],
         }
-    if negative_class not in ("common_rest", "other_movement"):
+    if negative_class not in (
+        "common_rest",
+        "other_movement",
+        "lower_target_movement",
+    ):
         raise ValueError(f"unsupported CSP negative class {negative_class!r}")
     rest = np.max(np.nan_to_num(target, nan=np.inf), axis=1) < 0.05
-    active = target[:, finger_index] > 0.20
+    target_finger = target[:, finger_index]
+    active = target_finger > 0.20
     other = np.delete(target, finger_index, axis=1)
     other_movement = (
         (np.max(np.nan_to_num(other, nan=-np.inf), axis=1) > 0.20)
-        & (target[:, finger_index] < 0.05)
+        & (target_finger < 0.05)
     )
-    negative = rest if negative_class == "common_rest" else other_movement
+    high_movement_threshold = None
+    lower_movement_ceiling = None
+    if negative_class == "lower_target_movement":
+        training_movement = target_finger[training[active[training]]]
+        if training_movement.size < 4:
+            raise RuntimeError("too few target-movement bins for amplitude CSP")
+        lower_movement_ceiling = float(np.quantile(training_movement, 0.50))
+        high_movement_threshold = float(np.quantile(training_movement, 0.75))
+        active = target_finger >= high_movement_threshold
+        negative = (
+            (target_finger > 0.20)
+            & (target_finger <= lower_movement_ceiling)
+        )
+    elif negative_class == "common_rest":
+        negative = rest
+    else:
+        negative = other_movement
     active_rows = training[active[training]]
     negative_rows = training[negative[training]]
     if active_rows.size < 2 or negative_rows.size < 2:
@@ -225,6 +246,13 @@ def finger_csp_bank(
         "other_movement_bins": (
             int(negative_rows.size) if negative_class == "other_movement" else 0
         ),
+        "lower_target_movement_bins": (
+            int(negative_rows.size)
+            if negative_class == "lower_target_movement"
+            else 0
+        ),
+        "high_movement_threshold": high_movement_threshold,
+        "lower_movement_ceiling": lower_movement_ceiling,
         "negative_class": negative_class,
         "component_indices": list(component_indices),
         "eigenvalues": [float(eigenvalues[index]) for index in selected],

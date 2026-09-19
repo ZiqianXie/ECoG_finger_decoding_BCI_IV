@@ -89,6 +89,40 @@ def test_dual_csp_contrast_retains_rest_and_other_movement_rows() -> None:
     assert not np.allclose(weights[0], weights[1])
 
 
+def test_triple_csp_contrast_adds_training_only_amplitude_row() -> None:
+    rng = np.random.default_rng(23)
+    rows = 100
+    target = np.zeros((rows, 5), dtype=np.float32)
+    target[20:40, 4] = np.linspace(0.21, 0.45, 20)
+    target[40:60, 4] = np.linspace(0.75, 1.0, 20)
+    target[60:80, 0] = 1.0
+    target[80:, 4] = 100.0
+    joint = rng.normal(size=(OFFSET + rows, 8, 3)).astype(np.float32)
+    joint[OFFSET + 20 : OFFSET + 40, :, 0] *= 2.0
+    joint[OFFSET + 40 : OFFSET + 60, :, 1] *= 5.0
+    joint[OFFSET + 60 : OFFSET + 80, :, 2] *= 3.0
+
+    weights, audit = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=target,
+        training=np.arange(80),
+        finger_index=4,
+        component_indices=(-1,),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="triple_rest_other_amplitude",
+    )
+
+    amplitude = audit["contrasts"]["lower_target_movement"]
+    assert weights.shape == (3, 3)
+    assert amplitude["active_bins"] == 10
+    assert amplitude["lower_target_movement_bins"] == 20
+    assert 0.85 < amplitude["high_movement_threshold"] < 0.90
+    assert 0.45 < amplitude["lower_movement_ceiling"] < 0.75
+    assert not np.allclose(weights[0], weights[2])
+
+
 def test_lower_high_gamma_mode_adds_one_spatial_row_to_same_bank() -> None:
     target, training, hhl, hhh = synthetic_inputs()
     lower = np.random.default_rng(9).normal(size=hhl.shape).astype(np.float32)

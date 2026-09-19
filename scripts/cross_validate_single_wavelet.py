@@ -89,7 +89,12 @@ CSP_BAND_MODES = (
     "separate_50_100_hhl_hhh",
     "designed_seven",
 )
-CSP_CONTRAST_MODES = ("common_rest", "other_movement", "dual_rest_other")
+CSP_CONTRAST_MODES = (
+    "common_rest",
+    "other_movement",
+    "dual_rest_other",
+    "triple_rest_other_amplitude",
+)
 
 
 def resolve_seed_roles(
@@ -469,11 +474,16 @@ def fit_csp_band_rows(
         raise ValueError(f"unsupported CSP contrast mode {csp_contrast_mode!r}")
 
     def fit_band(values: np.ndarray) -> tuple[np.ndarray, dict[str, object]]:
-        negative_classes = (
-            ("common_rest", "other_movement")
-            if csp_contrast_mode == "dual_rest_other"
-            else (csp_contrast_mode,)
-        )
+        if csp_contrast_mode == "dual_rest_other":
+            negative_classes = ("common_rest", "other_movement")
+        elif csp_contrast_mode == "triple_rest_other_amplitude":
+            negative_classes = (
+                "common_rest",
+                "other_movement",
+                "lower_target_movement",
+            )
+        else:
+            negative_classes = (csp_contrast_mode,)
         fitted = [
             finger_csp_bank(
                 values,
@@ -2028,7 +2038,8 @@ def main() -> None:
         default="common_rest",
         help=(
             "fit target-finger CSP against common rest, other-finger-only "
-            "movement, or retain one row from each contrast in the same spatial layer"
+            "movement, retain both contrasts, or add a training-split-only "
+            "high-versus-lower target-amplitude contrast in the same spatial layer"
         ),
     )
     parser.add_argument(
