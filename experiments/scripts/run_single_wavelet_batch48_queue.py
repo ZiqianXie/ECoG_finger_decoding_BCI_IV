@@ -274,7 +274,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--csp-contrast-mode",
-        choices=("common_rest", "other_movement", "dual_rest_other"),
+        choices=(
+            "common_rest",
+            "other_movement",
+            "dual_rest_other",
+            "dual_rest_amplitude",
+            "triple_rest_other_continuous_amplitude",
+            "continuous_amplitude",
+        ),
         default="common_rest",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)

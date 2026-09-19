@@ -93,7 +93,10 @@ CSP_CONTRAST_MODES = (
     "common_rest",
     "other_movement",
     "dual_rest_other",
+    "dual_rest_amplitude",
+    "triple_rest_other_continuous_amplitude",
     "triple_rest_other_amplitude",
+    "continuous_amplitude",
 )
 
 
@@ -476,6 +479,14 @@ def fit_csp_band_rows(
     def fit_band(values: np.ndarray) -> tuple[np.ndarray, dict[str, object]]:
         if csp_contrast_mode == "dual_rest_other":
             negative_classes = ("common_rest", "other_movement")
+        elif csp_contrast_mode == "dual_rest_amplitude":
+            negative_classes = ("common_rest", "continuous_amplitude")
+        elif csp_contrast_mode == "triple_rest_other_continuous_amplitude":
+            negative_classes = (
+                "common_rest",
+                "other_movement",
+                "continuous_amplitude",
+            )
         elif csp_contrast_mode == "triple_rest_other_amplitude":
             negative_classes = (
                 "common_rest",

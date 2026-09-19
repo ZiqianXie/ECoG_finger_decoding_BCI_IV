@@ -123,6 +123,97 @@ def test_triple_csp_contrast_adds_training_only_amplitude_row() -> None:
     assert not np.allclose(weights[0], weights[2])
 
 
+def test_continuous_amplitude_filter_is_split_safe_and_tracks_power() -> None:
+    rng = np.random.default_rng(29)
+    rows = 80
+    training_rows = 60
+    target = np.zeros((rows, 5), dtype=np.float32)
+    target[:training_rows, 1] = np.linspace(0.0, 1.0, training_rows)
+    target[training_rows:, 1] = 100.0
+    joint = rng.normal(size=(OFFSET + rows, 12, 3)).astype(np.float32)
+    training_scale = 0.5 + 3.0 * target[:training_rows, 1]
+    joint[OFFSET : OFFSET + training_rows, :, 0] *= training_scale[:, None]
+    joint[OFFSET + training_rows :, :, 2] *= 100.0
+
+    weights, audit = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=target,
+        training=np.arange(training_rows),
+        finger_index=1,
+        component_indices=(-1,),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="continuous_amplitude",
+    )
+
+    assert weights.shape == (1, 3)
+    assert audit["contrast_mode"] == "continuous_amplitude"
+    assert audit["training_target_max"] == 1.0
+    assert abs(weights[0, 0]) > 0.9
+    assert abs(weights[0, 2]) < 0.2
+
+
+def test_dual_rest_amplitude_retains_binary_and_continuous_rows() -> None:
+    rng = np.random.default_rng(31)
+    rows = 60
+    target = np.zeros((rows, 5), dtype=np.float32)
+    target[20:, 1] = np.linspace(0.21, 1.0, 40)
+    joint = rng.normal(size=(OFFSET + rows, 12, 3)).astype(np.float32)
+    joint[OFFSET + 20 :, :, 0] *= 2.0
+    joint[OFFSET + 20 :, :, 1] *= 1.0 + 3.0 * target[20:, 1, None]
+
+    weights, audit = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=target,
+        training=np.arange(rows),
+        finger_index=1,
+        component_indices=(-1,),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="dual_rest_amplitude",
+    )
+
+    assert weights.shape == (2, 3)
+    assert set(audit["contrasts"]) == {"common_rest", "continuous_amplitude"}
+    assert audit["contrasts"]["common_rest"]["rest_bins"] == 20
+    assert audit["contrasts"]["continuous_amplitude"]["training_target_max"] == 1.0
+    assert not np.allclose(weights[0], weights[1])
+
+
+def test_triple_rest_other_continuous_amplitude_adds_three_rows() -> None:
+    rng = np.random.default_rng(37)
+    rows = 80
+    target = np.zeros((rows, 5), dtype=np.float32)
+    target[20:60, 1] = np.linspace(0.21, 1.0, 40)
+    target[60:, 3] = 1.0
+    joint = rng.normal(size=(OFFSET + rows, 12, 3)).astype(np.float32)
+    joint[OFFSET + 20 : OFFSET + 60, :, 0] *= 2.0
+    joint[OFFSET + 20 : OFFSET + 60, :, 1] *= 1.0 + 3.0 * target[20:60, 1, None]
+    joint[OFFSET + 60 :, :, 2] *= 3.0
+
+    weights, audit = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=target,
+        training=np.arange(rows),
+        finger_index=1,
+        component_indices=(-1,),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="triple_rest_other_continuous_amplitude",
+    )
+
+    assert weights.shape == (3, 3)
+    assert set(audit["contrasts"]) == {
+        "common_rest",
+        "other_movement",
+        "continuous_amplitude",
+    }
+    assert audit["contrasts"]["other_movement"]["other_movement_bins"] == 20
+
+
 def test_lower_high_gamma_mode_adds_one_spatial_row_to_same_bank() -> None:
     target, training, hhl, hhh = synthetic_inputs()
     lower = np.random.default_rng(9).normal(size=hhl.shape).astype(np.float32)

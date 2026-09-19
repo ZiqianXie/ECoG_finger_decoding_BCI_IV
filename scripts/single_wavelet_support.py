@@ -173,6 +173,76 @@ def regularized_covariance(
     )
 
 
+def continuous_amplitude_spatial_bank(
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    shrinkage: float = 0.05,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC-style rows whose band power covaries with finger amplitude.
+
+    Every statistic, including target centering/scaling and the covariance
+    reference, is fitted only from ``training`` rows.  The generalized
+    eigensystem is therefore a continuous-target counterpart to the binary
+    movement/rest CSP bank without introducing another model branch.
+    """
+    response = np.asarray(target[training, finger_index], dtype=np.float64)
+    finite = np.isfinite(response)
+    rows = np.asarray(training, dtype=np.int64)[finite]
+    response = response[finite]
+    if rows.size < 4:
+        raise RuntimeError("too few finite training bins for amplitude covariance")
+    response_mean = float(response.mean())
+    response_scale = float(response.std())
+    if response_scale <= np.finfo(np.float64).eps:
+        raise RuntimeError("training target has no amplitude variation")
+
+    channels = filtered_bins.shape[-1]
+    values = np.asarray(filtered_bins[rows + OFFSET], dtype=np.float64).reshape(
+        rows.size, -1, channels
+    )
+    values = values - values.mean(axis=1, keepdims=True)
+    denominator = max(1, values.shape[1] - 1)
+    trial_covariances = np.einsum(
+        "ntc,ntd->ncd", values, values, optimize=True
+    ) / denominator
+    reference = trial_covariances.mean(axis=0)
+    isotropic = float(np.trace(reference) / channels)
+    reference = (
+        (1.0 - shrinkage) * reference
+        + shrinkage * isotropic * np.eye(channels)
+    )
+    standardized = (response - response_mean) / response_scale
+    amplitude_covariance = np.einsum(
+        "n,ncd->cd", standardized, trial_covariances, optimize=True
+    ) / rows.size
+    amplitude_covariance = 0.5 * (
+        amplitude_covariance + amplitude_covariance.T
+    )
+    eigenvalues, eigenvectors = linalg.eigh(
+        amplitude_covariance,
+        reference,
+        check_finite=False,
+    )
+    selected = [index % eigenvalues.size for index in component_indices]
+    weights = eigenvectors[:, selected].T
+    weights /= np.linalg.norm(weights, axis=1, keepdims=True).clip(min=1.0e-12)
+    return weights.astype(np.float32), {
+        "active_bins": int(rows.size),
+        "rest_bins": 0,
+        "negative_class": "continuous_amplitude",
+        "component_indices": list(component_indices),
+        "eigenvalues": [float(eigenvalues[index]) for index in selected],
+        "training_target_mean": response_mean,
+        "training_target_scale": response_scale,
+        "training_target_min": float(response.min()),
+        "training_target_max": float(response.max()),
+        "shrinkage": float(shrinkage),
+    }
+
+
 def finger_csp_bank(
     filtered_bins: np.ndarray,
     target: np.ndarray,
@@ -193,8 +263,17 @@ def finger_csp_bank(
         "common_rest",
         "other_movement",
         "lower_target_movement",
+        "continuous_amplitude",
     ):
         raise ValueError(f"unsupported CSP negative class {negative_class!r}")
+    if negative_class == "continuous_amplitude":
+        return continuous_amplitude_spatial_bank(
+            filtered_bins,
+            target,
+            training,
+            finger_index,
+            component_indices,
+        )
     rest = np.max(np.nan_to_num(target, nan=np.inf), axis=1) < 0.05
     target_finger = target[:, finger_index]
     active = target_finger > 0.20
