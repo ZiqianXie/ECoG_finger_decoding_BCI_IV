@@ -30,7 +30,27 @@ The machine-readable source of truth is the
 [`audit`](docs/results/canonical-model-audit.json) and a compact
 [`results table`](docs/canonical-model-release.md).
 
-## The original single-tree baseline
+## Relationship to the 2018 paper
+
+The paper and this repository share the same central signal path: 1 kHz ECoG
+passes through a spatial convolution, a three-level undecimated `bior6.8`
+filter tree, 40 ms log-energy pooling, and a four-second temporal decoder.
+Both initialize the spatial transform with FastICA and use LARS to select
+features and initialize the prediction. The 2026 repository implements that
+design anew in PyTorch and extends it in several ways.
+
+| Aspect | 2018 paper | 2026 implementation |
+|---|---|---|
+| Wavelet initialization | Original 17-tap `bior6.8` filters at dilations 1, 2, and 4 | First filter pair interpolated by 5/2, followed by dilations 5 and 10; measured response centroids span 13.6-186.7 Hz |
+| Spatial initialization | A square FastICA unmixing matrix, pruned using nonzero LARS features | FastICA rows plus finger-specific CSP rows, all refitted inside each development split |
+| Glove target | Convex lower-baseline estimate, rest thresholding, and hard removal of every nonmaximum finger | Split-local lower-envelope correction that preserves co-movement; S1 little adds development-selected soft attenuation of clearly dominant other-finger events |
+| Validation | 44% training, 22% validation, and 33% released test; 100 Adam epochs with the lowest validation MSE checkpoint retained | The complete 400 s training recording is the development set; three purged event folds select the structure and tuning schedule before descriptive scoring on the separate 200 s released test |
+| Temporal decoder | One custom 10-unit LSTM equation and a ReLU output for every pair | Development-selected paper-equation LSTM, standard PyTorch LSTM, residual LSTM, or ridge decoder; recurrent outputs use Softplus |
+| Selection criterion | Lowest validation MSE, even when the resulting test PCC was below the LARS initialization for some fingers | Strictly positive nested development OOF PCC gain over the same structure's untuned initialization |
+| Final model | One CNN-LSTM family with LARS-based filter pruning | One selected structure per subject/finger pair, including expanded CSP banks, future context, or an overcomplete wavelet tree where supported by development folds |
+| Repeated fits | Ten LSTM fits were summarized by their mean and standard deviation | Multi-seed releases average independently refitted copies of one frozen structure |
+
+## The common 2026 single-tree baseline
 
 The common baseline trains one model for each subject and finger. Every baseline
 model has the same signal path:
@@ -68,12 +88,6 @@ PyTorch's conventional LSTM equations. In this matched baseline, S1 thumb,
 index, and little use the paper-equation cell; the other 11 LARS-initialized
 models use the standard cell. Both definitions operate on one feature stream
 and produce one trajectory output.
-
-Every one of the 15 released routes has positive tuned-minus-initialized PCC on
-nested development folds. For the S3-little residual form, tuning raises OOF
-PCC from `0.631943` to `0.649982` (`+0.018039`). The complete release contains
-other development-selected structures, which are listed separately in the
-[`detailed release table`](docs/canonical-model-release.md).
 
 ### Why interpolate the wavelet filters?
 
