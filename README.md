@@ -19,18 +19,36 @@ developed with substantial help from OpenAI Codex using GPT-5.6 Sol for code,
 experiment orchestration, diagnostics, and documentation. I remain responsible
 for the scientific decisions and interpretation.
 
-The canonical release now records one development-selected model structure for
+The release records one development-selected model structure for
 each of the 15 subject/finger pairs. Heterogeneous model soups are forbidden.
 Where averaging is useful, every member has exactly the same structure and
 differs only by random seed. Every route must also show strictly positive
 nested cross-fold validation PCC gain over that structure's own untuned
 initialization; the released test labels are never used for selection.
-The machine-readable source of truth is
-[`configs/canonical_models.yaml`](configs/canonical_models.yaml), with the
-complete audit in
-[`docs/results/canonical-model-audit.json`](docs/results/canonical-model-audit.json)
-and a compact results table in
-[`docs/canonical-model-release.md`](docs/canonical-model-release.md).
+The machine-readable source of truth is the
+[`model registry`](configs/canonical_models.yaml), with the complete
+[`audit`](docs/results/canonical-model-audit.json) and a compact
+[`results table`](docs/canonical-model-release.md).
+
+## Architecture overview
+
+```mermaid
+flowchart LR
+    A["1 kHz ECoG"] --> B["Notch filtering and split-local standardization"]
+    B --> C["FastICA and finger-specific CSP spatial filters"]
+    C --> D{"Wavelet frontend"}
+    D -->|14 routes| E["Depth-3 bior6.8 tree<br/>8 energy leaves"]
+    D -->|S1 middle| F["Overcomplete depths 3, 4, and 5<br/>designed-band CSP"]
+    E --> G["25 Hz temporal features<br/>history plus optional future or lead context"]
+    F --> G
+    G --> H{"Development-selected decoder"}
+    H -->|7 routes| I["LARS-initialized LSTM"]
+    H -->|6 routes| J["LARS direct path plus residual LSTM"]
+    H -->|2 routes| K["Ridge on all wavelet features"]
+    I --> L["Nonnegative finger-flexion trajectory"]
+    J --> L
+    K --> L
+```
 
 ## The original single-tree baseline
 
@@ -105,6 +123,50 @@ LARS sees the eight wavelet energies from every retained spatial row and keeps
 only the useful histories. Thus the complete decoder remains one spatial
 convolution, one wavelet tree, and one LSTM.
 
+## What the trained single-wavelet models learned
+
+The interpretation below is deliberately narrower than the 15-route release.
+It audits the six frozen Subject 1 single-wavelet seeds for each finger (30
+checkpoints total), without retraining or selecting models. Those checkpoints
+match the released S1 thumb, index, and little structures; the middle and ring
+columns are matched historical single-wavelet references because their released
+structures are different.
+
+Spatial importance is based on covariance-transformed forward patterns,
+weighted by the recurrent decoder's structural use of each component, rather
+than treating a discriminative spatial-filter coefficient as source amplitude.
+All 61 retained S1 contacts were matched to exact registered `(x, y, z)`
+coordinates. The maps overlap substantially: only the thumb is nominally more
+compact than shuffled placements (`p=0.031`, uncorrected across five fingers),
+while the middle-finger map is the most dispersed. This does not support five
+clean, isolated finger hotspots.
+
+| Finger | Weighted pair distance | Spatial permutation p | Spectral centroid |
+|---|---:|---:|---:|
+| Thumb | 17.8 mm | 0.031 | 124 Hz |
+| Index | 19.5 mm | 0.330 | 126 Hz |
+| Middle | 21.5 mm | 0.472 | 101 Hz |
+| Ring | 19.4 mm | 0.310 | 129 Hz |
+| Little | 20.5 mm | 0.249 | 117 Hz |
+
+![Subject 1 decoder-weighted forward patterns at registered physical electrode coordinates](docs/figures/s1-single-wavelet-physical-forward-patterns.png)
+
+The five decoders emphasize different mixtures of the same wavelet paths, with
+most structural weight between 75 and 200 Hz. Across all 30 checkpoints, the
+largest path-centroid displacement from initialization is only `0.025 Hz`, and
+the largest relative kernel change is `0.164%`. The learned distinction is
+therefore mainly readout reweighting of nearly fixed passbands, not movement of
+the filters to new frequencies. Because each path is squared before pooling,
+the decoder does not preserve carrier-phase sign; these results do not support
+a phase-specific or causal oscillation claim.
+
+![Subject 1 decoder structural use of the eight wavelet paths](docs/figures/s1-single-wavelet-spectral-path-importance.png)
+
+These are post-hoc model attributions, not causal neurophysiology. They show
+which spatial and spectral inputs the frozen decoders structurally relied on;
+they do not establish that stimulating a highlighted contact or frequency band
+would cause a finger movement.
+
 ## Target and validation
 
 The glove trajectories have slowly changing rest levels. A local lower-envelope
@@ -123,12 +185,12 @@ interval. Target baselines, normalization, FastICA, CSP, and LARS are refitted
 inside every fold.
 
 The complete 400,000-sample competition training file is the development set.
-After cross-fold selection, each canonical route is refitted on all development
+After cross-fold selection, each selected route is refitted on all development
 samples. A route may be one model or an equal-weight ensemble of independently
 refitted seeds with the same structure. The separate 200,000-sample released
 test file is used only for the final descriptive score.
 
-## Canonical results: no test peek during selection
+## Results: no test peek during selection
 
 The reported metric is Pearson correlation coefficient (PCC) against the
 unmodified released test glove trajectory. These test scores are descriptive:
@@ -136,7 +198,7 @@ model structure, hyperparameters, update schedule, and ensemble membership were
 fixed from development folds before final scoring. Paper values are rounded as
 published, so very small differences should not be overinterpreted.
 
-| Subject | Finger | 2018 paper | Canonical 2026 | Difference |
+| Subject | Finger | 2018 paper | 2026 release | Difference |
 |---|---|---:|---:|---:|
 | S1 | Thumb | 0.750 | 0.733 | -0.017 |
 | S1 | Index | 0.790 | 0.759 | -0.031 |
@@ -160,11 +222,19 @@ published, so very small differences should not be overinterpreted.
 Seven of 15 individual finger scores and all three subject Macro-5 scores exceed
 the rounded paper values. The exact results, architecture for every route,
 development gain, member count, and artifact checks are in the
-[`canonical release table`](docs/canonical-model-release.md) and
+[`detailed release table`](docs/canonical-model-release.md) and
 [`machine-readable audit`](docs/results/canonical-model-audit.json).
 
+The example below shows the released S1-thumb six-seed mean prediction. The
+50-second interval was selected using total glove movement across all five S1
+fingers, without looking at prediction fit. The black trace is baseline-corrected
+only to make movement morphology visible; the `0.733` PCC in the title is the
+whole-file score against the unmodified released-test target.
+
+![Example S1 thumb released-test trajectory and model prediction](docs/figures/s1-thumb-example-test-trajectory.png)
+
 The [experimental archive](experiments/README.md) remains historical evidence;
-its alternative models are not silently substituted into the canonical table.
+its alternative models are not silently substituted into the release table.
 
 ## Reproduce the release
 
@@ -272,10 +342,10 @@ python -m pytest -q
 ```
 
 The training commands above preserve the original single-tree baseline. The
-current development-selected per-pair routes are specified in
-[`configs/canonical_models.yaml`](configs/canonical_models.yaml). The older
+current development-selected per-pair routes are specified in the
+[`model registry`](configs/canonical_models.yaml). The older
 [`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml)
-is retained as historical provenance and is not the canonical registry.
+is retained as historical provenance and is not the current registry.
 
 The code caches reconstructed wavelet leaves in `/dev/shm` and uses
 `torch.compile(mode="reduce-overhead")` for repeated training calls. On the H100

@@ -1,4 +1,4 @@
-# Canonical model release
+# Model release
 
 This release freezes one model structure for every BCI Competition IV
 subject/finger pair. It has two non-negotiable selection rules:
@@ -15,9 +15,9 @@ descriptive only. Exact values, artifact checks, and evidence paths are in
 authoritative route registry is
 [`../configs/canonical_models.yaml`](../configs/canonical_models.yaml).
 
-## All 15 canonical routes
+## All 15 routes
 
-| Pair | Canonical structure | Release | Init OOF PCC | Tuned OOF PCC | Net gain | Test PCC |
+| Pair | Selected structure | Release | Init OOF PCC | Tuned OOF PCC | Net gain | Test PCC |
 |---|---|---:|---:|---:|---:|---:|
 | S1 thumb | `single_wavelet_paper_lstm_movement2` | 6 same-structure seeds | 0.577876 | 0.581144 | +0.003268 | 0.733166 |
 | S1 index | `single_wavelet_paper_lstm_movement1` | 6 same-structure seeds | 0.721337 | 0.722476 | +0.001139 | 0.758646 |
@@ -45,7 +45,7 @@ structure.
 The paper values are rounded values reported in the publication, so the
 comparison is descriptive rather than an exact reanalysis.
 
-| Subject | 2018 paper Macro-5 | Canonical 2026 Macro-5 | Difference |
+| Subject | 2018 paper Macro-5 | 2026 release Macro-5 | Difference |
 |---|---:|---:|---:|
 | S1 | 0.556 | 0.577624 | +0.021624 |
 | S2 | 0.408 | 0.422758 | +0.014758 |
