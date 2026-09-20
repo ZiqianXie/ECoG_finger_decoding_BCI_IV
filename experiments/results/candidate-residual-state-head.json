@@ -15,8 +15,8 @@
   },
   "current_pass_accounting": {
     "fixed_reference_gain_at_least_0p1": {
-      "count": 10,
-      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring"]
+      "count": 11,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 ring", "S2 little", "S3 thumb", "S3 index", "S3 ring"]
     },
     "candidate_self_gain_at_least_0p1": {
       "count": 4,
@@ -24,9 +24,9 @@
     },
     "representation_only_fixed_reference_passes": ["S1 middle", "S3 ring"],
     "project_triage_acceptance_override": {
-      "count": 11,
-      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring", "S3 little"],
-      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. S1 thumb was explicitly considered done by the user and independently exceeds the strict threshold. S2 thumb now exceeds the strict threshold with an unpruned equal ten-seed ensemble. On 2026-09-19 the user set +0.095 as the working done threshold for subsequent pairs; strict +0.100 accounting remains separate."
+      "count": 13,
+      "pairs": ["S1 thumb", "S1 index", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 ring", "S2 little", "S3 thumb", "S3 index", "S3 ring", "S3 little"],
+      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. S1 thumb was explicitly considered done by the user and independently exceeds the strict threshold. S2 thumb now exceeds the strict threshold with an unpruned equal ten-seed ensemble. On 2026-09-19 the user set +0.095 as the working done threshold for subsequent pairs; strict +0.100 accounting remains separate. S2 ring reaches strict +0.100662 with a fixed equal three-family ensemble. S1 index reaches working +0.096287 with a fixed equal six-family ensemble."
     }
   },
   "screened_pairs": [
@@ -2089,11 +2089,56 @@
         "outer_selected_smoothing": "S2 thumb reaches a diagnostic +0.097157 at sigma 3 but remains below threshold; all other pairs are much lower.",
         "auxiliary_residual_readout": "A training-only ridge readout from all five auxiliary trajectories hurts S1 index and S3 middle and is neutral for both rings.",
         "temporal_shift": "The outer-target optimum is zero shift for all four remaining pairs.",
-        "full_oof_ensemble_ceiling": "Even outer-target-informed ridge weights reach only +0.096599 for S1 index, +0.043765 for S1 ring, +0.096758 for S2 ring, and +0.050876 for S3 middle; existing predictions cannot legitimately close the remaining pairs by ensembling alone."
+        "full_oof_ensemble_ceiling": "After the expanded continuation, outer-target-informed ridge weights reach +0.096375 for S1 ring and only +0.083015 for S3 middle. These are target-leaking diagnostics, not candidates: S1 ring is barely structurally reachable from the saved predictions, whereas S3 middle remains below the +0.095 working threshold even at this invalid oracle ceiling."
+      },
+      "S2_ring_fixed_equal_three_family": {
+        "description": "A fixed equal-weight blend of the split-safe full-bank raw ridge, bidirectional residual LSTM, and nonlinear temporal residual. Each family contributes exactly one third; no coefficient is fitted to outer targets.",
+        "fixed_reference_pcc": 0.446083223,
+        "ensemble_oof_pcc": 0.546745019,
+        "gain_over_fixed_reference": 0.100661796,
+        "strict_pass": true,
+        "output": "outputs/s2ring_fullbank_bidir_hist_equal_v1"
+      },
+      "S1_index_fixed_equal_six_family": {
+        "description": "A fixed equal-weight blend of the unpruned ten-seed residual ensemble, training-selected power-calibrated initializer, nonlinear temporal residual, long-grid LSTM, long-grid bidirectional LSTM, and all-finger state decoder. Each family contributes exactly one sixth; no coefficient is fitted to outer targets.",
+        "fixed_reference_pcc": 0.725545068,
+        "ensemble_oof_pcc": 0.821832499,
+        "gain_over_fixed_reference": 0.096287431,
+        "working_threshold_pass": true,
+        "strict_pass": false,
+        "output": "outputs/s1index_fixed_equal_six_family_v1"
+      },
+      "unresolved_pair_signal_and_ensemble_audits": {
+        "released_test_touched": false,
+        "S1_ring": {
+          "fixed_reference_pcc": 0.493492559,
+          "working_target_pcc": 0.588492559,
+          "best_single_current_pcc": 0.537785,
+          "greedy_equal_12_oracle_pcc": 0.553183083,
+          "outer_target_informed_ridge_ceiling_pcc": 0.589867363,
+          "outer_target_informed_gain": 0.096374804,
+          "split_safe_initializer_stack_pcc": 0.408732581,
+          "other_pair_ranked_fixed_top8_pcc": 0.495877257,
+          "target_only_bandpower_gru_top64_pcc": 0.311680645,
+          "target_only_bandpower_gru_top128_pcc": 0.26312646
+        },
+        "S3_middle": {
+          "fixed_reference_pcc": 0.590355891,
+          "working_target_pcc": 0.685355891,
+          "best_single_current_pcc": 0.627011702,
+          "greedy_equal_12_oracle_pcc": 0.655895747,
+          "outer_target_informed_ridge_ceiling_pcc": 0.673370658,
+          "outer_target_informed_gain": 0.083014767,
+          "split_safe_initializer_stack_pcc": 0.520418937,
+          "other_pair_ranked_fixed_top8_pcc": 0.6032421,
+          "target_only_bandpower_gru_top64_pcc": 0.425886836,
+          "target_only_bandpower_gru_top128_pcc": 0.41758756
+        },
+        "decision": "Reject the initializer stack, other-pair-ranked fixed ensemble, and target-only bandpower GRU. The seed-ensemble continuation is reserved for the strongest long-LSTM family; no failed route is counted as a pass."
       }
     },
-    "decision": "The all-finger amplitude bank produces strict S2-index and S3-index passes, with S3 index confirmed by inner-only selection across auxiliary weights. Unpruned ten-seed fixed-data ensembles close S1 thumb and S2 thumb. Continue with new split-local representations for S1 index, S1 ring, S2 ring, and S3 middle."
+    "decision": "The all-finger amplitude bank produces strict S2-index and S3-index passes, with S3 index confirmed by inner-only selection across auxiliary weights. Unpruned ten-seed fixed-data ensembles close S1 thumb and S2 thumb. Fixed equal-family ensembles close S2 ring strictly and S1 index at the user-approved +0.095 working threshold. Continue with new split-local representations for S1 ring and S3 middle."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, full-bank ridge diagnostic, recurrent warm-up option, offline future-context representation, split-local all-finger amplitude bank, and training-only hand-synergy SPoC rows. Ten of fifteen subject-finger models numerically exceed the requested +0.1 gain over their fixed pre-ablation split-local references: S1 thumb, S1 middle, S1 little, S2 thumb, S2 index, S2 middle, S2 little, S3 thumb, S3 index, and S3 ring. S3 little is additionally accepted by the user as a project-triage pass at measured gain +0.0931, making the working progression count eleven of fifteen. Candidate-specific lower initializers are never used to manufacture a strict pass. Continue with new split-local representations for S1 index, S1 ring, S2 ring, and S3 middle."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, full-bank ridge and nonlinear probes, training-only power calibration, recurrent warm-up option, offline future-context representation, split-local all-finger amplitude bank, and training-only hand-synergy SPoC rows. Eleven of fifteen subject-finger models numerically exceed the original +0.1 gain threshold: S1 thumb, S1 middle, S1 little, S2 thumb, S2 index, S2 middle, S2 ring, S2 little, S3 thumb, S3 index, and S3 ring. S1 index exceeds the user-approved +0.095 working threshold, while S3 little remains a user-approved project-triage exception at +0.0931, making the working progression count thirteen of fifteen. Candidate-specific lower initializers are never used to manufacture a pass. Continue with new split-local representations for S1 ring and S3 middle."
 }

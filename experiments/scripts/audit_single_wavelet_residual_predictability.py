@@ -29,6 +29,7 @@ from gpu_ridge import fit_torch_ridge_cv
 
 ALPHAS = tuple(float(value) for value in np.logspace(-2, 5, 8))
 EMA_DECAYS = (0.5, 0.8, 0.92, 0.97)
+POWER_CALIBRATION_GRID = (0.5, 0.67, 0.8, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
 
 
 def rows_from_intervals(intervals: list[list[int]]) -> np.ndarray:
@@ -101,6 +102,40 @@ def temporal_summary(
     summaries.extend(causal_ema(current, intervals, decay) for decay in EMA_DECAYS)
     summaries.append(base[:, None])
     return np.concatenate(summaries, axis=1)
+
+
+def interval_temporal_calibration_features(
+    base: np.ndarray,
+    intervals: list[list[int]],
+    radius: int = 12,
+) -> np.ndarray:
+    """Build edge-replicated two-sided trajectory lags without crossing groups."""
+    result = np.zeros((base.size, 2 * radius + 4), dtype=np.float32)
+    offsets = np.arange(-radius, radius + 1, dtype=np.int64)
+    for start, stop in intervals:
+        rows = np.arange(start, stop, dtype=np.int64)
+        source = np.clip(rows[:, None] + offsets[None], start, stop - 1)
+        result[rows, : offsets.size] = base[source]
+    nonnegative = np.maximum(base, 0.0)
+    result[:, -3] = nonnegative**0.5
+    result[:, -2] = nonnegative**2
+    result[:, -1] = nonnegative**3
+    return result
+
+
+def select_training_power_calibration(
+    prediction: np.ndarray,
+    raw_target: np.ndarray,
+    training: np.ndarray,
+) -> tuple[np.ndarray, float, dict[str, float]]:
+    """Select a nonnegative power transform using outer-training rows only."""
+    nonnegative = np.maximum(np.asarray(prediction), 0.0)
+    scores = {
+        str(power): pearson(nonnegative[training] ** power, raw_target[training])
+        for power in POWER_CALIBRATION_GRID
+    }
+    selected = max(POWER_CALIBRATION_GRID, key=lambda power: scores[str(power)])
+    return nonnegative**selected, float(selected), scores
 
 
 def select_ridge(
@@ -193,6 +228,7 @@ def main() -> None:
         "--ridge-selection-metric", choices=("mse", "pcc"), default="mse"
     )
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--raw-power-calibration", action="store_true")
     parser.add_argument(
         "--probes",
         nargs="+",
@@ -201,7 +237,9 @@ def main() -> None:
             "ridge_all_lags_raw",
             "ridge_current_temporal",
             "ridge_current_temporal_raw",
+            "ridge_base_temporal_raw",
             "hist_current_temporal",
+            "hist_current_temporal_raw",
         ),
         default=(
             "ridge_all_lags",
@@ -255,6 +293,7 @@ def main() -> None:
         )
         current = standardized[:, current_positions]
         temporal = temporal_summary(current, all_intervals, base)
+        base_temporal = interval_temporal_calibration_features(base, all_intervals)
         residual = target - base
         raw_residual = raw - base
 
@@ -334,6 +373,24 @@ def main() -> None:
                     "ridge_current_raw_inner_selection_curve": ridge_current_raw_curve,
                 }
             )
+        if "ridge_base_temporal_raw" in args.probes:
+            ridge_base_raw, ridge_base_raw_alpha, ridge_base_raw_curve = select_ridge(
+                base_temporal,
+                raw,
+                training_intervals,
+                backend=args.ridge_backend,
+                device=device,
+                selection_metric=args.ridge_selection_metric,
+            )
+            predictions["ridge_base_temporal_raw"] = np.maximum(
+                ridge_base_raw.predict(base_temporal), 0.0
+            )
+            probe_audit.update(
+                {
+                    "ridge_base_raw_alpha": ridge_base_raw_alpha,
+                    "ridge_base_raw_inner_selection_curve": ridge_base_raw_curve,
+                }
+            )
         if "hist_current_temporal" in args.probes:
             training = rows_from_intervals(training_intervals)
             nonlinear = make_pipeline(
@@ -351,6 +408,36 @@ def main() -> None:
             predictions["hist_current_temporal"] = np.maximum(
                 base + nonlinear.predict(temporal), 0.0
             )
+        if "hist_current_temporal_raw" in args.probes:
+            training = rows_from_intervals(training_intervals)
+            nonlinear_raw = make_pipeline(
+                StandardScaler(),
+                HistGradientBoostingRegressor(
+                    learning_rate=0.05,
+                    max_iter=200,
+                    max_leaf_nodes=15,
+                    l2_regularization=1.0,
+                    early_stopping=False,
+                    random_state=2026,
+                ),
+            )
+            nonlinear_raw.fit(temporal[training], raw_residual[training])
+            predictions["hist_current_temporal_raw"] = np.maximum(
+                base + nonlinear_raw.predict(temporal), 0.0
+            )
+        if args.raw_power_calibration:
+            training = rows_from_intervals(training_intervals)
+            power_audit = {}
+            for name, prediction in tuple(predictions.items()):
+                calibrated, power, curve = select_training_power_calibration(
+                    prediction, raw, training
+                )
+                predictions[name] = calibrated
+                power_audit[name] = {
+                    "selected_power": power,
+                    "training_raw_pcc": curve,
+                }
+            probe_audit["raw_power_calibration"] = power_audit
         for name, prediction in predictions.items():
             stitched.setdefault(
                 name, np.full(rows, np.nan, dtype=np.float32)
@@ -392,6 +479,7 @@ def main() -> None:
         "finger": args.finger,
         "ridge_backend": args.ridge_backend,
         "ridge_selection_metric": args.ridge_selection_metric,
+        "raw_power_calibration": args.raw_power_calibration,
         "probes": list(args.probes),
         "outer_records": outer_records,
         "stitched_raw_pcc": {

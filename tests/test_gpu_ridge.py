@@ -8,6 +8,8 @@ from sklearn.preprocessing import StandardScaler
 
 from experiments.scripts.audit_single_wavelet_residual_predictability import (
     finite_intervals,
+    interval_temporal_calibration_features,
+    select_training_power_calibration,
 )
 from gpu_ridge import fit_torch_ridge_cv, ridge_path_eigendecomposition
 
@@ -84,3 +86,25 @@ def test_finite_intervals_excludes_undefined_target_rows() -> None:
         [7, 8],
         [9, 10],
     ]
+
+
+def test_power_calibration_uses_only_supplied_training_rows() -> None:
+    prediction = np.linspace(0.05, 1.0, 30, dtype=np.float32)
+    raw = prediction**2
+    calibrated, selected, scores = select_training_power_calibration(
+        prediction, raw, np.arange(20)
+    )
+    assert selected == 2.0
+    assert scores["2.0"] > 0.999999
+    assert np.allclose(calibrated, raw)
+
+
+def test_temporal_calibration_features_do_not_cross_intervals() -> None:
+    base = np.arange(10, dtype=np.float32)
+    features = interval_temporal_calibration_features(
+        base, [[1, 4], [7, 9]], radius=1
+    )
+    assert np.array_equal(features[1, :3], [1, 1, 2])
+    assert np.array_equal(features[3, :3], [2, 3, 3])
+    assert np.array_equal(features[7, :3], [7, 7, 8])
+    assert np.array_equal(features[8, :3], [7, 8, 8])
