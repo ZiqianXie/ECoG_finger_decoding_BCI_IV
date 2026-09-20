@@ -8,11 +8,11 @@ the glove target, ICA, joint HHL/HHH CSP, and LARS initialization.  Training
 uses a uniform event-group sampler and checkpoints are indexed by optimizer
 updates, making the chosen schedule transferable to the full outer fit.
 
-The nonlinear LSTM itself is initialized to reproduce the split-local LARS
-trajectory in its near-linear regime; it is not a residual correction head.
-Checkpoint selection uses one primary quantity: event-macro normalized MSE.
-PCC and morphology diagnostics are monitored but do not form a compound loss
-or selection score.  Released competition test labels are never loaded.
+The decoder can use either the paper-style near-linear LARS initialization or
+a nonlinear recurrent residual on the fixed split-local LARS trajectory.
+Checkpoint selection uses one configured primary quantity; PCC and morphology
+diagnostics remain separately visible.  Released competition test labels are
+never loaded.
 """
 
 from __future__ import annotations
@@ -22,7 +22,9 @@ import copy
 import json
 import os
 import random
+import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -40,10 +42,12 @@ from single_wavelet_support import (
     OFFSET,
     SAMPLES_PER_BIN,
     SOURCE_RATE,
+    continuous_amplitude_covariance_matrices,
     csp_candidate_union,
     extract_energy,
     finger_csp_bank,
     linear_gamma_leaf_signals,
+    linear_lower_high_gamma_leaf_signals,
     pearson,
     resample_ecog,
 )
@@ -55,11 +59,13 @@ from build_event_stratified_folds import (
 from ecog_decoding.models import WaveletPacketEnergy, fit_fastica_spatial_weights
 from ecog_decoding.preprocessing import local_baseline_correct
 from ecog_decoding.regression import lagged
+from ecog_decoding.spatial import CSP_BANDS_HZ
 from ecog_decoding.training import FINGER_NAMES
 from gpu_lasso import fit_torch_lasso_cv
 from train_event_grouped_lars_lstm import indices_from_intervals
 from train_event_grouped_lars_lstm_nested import intervals_from_mask
 from single_wavelet_model import (
+    OvercompleteWaveletPacketEnergy,
     SingleWaveletDecoder,
     extract_all,
     predict_intervals,
@@ -75,9 +81,43 @@ CSP_MODES = {
     "movement_1": (-1,),
     "movement_2": (-1, -2),
     "movement_4": (-1, -2, -3, -4),
+    "tails_1x1": (0, -1),
     "tails_2x2": (0, 1, -2, -1),
     "tails_4x4": (0, 1, 2, 3, -4, -3, -2, -1),
 }
+CSP_BAND_MODES = (
+    "joint_hhl_hhh",
+    "separate_hhl_hhh",
+    "separate_50_100_hhl_hhh",
+    "designed_seven",
+)
+CSP_CONTRAST_MODES = (
+    "common_rest",
+    "other_movement",
+    "dual_rest_other",
+    "dual_rest_amplitude",
+    "triple_rest_other_continuous_amplitude",
+    "triple_rest_other_amplitude",
+    "continuous_amplitude",
+    "continuous_velocity",
+    "dual_rest_velocity",
+    "all_finger_amplitude",
+    "target_rest_all_finger_amplitude",
+    "target_rest_all_finger_amplitude_synergy",
+    "target_rest_all_finger_amplitude_synergy_conditional",
+    "all_finger_rest_amplitude",
+)
+
+
+def resolve_seed_roles(
+    model_seed: int, split_seed: int | None, sampler_seed: int | None
+) -> tuple[int, int, int]:
+    """Keep historical coupled behavior unless data seeds are explicit."""
+    return (
+        model_seed,
+        model_seed if split_seed is None else split_seed,
+        model_seed if sampler_seed is None else sampler_seed,
+    )
 
 
 def split_intervals(
@@ -425,6 +465,378 @@ def grouped_lars_subfolds(
     return result
 
 
+def all_finger_synergy_spatial_bank(
+    *,
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    component_indices: tuple[int, ...],
+    synergy_count: int = 3,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC rows to training-only principal hand-trajectory synergies."""
+    training = np.asarray(training, dtype=np.int64)
+    training_target = np.asarray(target[training], dtype=np.float64)
+    finite_training = np.isfinite(training_target).all(axis=1)
+    if finite_training.sum() < 4:
+        raise RuntimeError("too few finite training bins for finger synergies")
+    fitted = training_target[finite_training]
+    center = fitted.mean(axis=0)
+    scale = fitted.std(axis=0)
+    scale = np.where(scale > np.finfo(np.float64).eps, scale, 1.0)
+    standardized = (fitted - center) / scale
+    _, singular_values, axes = np.linalg.svd(standardized, full_matrices=False)
+    count = min(int(synergy_count), axes.shape[0])
+    axes = axes[:count]
+    singular_values = singular_values[:count]
+    for row in axes:
+        pivot = int(np.argmax(np.abs(row)))
+        if row[pivot] < 0:
+            row *= -1.0
+
+    latent_target = np.full((target.shape[0], count), np.nan, dtype=np.float64)
+    finite = np.isfinite(target).all(axis=1)
+    latent_target[finite] = ((target[finite] - center) / scale) @ axes.T
+    fits = [
+        finger_csp_bank(
+            filtered_bins,
+            latent_target,
+            training,
+            synergy,
+            component_indices,
+            negative_class="continuous_amplitude",
+        )
+        for synergy in range(count)
+    ]
+    weights = np.concatenate([fit[0] for fit in fits], axis=0)
+    return weights, {
+        "training_rows": int(finite_training.sum()),
+        "target_center": center.tolist(),
+        "target_scale": scale.tolist(),
+        "synergy_loadings": axes.tolist(),
+        "singular_values": singular_values.tolist(),
+        "synergies": {
+            f"pc{index + 1}": fit[1] for index, fit in enumerate(fits)
+        },
+    }
+
+
+def conditional_finger_residual_target(
+    *,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    ridge: float = 1.0e-3,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Residualize one finger against the other four using training rows only."""
+    target = np.asarray(target, dtype=np.float64)
+    training = np.asarray(training, dtype=np.int64)
+    if target.ndim != 2 or not 0 <= finger_index < target.shape[1]:
+        raise ValueError("finger index is outside the target matrix")
+    other_indices = tuple(
+        index for index in range(target.shape[1]) if index != finger_index
+    )
+    fitted_target = target[training]
+    finite_training = np.isfinite(fitted_target).all(axis=1)
+    if finite_training.sum() < len(other_indices) + 2:
+        raise RuntimeError("too few finite training bins for conditional finger target")
+
+    fitted_target = fitted_target[finite_training]
+    predictors = fitted_target[:, other_indices]
+    response = fitted_target[:, finger_index]
+    predictor_center = predictors.mean(axis=0)
+    predictor_scale = predictors.std(axis=0)
+    predictor_scale = np.where(
+        predictor_scale > np.finfo(np.float64).eps, predictor_scale, 1.0
+    )
+    response_center = float(response.mean())
+    standardized = (predictors - predictor_center) / predictor_scale
+    penalty = float(ridge) * standardized.shape[0]
+    coefficients = np.linalg.solve(
+        standardized.T @ standardized
+        + penalty * np.eye(standardized.shape[1], dtype=np.float64),
+        standardized.T @ (response - response_center),
+    )
+
+    residual = np.full(target.shape[0], np.nan, dtype=np.float64)
+    finite = np.isfinite(target).all(axis=1)
+    residual[finite] = (
+        target[finite, finger_index]
+        - response_center
+        - ((target[finite][:, other_indices] - predictor_center) / predictor_scale)
+        @ coefficients
+    )
+    fitted_residual = residual[training][finite_training]
+    return residual, {
+        "training_rows": int(finite_training.sum()),
+        "finger_index": int(finger_index),
+        "other_finger_indices": list(other_indices),
+        "predictor_center": predictor_center.tolist(),
+        "predictor_scale": predictor_scale.tolist(),
+        "response_center": response_center,
+        "ridge": float(ridge),
+        "coefficients": coefficients.tolist(),
+        "training_residual_std": float(fitted_residual.std()),
+    }
+
+
+def lead_aligned_training_target(
+    target: np.ndarray,
+    training: np.ndarray,
+    lead_bins: int,
+) -> tuple[np.ndarray, int]:
+    """Align neural row t with target t+lead without crossing training gaps."""
+    if lead_bins < 0:
+        raise ValueError("amplitude target lead must be nonnegative")
+    if lead_bins == 0:
+        return target, int(np.asarray(training).size)
+    training = np.asarray(training, dtype=np.int64)
+    in_training = np.zeros(target.shape[0], dtype=bool)
+    in_training[training] = True
+    future = training + lead_bins
+    valid = (future < target.shape[0])
+    valid &= in_training[np.minimum(future, target.shape[0] - 1)]
+    current = training[valid]
+    aligned = np.full_like(target, np.nan, dtype=np.float64)
+    aligned[current] = target[current + lead_bins]
+    return aligned, int(current.size)
+
+
+def lagged_with_future_context(
+    values: np.ndarray,
+    history: int,
+    future_context_bins: int,
+) -> np.ndarray:
+    """Return history windows extended by optional offline future context."""
+    if future_context_bins < 0:
+        raise ValueError("future context must be nonnegative")
+    if future_context_bins == 0:
+        return lagged(values, history)
+    padded = np.pad(
+        np.asarray(values),
+        ((0, future_context_bins), (0, 0)),
+        mode="edge",
+    )
+    width = history + future_context_bins
+    windows = np.lib.stride_tricks.sliding_window_view(padded, width, axis=0)
+    return np.ascontiguousarray(
+        windows.transpose(0, 2, 1).reshape(windows.shape[0], -1)
+    )
+
+
+def fit_csp_band_rows(
+    *,
+    joint_bins: np.ndarray,
+    hhl_bins: np.ndarray | None,
+    hhh_bins: np.ndarray | None,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    csp_band_mode: str,
+    lower_high_gamma_bins: np.ndarray | None = None,
+    designed_band_bins: np.ndarray | None = None,
+    csp_contrast_mode: str = "common_rest",
+    amplitude_target_lead_bins: int = 0,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit joint or leaf-specific gamma CSP rows for one spatial layer."""
+    if csp_band_mode not in CSP_BAND_MODES:
+        raise ValueError(f"unsupported CSP band mode {csp_band_mode!r}")
+    if csp_contrast_mode not in CSP_CONTRAST_MODES:
+        raise ValueError(f"unsupported CSP contrast mode {csp_contrast_mode!r}")
+
+    def fit_band(values: np.ndarray) -> tuple[np.ndarray, dict[str, object]]:
+        if csp_contrast_mode in (
+            "all_finger_amplitude",
+            "target_rest_all_finger_amplitude",
+            "target_rest_all_finger_amplitude_synergy",
+            "target_rest_all_finger_amplitude_synergy_conditional",
+            "all_finger_rest_amplitude",
+        ):
+            amplitude_target, aligned_count = lead_aligned_training_target(
+                target, training, amplitude_target_lead_bins
+            )
+            named_fits: list[tuple[str, tuple[np.ndarray, dict[str, object]]]] = []
+            if csp_contrast_mode in (
+                "target_rest_all_finger_amplitude",
+                "target_rest_all_finger_amplitude_synergy",
+                "target_rest_all_finger_amplitude_synergy_conditional",
+            ):
+                named_fits.append(
+                    (
+                        "target_common_rest",
+                        finger_csp_bank(
+                            values,
+                            target,
+                            training,
+                            finger_index,
+                            component_indices,
+                            negative_class="common_rest",
+                        ),
+                    )
+                )
+            elif csp_contrast_mode == "all_finger_rest_amplitude":
+                named_fits.extend(
+                    (
+                        f"{FINGER_NAMES[bank_finger]}_common_rest",
+                        finger_csp_bank(
+                            values,
+                            target,
+                            training,
+                            bank_finger,
+                            component_indices,
+                            negative_class="common_rest",
+                        ),
+                    )
+                    for bank_finger in range(target.shape[1])
+                )
+            named_fits.extend(
+                (
+                    f"{FINGER_NAMES[bank_finger]}_continuous_amplitude",
+                    finger_csp_bank(
+                        values,
+                        amplitude_target,
+                        training,
+                        bank_finger,
+                        component_indices,
+                        negative_class="continuous_amplitude",
+                    ),
+                )
+                for bank_finger in range(target.shape[1])
+            )
+            if csp_contrast_mode in (
+                "target_rest_all_finger_amplitude_synergy",
+                "target_rest_all_finger_amplitude_synergy_conditional",
+            ):
+                synergy_weights, synergy_audit = all_finger_synergy_spatial_bank(
+                    filtered_bins=values,
+                    target=amplitude_target,
+                    training=training,
+                    component_indices=component_indices,
+                )
+                named_fits.append(
+                    (
+                        "all_finger_trajectory_synergies",
+                        (synergy_weights, synergy_audit),
+                    )
+                )
+            if csp_contrast_mode == "target_rest_all_finger_amplitude_synergy_conditional":
+                conditional_target, conditional_audit = conditional_finger_residual_target(
+                    target=amplitude_target,
+                    training=training,
+                    finger_index=finger_index,
+                )
+                conditional_fit = finger_csp_bank(
+                    values,
+                    conditional_target[:, None],
+                    training,
+                    0,
+                    component_indices,
+                    negative_class="continuous_amplitude",
+                )
+                conditional_audit.update(conditional_fit[1])
+                named_fits.append(
+                    (
+                        "target_conditional_amplitude",
+                        (conditional_fit[0], conditional_audit),
+                    )
+                )
+            weights = np.concatenate([fit[0] for _, fit in named_fits], axis=0)
+            return weights, {
+                "contrast_mode": csp_contrast_mode,
+                "amplitude_target_lead_bins": int(amplitude_target_lead_bins),
+                "lead_aligned_training_bins": aligned_count,
+                "contrasts": {name: fit[1] for name, fit in named_fits},
+            }
+        if csp_contrast_mode == "dual_rest_other":
+            negative_classes = ("common_rest", "other_movement")
+        elif csp_contrast_mode == "dual_rest_amplitude":
+            negative_classes = ("common_rest", "continuous_amplitude")
+        elif csp_contrast_mode == "dual_rest_velocity":
+            negative_classes = ("common_rest", "continuous_velocity")
+        elif csp_contrast_mode == "triple_rest_other_continuous_amplitude":
+            negative_classes = (
+                "common_rest",
+                "other_movement",
+                "continuous_amplitude",
+            )
+        elif csp_contrast_mode == "triple_rest_other_amplitude":
+            negative_classes = (
+                "common_rest",
+                "other_movement",
+                "lower_target_movement",
+            )
+        else:
+            negative_classes = (csp_contrast_mode,)
+        fitted = [
+            finger_csp_bank(
+                values,
+                target,
+                training,
+                finger_index,
+                component_indices,
+                negative_class=negative_class,
+            )
+            for negative_class in negative_classes
+        ]
+        if len(fitted) == 1:
+            weights, audit = fitted[0]
+            return weights, {"contrast_mode": csp_contrast_mode, **audit}
+        weights = np.concatenate([item[0] for item in fitted], axis=0)
+        return weights, {
+            "contrast_mode": csp_contrast_mode,
+            "contrasts": {
+                negative_class: audit
+                for negative_class, (_, audit) in zip(negative_classes, fitted)
+            },
+        }
+    if csp_band_mode == "designed_seven":
+        if designed_band_bins is None or designed_band_bins.shape[0] != len(
+            CSP_BANDS_HZ
+        ):
+            raise ValueError("designed_seven requires all seven designed-band caches")
+        rows = []
+        audits = []
+        source_band_indices = []
+        for band_index, (low, high) in enumerate(CSP_BANDS_HZ):
+            weights, audit = fit_band(designed_band_bins[band_index])
+            rows.append(weights)
+            source_band_indices.extend([band_index] * weights.shape[0])
+            audits.append({"band_hz": [low, high], **audit})
+        weights = np.concatenate(rows, axis=0)
+        return weights, {
+            "band_mode": csp_band_mode,
+            "spatial_rows": int(weights.shape[0]),
+            "source_band_indices": source_band_indices,
+            "bands": audits,
+        }
+    if csp_band_mode == "joint_hhl_hhh":
+        weights, audit = fit_band(joint_bins)
+        return weights, {"band_mode": csp_band_mode, **audit}
+    if hhl_bins is None or hhh_bins is None:
+        raise ValueError("separate CSP modes require HHL and HHH bins")
+    hhl_weights, hhl_audit = fit_band(hhl_bins)
+    hhh_weights, hhh_audit = fit_band(hhh_bins)
+    band_weights = []
+    band_audits: dict[str, object] = {}
+    if csp_band_mode == "separate_50_100_hhl_hhh":
+        if lower_high_gamma_bins is None:
+            raise ValueError(
+                "separate_50_100_hhl_hhh requires aggregated 50--100 Hz bins"
+            )
+        lower_weights, lower_audit = fit_band(lower_high_gamma_bins)
+        band_weights.append(lower_weights)
+        band_audits["wavelet_50_100_hz"] = lower_audit
+    band_weights.extend((hhl_weights, hhh_weights))
+    weights = np.concatenate(band_weights, axis=0)
+    return weights, {
+        "band_mode": csp_band_mode,
+        "spatial_rows": int(weights.shape[0]),
+        **band_audits,
+        "hhl_100_125_hz": hhl_audit,
+        "hhh_125_150_hz": hhh_audit,
+    }
+
+
 def fit_initialization(
     *,
     ecog: np.ndarray,
@@ -438,8 +850,17 @@ def fit_initialization(
     component_chunk: int,
     finger_index: int = LITTLE,
     csp_mode: str = "movement_1",
+    csp_band_mode: str = "joint_hhl_hhh",
+    csp_contrast_mode: str = "common_rest",
+    amplitude_target_lead_bins: int = 0,
+    hhl_bins: np.ndarray | None = None,
+    hhh_bins: np.ndarray | None = None,
+    lower_high_gamma_bins: np.ndarray | None = None,
+    designed_band_bins: np.ndarray | None = None,
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
+    future_context_bins: int = 0,
+    include_candidate_pool: bool = False,
     lasso_backend: str = "sklearn_lars",
 ) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, object]]:
     training = indices_from_intervals(training_intervals)
@@ -459,8 +880,19 @@ def fit_initialization(
     )
     if ica.shape != (ecog.shape[1], ecog.shape[1]):
         raise ValueError("FastICA weights must contain one row per retained channel")
-    joint_weights, csp_audit = finger_csp_bank(
-        joint_bins, target, training, finger_index, CSP_MODES[csp_mode]
+    joint_weights, csp_audit = fit_csp_band_rows(
+        joint_bins=joint_bins,
+        hhl_bins=hhl_bins,
+        hhh_bins=hhh_bins,
+        lower_high_gamma_bins=lower_high_gamma_bins,
+        designed_band_bins=designed_band_bins,
+        target=target,
+        training=training,
+        finger_index=finger_index,
+        component_indices=CSP_MODES[csp_mode],
+        csp_band_mode=csp_band_mode,
+        csp_contrast_mode=csp_contrast_mode,
+        amplitude_target_lead_bins=amplitude_target_lead_bins,
     )
     normalized_rows = []
     csp_stds = []
@@ -485,16 +917,43 @@ def fit_initialization(
         )
         streams.append(joint_energy.reshape(joint_energy.shape[0], -1))
     stream = np.concatenate(streams, axis=1)
-    features = lagged(np.asarray(stream, dtype=np.float32), HISTORY)
+    features = lagged_with_future_context(
+        np.asarray(stream, dtype=np.float32), HISTORY, future_context_bins
+    )
+    csp_per_bin_positions = None
+    if csp_band_mode == "designed_seven" and joint_weights.shape[0]:
+        leaf_count = int(ica_energy.shape[2])
+        level_counts = getattr(frontend, "output_band_level_counts", (leaf_count,))
+        leaf_intervals = []
+        for count in level_counts:
+            width = 200.0 / count
+            leaf_intervals.extend(
+                (index * width, (index + 1) * width) for index in range(count)
+            )
+        csp_per_bin_positions_list = []
+        source_band_indices = csp_audit["source_band_indices"]
+        csp_offset = ica_energy.shape[1] * leaf_count
+        for row, band_index in enumerate(source_band_indices):
+            low, high = CSP_BANDS_HZ[int(band_index)]
+            for leaf, (leaf_low, leaf_high) in enumerate(leaf_intervals):
+                if leaf_low < high and leaf_high > low:
+                    csp_per_bin_positions_list.append(
+                        csp_offset + row * leaf_count + leaf
+                    )
+        csp_per_bin_positions = np.asarray(
+            csp_per_bin_positions_list, dtype=np.int64
+        )
     candidates, candidate_audit = csp_candidate_union(
         features,
         target,
         training,
         stream.shape[1],
-        ica_energy.shape[1] * 8,
+        ica_energy.shape[1] * ica_energy.shape[2],
         ica_prescreen,
         finger_index,
+        csp_per_bin_positions,
     )
+    candidate_audit["future_context_bins"] = int(future_context_bins)
     scaler = StandardScaler()
     train_x = scaler.fit_transform(features[training][:, candidates]).astype(
         np.float64, copy=False
@@ -506,7 +965,11 @@ def fit_initialization(
         torch.cuda.synchronize(device)
     lasso_started = time.perf_counter()
     if lasso_backend == "sklearn_lars":
-        lasso = LassoLarsCV(cv=lars_splits, max_iter=500, n_jobs=1)
+        lasso = LassoLarsCV(
+            cv=lars_splits,
+            max_iter=500,
+            n_jobs=1,
+        )
         lasso.fit(train_x, train_y)
         lasso_coefficients = np.asarray(lasso.coef_, dtype=np.float32)
         lasso_intercept = float(lasso.intercept_)
@@ -515,7 +978,10 @@ def fit_initialization(
         selection_method = "lasso_lars_cv"
     elif lasso_backend == "torch_fista":
         lasso = fit_torch_lasso_cv(
-            train_x, train_y, lars_splits, device=device
+            train_x,
+            train_y,
+            lars_splits,
+            device=device,
         )
         lasso_coefficients = lasso.coef_
         lasso_intercept = float(lasso.intercept_)
@@ -563,6 +1029,53 @@ def fit_initialization(
         "intercept": np.asarray(intercept, dtype=np.float32),
         "selected_features": np.asarray(features[:, selected], dtype=np.float32),
     }
+    if include_candidate_pool:
+        current_candidate_positions = np.flatnonzero(
+            candidates // stream.shape[1] == HISTORY - 1
+        )
+        if current_candidate_positions.size == 0:
+            raise RuntimeError("candidate pool contains no current-bin features")
+        causal_stream_positions = np.unique(candidates % stream.shape[1])
+        causal_values = np.asarray(
+            stream[HISTORY - 1 :, causal_stream_positions], dtype=np.float32
+        )
+        causal_scaler = StandardScaler().fit(causal_values[training])
+        selected_causal_stream_positions = np.unique(selected % stream.shape[1])
+        selected_causal_values = np.asarray(
+            stream[HISTORY - 1 :, selected_causal_stream_positions],
+            dtype=np.float32,
+        )
+        selected_causal_scaler = StandardScaler().fit(
+            selected_causal_values[training]
+        )
+        initialization.update(
+            {
+                "candidate_indices": candidates.astype(np.int64),
+                "candidate_feature_mean": scaler.mean_.astype(np.float32),
+                "candidate_feature_scale": scaler.scale_.astype(np.float32),
+                "selected_candidate_positions": selected_nonzero.astype(np.int64),
+                "current_candidate_positions": current_candidate_positions.astype(
+                    np.int64
+                ),
+                "causal_stream_positions": causal_stream_positions.astype(np.int64),
+                "causal_feature_mean": causal_scaler.mean_.astype(np.float32),
+                "causal_feature_scale": causal_scaler.scale_.astype(np.float32),
+                "causal_features": causal_values,
+                "selected_causal_stream_positions": (
+                    selected_causal_stream_positions.astype(np.int64)
+                ),
+                "selected_causal_feature_mean": (
+                    selected_causal_scaler.mean_.astype(np.float32)
+                ),
+                "selected_causal_feature_scale": (
+                    selected_causal_scaler.scale_.astype(np.float32)
+                ),
+                "selected_causal_features": selected_causal_values,
+                "candidate_features": np.asarray(
+                    features[:, candidates], dtype=np.float32
+                ),
+            }
+        )
     spatial = np.concatenate((ica, joint_weights)).astype(np.float32)
     audit = {
         "selected_features": int(selected_nonzero.size),
@@ -570,6 +1083,7 @@ def fit_initialization(
         "selection_alpha": fitted_alpha,
         "lasso": lasso_audit,
         "csp_mode": csp_mode,
+        "csp_band_mode": csp_band_mode,
         "csp": {**csp_audit, "pre_normalization_std": csp_stds},
         **candidate_audit,
     }
@@ -585,11 +1099,39 @@ def save_initialization(
     audit: dict[str, object],
 ) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    np.savez(root / "initialization.npz", **initialization)
-    np.save(root / "spatial.npy", spatial, allow_pickle=False)
-    np.save(root / "target.npy", target, allow_pickle=False)
-    (root / "split.json").write_text(
-        json.dumps({**split, "initialization_audit": audit}, indent=2) + "\n"
+
+    def atomic_numpy(path: Path, write) -> None:
+        with tempfile.NamedTemporaryFile(
+            mode="w+b", dir=root, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            write(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+
+    atomic_numpy(
+        root / "spatial.npy",
+        lambda handle: np.save(handle, spatial, allow_pickle=False),
+    )
+    atomic_numpy(
+        root / "target.npy",
+        lambda handle: np.save(handle, target, allow_pickle=False),
+    )
+    split_text = json.dumps({**split, "initialization_audit": audit}, indent=2) + "\n"
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=root, prefix=".split.json.", delete=False
+    ) as handle:
+        split_temporary = Path(handle.name)
+        handle.write(split_text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    split_temporary.replace(root / "split.json")
+
+    # This is the file readers use as the completion marker, so publish it last.
+    atomic_numpy(
+        root / "initialization.npz",
+        lambda handle: np.savez(handle, **initialization),
     )
 
 
@@ -601,6 +1143,100 @@ def load_initialization(root: Path):
         np.load(root / "target.npy"),
         json.loads((root / "split.json").read_text()),
     )
+
+
+@contextmanager
+def initialization_cache_lock(root: Path):
+    """Serialize creation and loading of one split-local initialization."""
+    root.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = root.with_name(f".{root.name}.lock")
+    with lock_path.open("a+b") as handle:
+        if os.name == "posix":
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        else:
+            import msvcrt
+
+            if lock_path.stat().st_size == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def load_runtime_ecog(source: Path, cache: Path, model_rate: int) -> np.ndarray:
+    """Load ECoG from one node-local cache, resampling only when requested."""
+    with initialization_cache_lock(cache):
+        if model_rate != SOURCE_RATE:
+            return np.asarray(resample_ecog(source, cache))
+        source_values = np.load(source, mmap_mode="r")
+        cache_is_valid = False
+        if cache.is_file():
+            try:
+                cached = np.load(cache, mmap_mode="r")
+                cache_is_valid = (
+                    cached.shape == source_values.shape
+                    and cached.dtype == source_values.dtype
+                )
+            except (EOFError, OSError, ValueError):
+                pass
+        if not cache_is_valid:
+            atomic_save_npy(cache, np.asarray(source_values))
+        return np.asarray(np.load(cache, mmap_mode="r"))
+
+
+def load_or_create_initialization(root: Path, create):
+    """Load a complete cache or create it once while concurrent jobs wait."""
+    with initialization_cache_lock(root):
+        if (root / "initialization.npz").exists():
+            return load_initialization(root)
+        initialization, spatial, target, split, audit = create()
+        save_initialization(root, initialization, spatial, target, split, audit)
+        return initialization, spatial, target, {
+            **split,
+            "initialization_audit": audit,
+        }
+
+
+def direct_initialization_prediction(
+    initialization: dict[str, np.ndarray],
+    output_activation: str,
+    softplus_beta: float,
+) -> np.ndarray:
+    """Evaluate the immutable sparse initializer without constructing an LSTM.
+
+    Representation-only screens need the split-local LARS prediction, not an
+    arbitrary recurrent input width or a token optimizer update. Keeping this
+    calculation independent of the decoder prevents those training-only
+    settings from changing whether an initializer can be scored.
+    """
+    selected = np.asarray(initialization["selected_features"], dtype=np.float32)
+    mean = np.asarray(initialization["feature_mean"], dtype=np.float32)
+    scale = np.asarray(initialization["feature_scale"], dtype=np.float32)
+    coefficients = np.asarray(initialization["coefficients"], dtype=np.float32)
+    intercept = float(np.asarray(initialization["intercept"]))
+    logit = ((selected - mean) / scale) @ coefficients + intercept
+    if output_activation == "linear":
+        return np.asarray(logit, dtype=np.float32)
+    if output_activation != "softplus":
+        raise ValueError(f"unsupported output activation {output_activation!r}")
+    scaled = softplus_beta * np.asarray(logit, dtype=np.float64)
+    activated = np.where(
+        scaled > 20.0,
+        np.asarray(logit, dtype=np.float64),
+        np.logaddexp(0.0, scaled) / softplus_beta,
+    )
+    return np.asarray(activated, dtype=np.float32)
 
 
 def load_cached_ica(
@@ -693,11 +1329,12 @@ class DenseSequenceSampler:
 def make_sampler(
     args: argparse.Namespace, groups: list[list[int]], seed: int
 ) -> UniformGroupSampler | DenseSequenceSampler:
+    sampled_steps = args.sequence_steps + args.warmup_steps
     if args.sampler_mode == "dense_sequences":
         return DenseSequenceSampler(
-            groups, args.sequence_steps, args.sequence_stride, seed
+            groups, sampled_steps, args.sequence_stride, seed
         )
-    return UniformGroupSampler(groups, args.sequence_steps, seed)
+    return UniformGroupSampler(groups, sampled_steps, seed)
 
 
 def optimizer(
@@ -705,20 +1342,43 @@ def optimizer(
     head_lr: float,
     spatial_lr: float,
     wavelet_lr: float,
+    interlevel_lr: float,
     weight_decay: float,
+    movement_gain_lr: float | None = None,
+    signed_pooling_lr: float = 0.0,
 ) -> torch.optim.Optimizer:
     head_parameters = list(model.lstm.parameters()) + list(model.output.parameters())
-    return torch.optim.AdamW(
-        [
-            {
-                "params": head_parameters,
-                "lr": head_lr,
-            },
-            {"params": model.spatial.parameters(), "lr": spatial_lr},
-            {"params": model.wavelet.parameters(), "lr": wavelet_lr},
-        ],
-        weight_decay=weight_decay,
+    if model.movement_output is not None:
+        head_parameters += list(model.movement_output.parameters())
+    if model.velocity_output is not None:
+        head_parameters += list(model.velocity_output.parameters())
+    parameter_groups = [
+        {
+            "params": head_parameters,
+            "lr": head_lr,
+        },
+        {"params": model.spatial.parameters(), "lr": spatial_lr},
+        {"params": model.wavelet.layers.parameters(), "lr": wavelet_lr},
+    ]
+    interlevel_parameters = list(model.wavelet.skip_gates.parameters()) + list(
+        model.wavelet.normalization_gates.parameters()
     )
+    if interlevel_parameters:
+        parameter_groups.append(
+            {"params": interlevel_parameters, "lr": interlevel_lr}
+        )
+    if model.movement_gain is not None:
+        parameter_groups.append(
+            {
+                "params": [model.movement_gain],
+                "lr": head_lr if movement_gain_lr is None else movement_gain_lr,
+            }
+        )
+    if model.signed_pooling_gates is not None:
+        parameter_groups.append(
+            {"params": [model.signed_pooling_gates], "lr": signed_pooling_lr}
+        )
+    return torch.optim.AdamW(parameter_groups, weight_decay=weight_decay)
 
 
 def make_model(
@@ -740,7 +1400,228 @@ def make_model(
         energy_window_samples=args.samples_per_bin,
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
+        wavelet_frontend=args.wavelet_frontend,
+        wavelet_interlevel_skip=args.wavelet_interlevel_skip,
+        wavelet_interlevel_normalization=args.wavelet_interlevel_normalization,
+        wavelet_final_normalization=args.wavelet_final_normalization,
+        residual_input=args.residual_input,
+        residual_history_bins=args.residual_history_bins,
+        residual_input_width=args.residual_input_width,
+        residual_include_direct=args.residual_include_direct,
+        movement_head=args.movement_loss_weight > 0,
+        movement_head_outputs=5 if args.movement_head_scope == "all_fingers" else 1,
+        velocity_head=args.velocity_loss_weight > 0,
+        movement_modulation=args.movement_modulation,
+        wavelet_signed_pooling=args.wavelet_signed_pooling,
+        residual_output_init_std=args.residual_output_init_std,
+        residual_dynamics=args.residual_dynamics,
+        residual_decay=args.residual_decay,
     )
+
+
+def cached_initialization_features(
+    initialization: dict[str, np.ndarray], residual_input: str
+) -> np.ndarray:
+    """Return the raw feature matrix expected by the configured decoder."""
+    if residual_input in ("causal_candidate", "selected_causal"):
+        prefix = "candidate" if residual_input == "causal_candidate" else "selected"
+        required = ("candidate_features", "causal_features")
+        if prefix == "selected":
+            required = ("selected_features", "selected_causal_features")
+        missing = [name for name in required if name not in initialization]
+        if missing:
+            raise ValueError(
+                "initialization cache lacks " + ", ".join(repr(name) for name in missing)
+            )
+        direct_name, causal_name = required
+        return np.concatenate(
+            (initialization[direct_name], initialization[causal_name]), axis=1
+        )
+    name = (
+        "candidate_features"
+        if residual_input in ("candidate", "current_candidate")
+        else "selected_features"
+    )
+    if name not in initialization:
+        raise ValueError(
+            f"initialization cache lacks {name!r}; refit the split-local initialization"
+        )
+    return initialization[name]
+
+
+def sequence_correlation_loss(
+    prediction: torch.Tensor, target: torch.Tensor
+) -> torch.Tensor:
+    """Return mean one-minus-Pearson correlation across sequence rows."""
+    centered_prediction = prediction - prediction.mean(dim=1, keepdim=True)
+    centered_target = target - target.mean(dim=1, keepdim=True)
+    denominator = (
+        torch.linalg.vector_norm(centered_prediction, dim=1)
+        * torch.linalg.vector_norm(centered_target, dim=1)
+    ).clamp_min(1.0e-8)
+    correlation = torch.sum(
+        centered_prediction * centered_target, dim=1
+    ) / denominator
+    return 1.0 - correlation.mean()
+
+
+def masked_sequence_correlation_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Return correlation loss over masked bins in each sufficiently observed row."""
+    weights = mask.to(prediction.dtype)
+    count = weights.sum(dim=1)
+    valid = count >= 3
+    if not torch.any(valid):
+        return prediction.sum() * 0.0
+    safe_count = count.clamp_min(1.0)[:, None]
+    prediction_mean = (prediction * weights).sum(dim=1, keepdim=True) / safe_count
+    target_mean = (target * weights).sum(dim=1, keepdim=True) / safe_count
+    centered_prediction = (prediction - prediction_mean) * weights
+    centered_target = (target - target_mean) * weights
+    numerator = (centered_prediction * centered_target).sum(dim=1)
+    denominator = (
+        torch.linalg.vector_norm(centered_prediction, dim=1)
+        * torch.linalg.vector_norm(centered_target, dim=1)
+    ).clamp_min(1.0e-8)
+    correlation = numerator / denominator
+    return 1.0 - correlation[valid].mean()
+
+
+def trajectory_mse_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    target_scale: torch.Tensor,
+    movement_threshold: float,
+    movement_weight: float,
+) -> torch.Tensor:
+    """Return scale-normalized MSE with optional emphasis on movement bins."""
+    squared_error = ((prediction - target) / target_scale).square()
+    if movement_weight == 1.0:
+        return squared_error.mean()
+    weights = torch.where(
+        target >= movement_threshold,
+        torch.as_tensor(movement_weight, dtype=target.dtype, device=target.device),
+        torch.ones((), dtype=target.dtype, device=target.device),
+    )
+    return torch.sum(weights * squared_error) / torch.sum(weights)
+
+
+def spatial_anchor_penalty(
+    model: SingleWaveletDecoder, anchor: torch.Tensor
+) -> torch.Tensor:
+    """Penalize drift from the split-local analytical spatial initializer."""
+    if model.spatial.weight.shape != anchor.shape:
+        raise ValueError("spatial anchor shape does not match the model")
+    return (model.spatial.weight - anchor).square().sum()
+
+
+def spatial_spoc_penalty(
+    model: SingleWaveletDecoder,
+    reference_covariance: torch.Tensor,
+    amplitude_covariance: torch.Tensor,
+    row_count: int,
+) -> torch.Tensor:
+    """Maximize the split-local amplitude Rayleigh quotient of SPoC rows."""
+    if row_count <= 0 or row_count > model.spatial.out_channels:
+        raise ValueError("SPoC row count must select at least one spatial row")
+    weights = model.spatial.weight[-row_count:, :, 0]
+    numerator = torch.einsum(
+        "kc,cd,kd->k", weights, amplitude_covariance, weights
+    )
+    denominator = torch.einsum(
+        "kc,cd,kd->k", weights, reference_covariance, weights
+    ).clamp_min(1.0e-8)
+    return -(numerator / denominator).mean()
+
+
+def spatial_covariance_orthogonality_penalty(
+    model: SingleWaveletDecoder,
+    reference_covariance: torch.Tensor,
+) -> torch.Tensor:
+    """Discourage covariance-metric collapse among appended CSP/SPoC rows."""
+    csp_row_count = model.spatial.out_channels - model.spatial.in_channels
+    if csp_row_count <= 1:
+        return model.spatial.weight.sum() * 0.0
+    weights = model.spatial.weight[-csp_row_count:, :, 0]
+    gram = weights @ reference_covariance @ weights.T
+    scale = torch.sqrt(torch.diagonal(gram).clamp_min(1.0e-8))
+    correlation = gram / (scale[:, None] * scale[None, :])
+    identity = torch.eye(
+        csp_row_count, dtype=correlation.dtype, device=correlation.device
+    )
+    return (correlation - identity).square().sum()
+
+
+def split_local_raw_trajectory_blend(
+    cleaned: torch.Tensor,
+    raw: torch.Tensor,
+    training_rows: torch.Tensor,
+    blend: float,
+) -> torch.Tensor:
+    """Blend cleaned motion with a training-only affine copy of raw glove shape.
+
+    The affine map is fitted only on the current inner/outer training rows.  It
+    puts the raw trace on the cleaned target scale without using held-out target
+    statistics, and all operations remain on the active Torch device.
+    """
+    if cleaned.shape != raw.shape:
+        raise ValueError("cleaned and raw trajectory shapes must match")
+    if not 0.0 <= blend <= 1.0:
+        raise ValueError("raw trajectory blend must be between zero and one")
+    if blend == 0.0:
+        return cleaned
+    training_raw = raw.index_select(0, training_rows)
+    training_cleaned = cleaned.index_select(0, training_rows)
+    centered_raw = training_raw - training_raw.mean()
+    centered_cleaned = training_cleaned - training_cleaned.mean()
+    slope = torch.sum(centered_raw * centered_cleaned) / torch.sum(
+        centered_raw.square()
+    ).clamp_min(1.0e-8)
+    intercept = training_cleaned.mean() - slope * training_raw.mean()
+    aligned_raw = slope * raw + intercept
+    return torch.lerp(cleaned, aligned_raw, blend)
+
+
+def split_local_initialization_target_blend(
+    cleaned: np.ndarray,
+    raw: np.ndarray,
+    training_rows: np.ndarray,
+    blend: float,
+) -> tuple[np.ndarray, list[dict[str, float]]]:
+    """Blend each cleaned finger with training-affine raw shape for initialization."""
+    cleaned = np.asarray(cleaned, dtype=np.float64)
+    raw = np.asarray(raw, dtype=np.float64)
+    training_rows = np.asarray(training_rows, dtype=np.int64)
+    if cleaned.shape != raw.shape or cleaned.ndim != 2:
+        raise ValueError("cleaned and raw initialization targets must be matching matrices")
+    if not 0.0 <= blend <= 1.0:
+        raise ValueError("initialization raw target blend must be between zero and one")
+    if blend == 0.0:
+        return cleaned.astype(np.float32), []
+    result = cleaned.copy()
+    audit = []
+    for finger in range(cleaned.shape[1]):
+        training_raw = raw[training_rows, finger]
+        training_cleaned = cleaned[training_rows, finger]
+        finite = np.isfinite(training_raw) & np.isfinite(training_cleaned)
+        centered_raw = training_raw[finite] - training_raw[finite].mean()
+        centered_cleaned = (
+            training_cleaned[finite] - training_cleaned[finite].mean()
+        )
+        slope = float(
+            centered_raw @ centered_cleaned
+            / max(centered_raw @ centered_raw, 1.0e-8)
+        )
+        intercept = float(
+            training_cleaned[finite].mean() - slope * training_raw[finite].mean()
+        )
+        aligned = slope * raw[:, finger] + intercept
+        result[:, finger] = (1.0 - blend) * cleaned[:, finger] + blend * aligned
+        audit.append({"slope": slope, "intercept": intercept})
+    return result.astype(np.float32), audit
 
 
 def train_updates(
@@ -751,12 +1632,35 @@ def train_updates(
     cached: torch.Tensor,
     padded_ecog: torch.Tensor,
     target: torch.Tensor,
+    trajectory_target: torch.Tensor | None,
     sampler: UniformGroupSampler,
     updates: int,
     steps: int,
+    warmup_steps: int,
     batch_size: int,
     target_scale: torch.Tensor,
     raw_stem: bool,
+    movement_loss_weight: float = 0.0,
+    movement_trajectory_weight: float = 1.0,
+    movement_threshold: float = 0.10,
+    movement_positive_weight: torch.Tensor | None = None,
+    movement_targets: torch.Tensor | None = None,
+    movement_head_objective: str = "binary_state",
+    movement_target_scale: torch.Tensor | None = None,
+    velocity_loss_weight: float = 0.0,
+    velocity_scale: torch.Tensor | None = None,
+    correlation_loss_weight: float = 0.0,
+    derivative_correlation_weight: float = 0.0,
+    raw_target: torch.Tensor | None = None,
+    raw_movement_correlation_weight: float = 0.0,
+    raw_movement_derivative_correlation_weight: float = 0.0,
+    spatial_anchor: torch.Tensor | None = None,
+    spatial_anchor_weight: float = 0.0,
+    spatial_reference_covariance: torch.Tensor | None = None,
+    spatial_amplitude_covariance: torch.Tensor | None = None,
+    spoc_row_count: int = 0,
+    spoc_auxiliary_weight: float = 0.0,
+    spatial_orthogonality_weight: float = 0.0,
 ) -> list[float]:
     offsets = torch.arange(steps, device=target.device)
     losses = []
@@ -767,18 +1671,186 @@ def train_updates(
         )
         index = starts[:, None] + offsets[None]
         observed = target[index]
+        movement_observed = (
+            observed if movement_targets is None else movement_targets[index]
+        )
+        trajectory_observed = (
+            observed if trajectory_target is None else trajectory_target[index]
+        )
         optimizer_instance.zero_grad(set_to_none=True)
-        result = (
+        result_or_pair = (
             call(padded_ecog, starts, steps)
             if raw_stem
             else call(cached[index])
         )
-        loss = ((result - observed) / target_scale).square().mean()
+        if movement_loss_weight or velocity_loss_weight:
+            auxiliary = result_or_pair
+            result = auxiliary[0]
+            auxiliary_index = 1
+            if movement_loss_weight:
+                movement_logit = auxiliary[auxiliary_index]
+                auxiliary_index += 1
+            if velocity_loss_weight:
+                velocity_prediction = auxiliary[auxiliary_index]
+        else:
+            result = result_or_pair
+        if warmup_steps:
+            result = result[:, warmup_steps:]
+            observed = observed[:, warmup_steps:]
+            trajectory_observed = trajectory_observed[:, warmup_steps:]
+            if movement_loss_weight:
+                movement_logit = movement_logit[:, warmup_steps:]
+                movement_observed = movement_observed[:, warmup_steps:]
+            if velocity_loss_weight:
+                velocity_prediction = velocity_prediction[:, warmup_steps:]
+        loss = trajectory_mse_loss(
+            result,
+            trajectory_observed,
+            target_scale,
+            movement_threshold,
+            movement_trajectory_weight,
+        )
+        if movement_loss_weight:
+            if movement_head_objective == "binary_state":
+                movement_target = (movement_observed >= movement_threshold).to(
+                    result.dtype
+                )
+                loss = loss + movement_loss_weight * F.binary_cross_entropy_with_logits(
+                    movement_logit,
+                    movement_target,
+                    pos_weight=movement_positive_weight,
+                )
+            elif movement_head_objective == "continuous_trajectory":
+                if movement_target_scale is None:
+                    raise ValueError(
+                        "movement target scale is required for continuous auxiliary loss"
+                    )
+                loss = loss + movement_loss_weight * (
+                    (movement_logit - movement_observed) / movement_target_scale
+                ).square().mean()
+            else:
+                raise ValueError(
+                    f"unsupported movement head objective {movement_head_objective!r}"
+                )
+        if velocity_loss_weight:
+            if velocity_scale is None:
+                raise ValueError("velocity scale is required for auxiliary velocity loss")
+            observed_velocity = torch.diff(observed, dim=1)
+            predicted_velocity = velocity_prediction[:, 1:]
+            loss = loss + velocity_loss_weight * (
+                (predicted_velocity - observed_velocity) / velocity_scale
+            ).square().mean()
+        if correlation_loss_weight:
+            loss = loss + correlation_loss_weight * sequence_correlation_loss(
+                result, trajectory_observed
+            )
+        if derivative_correlation_weight:
+            loss = loss + derivative_correlation_weight * (
+                sequence_correlation_loss(
+                    torch.diff(result, dim=1),
+                    torch.diff(trajectory_observed, dim=1),
+                )
+            )
+        if raw_movement_correlation_weight or raw_movement_derivative_correlation_weight:
+            if raw_target is None:
+                raise ValueError("raw target is required for raw movement correlation")
+            raw_observed = raw_target[index]
+            if warmup_steps:
+                raw_observed = raw_observed[:, warmup_steps:]
+            moving = observed >= movement_threshold
+            if raw_movement_correlation_weight:
+                loss = loss + raw_movement_correlation_weight * (
+                    masked_sequence_correlation_loss(result, raw_observed, moving)
+                )
+            if raw_movement_derivative_correlation_weight:
+                adjacent_moving = moving[:, 1:] & moving[:, :-1]
+                loss = loss + raw_movement_derivative_correlation_weight * (
+                    masked_sequence_correlation_loss(
+                        torch.diff(result, dim=1),
+                        torch.diff(raw_observed, dim=1),
+                        adjacent_moving,
+                    )
+                )
+        if spatial_anchor_weight:
+            if spatial_anchor is None:
+                raise ValueError("spatial anchor is required for anchored fine-tuning")
+            loss = loss + spatial_anchor_weight * spatial_anchor_penalty(
+                model, spatial_anchor
+            )
+        if spoc_auxiliary_weight:
+            if (
+                spatial_reference_covariance is None
+                or spatial_amplitude_covariance is None
+            ):
+                raise ValueError("SPoC covariance matrices are required")
+            loss = loss + spoc_auxiliary_weight * spatial_spoc_penalty(
+                model,
+                spatial_reference_covariance,
+                spatial_amplitude_covariance,
+                spoc_row_count,
+            )
+        if spatial_orthogonality_weight:
+            if spatial_reference_covariance is None:
+                raise ValueError("reference covariance is required for orthogonality")
+            loss = loss + spatial_orthogonality_weight * (
+                spatial_covariance_orthogonality_penalty(
+                    model, spatial_reference_covariance
+                )
+            )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         optimizer_instance.step()
         losses.append(float(loss.detach()))
     return losses
+
+
+def movement_positive_weight(
+    target: torch.Tensor,
+    rows: np.ndarray,
+    finger_index: int | None,
+    movement_threshold: float,
+) -> torch.Tensor:
+    """Balance target-finger or all-finger movement and rest in auxiliary BCE."""
+    scoped = target.index_select(
+        0, torch.as_tensor(rows, dtype=torch.long, device=target.device)
+    )
+    if finger_index is not None:
+        scoped = scoped[:, finger_index]
+        reduction: int | tuple[int, ...] = 0
+    else:
+        reduction = 0
+    positive = (scoped >= movement_threshold).sum(dim=reduction).clamp_min(1)
+    negative = (scoped < movement_threshold).sum(dim=reduction).clamp_min(1)
+    return (negative / positive).to(target.dtype)
+
+
+def movement_target_scale(
+    target: torch.Tensor,
+    rows: np.ndarray,
+    finger_index: int | None,
+) -> torch.Tensor:
+    """Scale a target-finger or five-finger continuous auxiliary loss."""
+    scoped = target.index_select(
+        0, torch.as_tensor(rows, dtype=torch.long, device=target.device)
+    )
+    if finger_index is not None:
+        scoped = scoped[:, finger_index]
+    return scoped.std(dim=0).clamp_min(0.1)
+
+
+def grouped_velocity_scale(
+    target: torch.Tensor,
+    groups: list[list[int]],
+) -> torch.Tensor:
+    """Estimate velocity scale without differencing across event boundaries."""
+    differences = [
+        torch.diff(target[start:stop])
+        for start, stop in groups
+        if stop - start >= 2
+    ]
+    if not differences:
+        return torch.as_tensor(0.01, dtype=target.dtype, device=target.device)
+    return torch.cat(differences).std().clamp_min(0.01)
 
 
 def balanced_accuracy(truth: np.ndarray, prediction: np.ndarray) -> float:
@@ -856,6 +1928,80 @@ def cached_prediction(
 
 
 @torch.inference_mode()
+def auxiliary_predictions(
+    model: SingleWaveletDecoder,
+    cached: torch.Tensor,
+    intervals: list[list[int]],
+    rows: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Predict the primary trajectory and continuous auxiliary trajectories."""
+    if model.movement_output is None:
+        raise ValueError("auxiliary predictions require a movement head")
+    model.eval()
+    primary = np.full(rows, np.nan, dtype=np.float32)
+    auxiliary = np.full(
+        (rows, model.movement_head_outputs), np.nan, dtype=np.float32
+    )
+    for start, stop in intervals:
+        result = model.decode_features_with_auxiliary(cached[start:stop][None])
+        primary[start:stop] = result[0][0].float().cpu().numpy()
+        auxiliary[start:stop] = result[1][0].float().cpu().numpy()
+    return primary, auxiliary
+
+
+def auxiliary_residual_readout(
+    primary: np.ndarray,
+    auxiliary: np.ndarray,
+    raw_target: np.ndarray,
+    training_intervals: list[list[int]],
+    prediction_intervals: list[list[int]],
+    l2: float,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit a small training-only ridge correction to the primary trajectory."""
+    if l2 <= 0:
+        raise ValueError("auxiliary residual readout L2 must be positive")
+    training = indices_from_intervals(training_intervals)
+    prediction_rows = indices_from_intervals(prediction_intervals)
+    train_auxiliary = np.asarray(auxiliary[training], dtype=np.float64)
+    train_primary = np.asarray(primary[training], dtype=np.float64)
+    train_target = np.asarray(raw_target[training], dtype=np.float64)
+    finite = (
+        np.isfinite(train_primary)
+        & np.isfinite(train_target)
+        & np.isfinite(train_auxiliary).all(axis=1)
+    )
+    if finite.sum() <= train_auxiliary.shape[1] + 1:
+        raise ValueError("too few finite training rows for auxiliary readout")
+    train_auxiliary = train_auxiliary[finite]
+    residual = train_target[finite] - train_primary[finite]
+    mean = train_auxiliary.mean(axis=0)
+    scale = train_auxiliary.std(axis=0)
+    scale[scale < 1.0e-6] = 1.0
+    design = (train_auxiliary - mean) / scale
+    residual_mean = float(residual.mean())
+    centered_residual = residual - residual_mean
+    penalty = float(l2) * design.shape[0]
+    coefficient = np.linalg.solve(
+        design.T @ design + penalty * np.eye(design.shape[1]),
+        design.T @ centered_residual,
+    )
+    corrected = np.asarray(primary, dtype=np.float32).copy()
+    prediction_design = (auxiliary[prediction_rows] - mean) / scale
+    corrected[prediction_rows] += (
+        residual_mean + prediction_design @ coefficient
+    ).astype(np.float32)
+    audit = {
+        "l2_per_training_row": float(l2),
+        "training_rows": int(finite.sum()),
+        "residual_intercept": residual_mean,
+        "auxiliary_mean": mean.tolist(),
+        "auxiliary_scale": scale.tolist(),
+        "coefficients": coefficient.tolist(),
+    }
+    return corrected, audit
+
+
+@torch.inference_mode()
 def raw_prediction(
     model: SingleWaveletDecoder,
     padded_ecog: torch.Tensor,
@@ -876,6 +2022,29 @@ def raw_prediction(
     return prediction
 
 
+def split_local_spatial_objective(
+    *,
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training_rows: np.ndarray,
+    finger_index: int,
+    minimum_target: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Build fixed split-local matrices for differentiable SPoC regularization."""
+    reference, amplitude, _ = continuous_amplitude_covariance_matrices(
+        filtered_bins,
+        target,
+        training_rows,
+        finger_index,
+        minimum_target=minimum_target,
+    )
+    return (
+        torch.as_tensor(reference, dtype=torch.float32, device=device),
+        torch.as_tensor(amplitude, dtype=torch.float32, device=device),
+    )
+
+
 def monitor_inner_fold(
     *,
     model: SingleWaveletDecoder,
@@ -889,11 +2058,50 @@ def monitor_inner_fold(
     args: argparse.Namespace,
     seed: int,
     finger_index: int = LITTLE,
+    spoc_filtered_bins: np.ndarray | None = None,
 ) -> dict[str, dict[str, float]]:
+    raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
+    spatial_anchor = model.spatial.weight.detach().clone()
     training_rows = indices_from_intervals(training_groups)
-    target_scale = target[
-        torch.as_tensor(training_rows, device=target.device), finger_index
-    ].std().clamp_min(0.1)
+    spatial_reference_covariance = None
+    spatial_amplitude_covariance = None
+    if args.spoc_auxiliary_weight or args.spatial_orthogonality_weight:
+        if spoc_filtered_bins is None:
+            raise ValueError("SPoC-filtered bins are required for spatial objectives")
+        spatial_reference_covariance, spatial_amplitude_covariance = (
+            split_local_spatial_objective(
+                filtered_bins=spoc_filtered_bins,
+                target=target_np,
+                training_rows=training_rows,
+                finger_index=finger_index,
+                minimum_target=args.spoc_active_threshold,
+                device=target.device,
+            )
+        )
+    training_index = torch.as_tensor(training_rows, device=target.device)
+    trajectory_target = split_local_raw_trajectory_blend(
+        target[:, finger_index],
+        raw_target,
+        training_index,
+        args.raw_trajectory_blend,
+    )
+    target_scale = (
+        trajectory_target.index_select(0, training_index).std().clamp_min(0.1)
+    )
+    positive_weight = movement_positive_weight(
+        target,
+        training_rows,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
+        args.movement_threshold,
+    )
+    auxiliary_target_scale = movement_target_scale(
+        target,
+        training_rows,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
+    )
+    velocity_scale = grouped_velocity_scale(
+        target[:, finger_index], training_groups
+    )
     sampler = make_sampler(args, training_groups, seed)
     metrics = {}
     baseline = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -905,8 +2113,20 @@ def monitor_inner_fold(
         args.movement_threshold,
         args.rest_threshold,
     )
-    opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, args.weight_decay)
-    decode = model.decode_features
+    opt = optimizer(
+        model,
+        args.head_learning_rate,
+        0.0,
+        0.0,
+        0.0,
+        args.weight_decay,
+        args.movement_modulation_learning_rate,
+    )
+    decode = (
+        model.decode_features_with_auxiliary
+        if args.movement_loss_weight or args.velocity_loss_weight
+        else model.decode_features
+    )
     if args.compile:
         decode = torch.compile(decode, mode="reduce-overhead")
     completed = 0
@@ -919,12 +2139,39 @@ def monitor_inner_fold(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=checkpoint - completed,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=False,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
         completed = checkpoint
         prediction = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -949,9 +2196,16 @@ def monitor_inner_fold(
         args.head_learning_rate * 0.5,
         args.spatial_learning_rate,
         args.wavelet_learning_rate,
+        args.interlevel_learning_rate,
         args.weight_decay,
+        args.movement_modulation_learning_rate,
+        args.signed_pooling_learning_rate,
     )
-    forward = model.forward
+    forward = (
+        model.forward_with_auxiliary
+        if args.movement_loss_weight or args.velocity_loss_weight
+        else model.forward
+    )
     if args.compile:
         forward = torch.compile(forward, mode="reduce-overhead")
     completed = 0
@@ -963,12 +2217,39 @@ def monitor_inner_fold(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=checkpoint - completed,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=target_scale,
             raw_stem=True,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
         completed = checkpoint
         prediction = raw_prediction(model, padded_ecog, validation_intervals, raw.size)
@@ -1049,23 +2330,74 @@ def train_final_schedule(
     cached: torch.Tensor,
     padded_ecog: torch.Tensor,
     target: torch.Tensor,
+    target_np: np.ndarray,
+    raw: np.ndarray,
     training_groups: list[list[int]],
     schedule: str,
     args: argparse.Namespace,
     seed: int,
     finger_index: int = LITTLE,
+    spoc_filtered_bins: np.ndarray | None = None,
 ) -> None:
+    raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
+    spatial_anchor = model.spatial.weight.detach().clone()
     training_rows = indices_from_intervals(training_groups)
-    scale = target[
-        torch.as_tensor(training_rows, device=target.device), finger_index
-    ].std().clamp_min(0.1)
+    spatial_reference_covariance = None
+    spatial_amplitude_covariance = None
+    if args.spoc_auxiliary_weight or args.spatial_orthogonality_weight:
+        if spoc_filtered_bins is None:
+            raise ValueError("SPoC-filtered bins are required for spatial objectives")
+        spatial_reference_covariance, spatial_amplitude_covariance = (
+            split_local_spatial_objective(
+                filtered_bins=spoc_filtered_bins,
+                target=target_np,
+                training_rows=training_rows,
+                finger_index=finger_index,
+                minimum_target=args.spoc_active_threshold,
+                device=target.device,
+            )
+        )
+    training_index = torch.as_tensor(training_rows, device=target.device)
+    trajectory_target = split_local_raw_trajectory_blend(
+        target[:, finger_index],
+        raw_target,
+        training_index,
+        args.raw_trajectory_blend,
+    )
+    scale = trajectory_target.index_select(0, training_index).std().clamp_min(0.1)
+    positive_weight = movement_positive_weight(
+        target,
+        training_rows,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
+        args.movement_threshold,
+    )
+    auxiliary_target_scale = movement_target_scale(
+        target,
+        training_rows,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
+    )
+    velocity_scale = grouped_velocity_scale(
+        target[:, finger_index], training_groups
+    )
     parts = schedule.split("_")
     frozen_updates = int(parts[1])
     unfrozen_updates = 0 if parts[0] == "frozen" else int(parts[2])
     if frozen_updates:
         sampler = make_sampler(args, training_groups, seed)
-        opt = optimizer(model, args.head_learning_rate, 0.0, 0.0, args.weight_decay)
-        decode = model.decode_features
+        opt = optimizer(
+            model,
+            args.head_learning_rate,
+            0.0,
+            0.0,
+            0.0,
+            args.weight_decay,
+            args.movement_modulation_learning_rate,
+        )
+        decode = (
+            model.decode_features_with_auxiliary
+            if args.movement_loss_weight or args.velocity_loss_weight
+            else model.decode_features
+        )
         if args.compile:
             decode = torch.compile(decode, mode="reduce-overhead")
         train_updates(
@@ -1075,12 +2407,39 @@ def train_final_schedule(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=frozen_updates,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=False,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
     if unfrozen_updates:
         sampler = make_sampler(args, training_groups, seed + 1000)
@@ -1089,9 +2448,16 @@ def train_final_schedule(
             args.head_learning_rate * 0.5,
             args.spatial_learning_rate,
             args.wavelet_learning_rate,
+            args.interlevel_learning_rate,
             args.weight_decay,
+            args.movement_modulation_learning_rate,
+            args.signed_pooling_learning_rate,
         )
-        forward = model.forward
+        forward = (
+            model.forward_with_auxiliary
+            if args.movement_loss_weight or args.velocity_loss_weight
+            else model.forward
+        )
         if args.compile:
             forward = torch.compile(forward, mode="reduce-overhead")
         train_updates(
@@ -1101,12 +2467,39 @@ def train_final_schedule(
             cached=cached,
             padded_ecog=padded_ecog,
             target=target[:, finger_index],
+            trajectory_target=trajectory_target,
             sampler=sampler,
             updates=unfrozen_updates,
-            steps=args.sequence_steps,
+            steps=args.sequence_steps + args.warmup_steps,
+            warmup_steps=args.warmup_steps,
             batch_size=args.batch_size,
             target_scale=scale,
             raw_stem=True,
+            movement_loss_weight=args.movement_loss_weight,
+            movement_trajectory_weight=args.movement_trajectory_weight,
+            movement_threshold=args.movement_threshold,
+            movement_positive_weight=positive_weight,
+            movement_targets=(
+                target if args.movement_head_scope == "all_fingers" else None
+            ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
+            velocity_loss_weight=args.velocity_loss_weight,
+            velocity_scale=velocity_scale,
+            correlation_loss_weight=args.correlation_loss_weight,
+            derivative_correlation_weight=args.derivative_correlation_weight,
+            raw_target=raw_target,
+            raw_movement_correlation_weight=args.raw_movement_correlation_weight,
+            raw_movement_derivative_correlation_weight=(
+                args.raw_movement_derivative_correlation_weight
+            ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
 
 
@@ -1152,6 +2545,36 @@ def main() -> None:
     parser.add_argument("--tap-resample-up", type=int, default=5)
     parser.add_argument("--tap-resample-down", type=int, default=2)
     parser.add_argument(
+        "--wavelet-frontend",
+        choices=(
+            "depth3",
+            "overcomplete_depth3_depth4",
+            "overcomplete_depth3_depth4_depth5",
+        ),
+        default="depth3",
+        help=(
+            "depth3 uses eight 0--200 Hz leaves; overcomplete_depth3_depth4 "
+            "retains those leaves and their sixteen depth-4 children in one tree; "
+            "overcomplete_depth3_depth4_depth5 also retains 32 depth-5 children"
+        ),
+    )
+    parser.add_argument(
+        "--wavelet-interlevel-skip",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--wavelet-interlevel-normalization",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--wavelet-final-normalization",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="also learn normalization on the final leaves before energy pooling",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -1176,6 +2599,14 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="keep zero-update LARS as a baseline but require the selected model to train the LSTM",
+    )
+    parser.add_argument(
+        "--initialization-only",
+        action="store_true",
+        help=(
+            "fit and score only the three outer split-local sparse initializers; "
+            "skip inner-fold recurrent models and every LSTM update"
+        ),
     )
     parser.add_argument(
         "--selection-metric",
@@ -1211,9 +2642,43 @@ def main() -> None:
         "--lasso-backend",
         choices=("sklearn_lars", "torch_fista"),
         default="sklearn_lars",
-        help="use exact CPU LARS or a batched GPU FISTA Lasso path",
+        help="split-local sparse initializer; torch_fista fits its alpha path on the selected device",
     )
     parser.add_argument("--csp-mode", choices=tuple(CSP_MODES), default="movement_1")
+    parser.add_argument(
+        "--csp-band-mode", choices=CSP_BAND_MODES, default="joint_hhl_hhh"
+    )
+    parser.add_argument(
+        "--csp-contrast-mode",
+        choices=CSP_CONTRAST_MODES,
+        default="common_rest",
+        help=(
+            "fit target-finger CSP against common rest, other-finger-only "
+            "movement, retain both contrasts, or add a training-split-only "
+            "high-versus-lower target-amplitude contrast in the same spatial layer"
+        ),
+    )
+    parser.add_argument(
+        "--amplitude-target-lead-bins",
+        type=int,
+        default=0,
+        help=(
+            "fit all-finger amplitude covariance at neural bin t against target "
+            "bin t+lead, retaining only pairs fully inside the training split"
+        ),
+    )
+    parser.add_argument(
+        "--future-context-bins",
+        type=int,
+        default=0,
+        help="offline neural bins after the decoded time included in sparse features",
+    )
+    parser.add_argument(
+        "--csp-band-cache-root",
+        type=Path,
+        default=Path("/dev/shm/ecog_csp_band_cache"),
+        help="shared seven-band ECoG cache used only to fit designed-band CSP rows",
+    )
     parser.add_argument(
         "--ica-cache-root",
         type=Path,
@@ -1233,7 +2698,13 @@ def main() -> None:
     parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
     parser.add_argument(
         "--recurrent-cell",
-        choices=("standard", "paper_equations", "residual_lstm", "residual_gru"),
+        choices=(
+            "standard",
+            "paper_equations",
+            "residual_lstm",
+            "residual_gru",
+            "residual_bilstm",
+        ),
         default="standard",
         help=(
             "LARS-initialized standard/paper LSTM, or a zero-initialized "
@@ -1241,10 +2712,79 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--residual-input",
+        choices=(
+            "selected",
+            "candidate",
+            "current_candidate",
+            "causal_candidate",
+            "selected_causal",
+        ),
+        default="selected",
+        help=(
+            "feed the residual recurrent cell the LARS-selected subset, the "
+            "complete split-local pre-LARS candidate pool, only its newest-bin "
+            "members, the current-time source stream for every candidate identity, "
+            "or only current-time streams represented among nonzero LARS atoms; the "
+            "full LARS direct path is retained in all residual modes"
+        ),
+    )
+    parser.add_argument(
         "--output-activation", choices=("linear", "softplus"), default="softplus"
+    )
+    parser.add_argument(
+        "--residual-history-bins",
+        type=int,
+        default=1,
+        help=(
+            "number of newest 25 Hz lag bins visible to current_candidate "
+            "recurrent input; the direct LARS path always retains all 25 bins"
+        ),
+    )
+    parser.add_argument(
+        "--residual-input-width",
+        type=int,
+        default=None,
+        help=(
+            "optional fixed zero-padded width for current_candidate recurrent "
+            "input, allowing torch.compile graph reuse across split-local pools"
+        ),
+    )
+    parser.add_argument(
+        "--residual-include-direct",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "append the fixed split-local LARS logit to the residual recurrent "
+            "input so the same LSTM can learn state-dependent corrections"
+        ),
+    )
+    parser.add_argument(
+        "--residual-dynamics",
+        choices=("pointwise", "leaky_velocity"),
+        default="pointwise",
+        help=(
+            "interpret the recurrent output as a pointwise correction or as a "
+            "causal innovation accumulated by a GPU-vectorized leaky state"
+        ),
+    )
+    parser.add_argument(
+        "--residual-decay",
+        type=float,
+        default=0.95,
+        help="fixed decay of the leaky residual state",
     )
     parser.add_argument("--softplus-beta", type=float, default=10.0)
     parser.add_argument("--sequence-steps", type=int, default=100)
+    parser.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=0,
+        help=(
+            "causal prefix presented to the recurrent cell before the scored "
+            "sequence; prefix outputs do not contribute to any loss"
+        ),
+    )
     parser.add_argument("--sequence-stride", type=int, default=25)
     parser.add_argument(
         "--sampler-mode",
@@ -1254,7 +2794,40 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=24)
     parser.add_argument("--head-learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--spatial-learning-rate", type=float, default=3.0e-6)
+    parser.add_argument(
+        "--spatial-anchor-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "L2 penalty on displacement from the split-local analytical CSP/ICA "
+            "initializer during end-to-end updates"
+        ),
+    )
+    parser.add_argument(
+        "--spoc-auxiliary-weight",
+        type=float,
+        default=0.0,
+        help="weight of the differentiable active-amplitude SPoC Rayleigh objective",
+    )
+    parser.add_argument(
+        "--spoc-active-threshold",
+        type=float,
+        default=0.20,
+        help="training-only target threshold for the within-movement SPoC objective",
+    )
+    parser.add_argument(
+        "--spatial-orthogonality-weight",
+        type=float,
+        default=0.0,
+        help="weight of covariance-metric decorrelation among appended CSP/SPoC rows",
+    )
     parser.add_argument("--wavelet-learning-rate", type=float, default=3.0e-6)
+    parser.add_argument(
+        "--interlevel-learning-rate",
+        type=float,
+        default=3.0e-4,
+        help="learning rate for zero-gated interlevel skip/normalization paths",
+    )
     parser.add_argument(
         "--frozen-update-grid",
         type=int,
@@ -1281,7 +2854,129 @@ def main() -> None:
         help="compare the LARS initialization with LSTM-only updates; do not tune the stem",
     )
     parser.add_argument("--weight-decay", type=float, default=1.0e-4)
+    parser.add_argument(
+        "--movement-loss-weight",
+        type=float,
+        default=0.0,
+        help="weight of a balanced target-finger movement/rest BCE auxiliary head",
+    )
+    parser.add_argument(
+        "--movement-head-scope",
+        choices=("target", "all_fingers"),
+        default="target",
+        help=(
+            "train the shared recurrent state to classify movement of only the "
+            "decoded finger or of all five fingers"
+        ),
+    )
+    parser.add_argument(
+        "--movement-head-objective",
+        choices=("binary_state", "continuous_trajectory"),
+        default="binary_state",
+        help=(
+            "train the auxiliary movement head with balanced state BCE or "
+            "scale-normalized continuous glove trajectories"
+        ),
+    )
+    parser.add_argument(
+        "--auxiliary-residual-readout-l2",
+        type=float,
+        default=None,
+        help=(
+            "fit an outer-training ridge correction from the continuous all-finger "
+            "auxiliary trajectories; the value is the L2 penalty per training row"
+        ),
+    )
+    parser.add_argument(
+        "--movement-trajectory-weight",
+        type=float,
+        default=1.0,
+        help="relative trajectory-MSE weight for bins at or above the movement threshold",
+    )
+    parser.add_argument(
+        "--raw-trajectory-blend",
+        type=float,
+        default=0.0,
+        help=(
+            "blend the cleaned training target with an affine-aligned raw glove "
+            "trace; the affine map is fitted only on each split's training rows"
+        ),
+    )
+    parser.add_argument(
+        "--initialization-raw-target-blend",
+        type=float,
+        default=0.0,
+        help=(
+            "blend the split-local sparse-initialization target with a "
+            "training-affine raw glove trajectory"
+        ),
+    )
+    parser.add_argument(
+        "--velocity-loss-weight",
+        type=float,
+        default=0.0,
+        help="weight of an auxiliary velocity-regression head on the shared LSTM state",
+    )
+    parser.add_argument(
+        "--movement-modulation",
+        action="store_true",
+        help="learn a smooth state-conditioned trajectory gain initialized exactly to one",
+    )
+    parser.add_argument(
+        "--movement-modulation-learning-rate",
+        type=float,
+        default=None,
+        help="optional learning rate for the scalar movement modulation gain",
+    )
+    parser.add_argument(
+        "--wavelet-signed-pooling",
+        action="store_true",
+        help="add a zero-gated signed mean to each existing leaf-energy statistic",
+    )
+    parser.add_argument(
+        "--signed-pooling-learning-rate",
+        type=float,
+        default=3.0e-4,
+        help="learning rate for the eight zero-initialized signed-pooling gates",
+    )
+    parser.add_argument(
+        "--residual-output-init-std",
+        type=float,
+        default=0.0,
+        help=(
+            "near-zero random initialization for residual-head coefficients; "
+            "zero preserves exact LARS output but delays recurrent gradients by one update"
+        ),
+    )
+    parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
+    parser.add_argument(
+        "--derivative-correlation-weight", type=float, default=0.0
+    )
+    parser.add_argument(
+        "--raw-movement-correlation-weight",
+        type=float,
+        default=0.0,
+        help="movement-bin shape loss against the raw glove trajectory",
+    )
+    parser.add_argument(
+        "--raw-movement-derivative-correlation-weight",
+        type=float,
+        default=0.0,
+        help="movement-bin velocity-shape loss against the raw glove trajectory",
+    )
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument(
+        "--split-seed",
+        type=int,
+        default=None,
+        help="fix event-fold construction while varying only model initialization",
+    )
+    parser.add_argument(
+        "--sampler-seed",
+        type=int,
+        default=None,
+        help="fix minibatch order while varying only model initialization",
+    )
     parser.add_argument("--feature-chunk", type=int, default=256)
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--device", default="cuda")
@@ -1291,6 +2986,119 @@ def main() -> None:
         help="prepare the subject-level 400 Hz and fixed-leaf caches, then exit",
     )
     args = parser.parse_args()
+    if args.initialization_only:
+        if args.reuse_inner_metrics_from is not None or args.force_schedule is not None:
+            raise ValueError(
+                "--initialization-only cannot reuse decoder metrics or force a decoder schedule"
+            )
+        args.require_lstm_update = False
+    if (
+        args.movement_loss_weight < 0
+        or args.movement_trajectory_weight <= 0
+        or args.warmup_steps < 0
+        or not 0.0 <= args.raw_trajectory_blend <= 1.0
+        or not 0.0 <= args.initialization_raw_target_blend <= 1.0
+        or args.velocity_loss_weight < 0
+        or args.residual_output_init_std < 0
+        or not 0.0 <= args.residual_decay <= 1.0
+        or args.correlation_loss_weight < 0
+        or args.derivative_correlation_weight < 0
+        or args.raw_movement_correlation_weight < 0
+        or args.raw_movement_derivative_correlation_weight < 0
+        or args.spatial_anchor_weight < 0
+        or args.spoc_auxiliary_weight < 0
+        or args.spatial_orthogonality_weight < 0
+        or args.spoc_active_threshold < 0
+        or (
+            args.movement_modulation_learning_rate is not None
+            and args.movement_modulation_learning_rate <= 0
+        )
+        or args.signed_pooling_learning_rate <= 0
+        or (
+            args.auxiliary_residual_readout_l2 is not None
+            and args.auxiliary_residual_readout_l2 <= 0
+        )
+    ):
+        raise ValueError("auxiliary loss weights must be nonnegative")
+    if args.residual_input in (
+        "candidate",
+        "current_candidate",
+        "causal_candidate",
+        "selected_causal",
+    ) and args.recurrent_cell not in (
+        "residual_lstm",
+        "residual_gru",
+        "residual_bilstm",
+    ):
+        raise ValueError(
+            "candidate residual inputs require --recurrent-cell residual_lstm or residual_gru"
+        )
+    if not 1 <= args.residual_history_bins <= HISTORY:
+        raise ValueError(f"--residual-history-bins must be between 1 and {HISTORY}")
+    if args.residual_input != "current_candidate" and args.residual_history_bins != 1:
+        raise ValueError(
+            "--residual-history-bins only applies to --residual-input current_candidate"
+        )
+    if args.residual_input_width is not None and args.residual_input_width <= 0:
+        raise ValueError("--residual-input-width must be positive")
+    if args.amplitude_target_lead_bins < 0:
+        raise ValueError("--amplitude-target-lead-bins must be nonnegative")
+    if args.future_context_bins < 0:
+        raise ValueError("--future-context-bins must be nonnegative")
+    if args.future_context_bins and not args.frozen_only:
+        raise ValueError("future context currently requires --frozen-only cached features")
+    if args.amplitude_target_lead_bins and args.csp_contrast_mode not in (
+        "all_finger_amplitude",
+        "target_rest_all_finger_amplitude",
+        "target_rest_all_finger_amplitude_synergy",
+        "target_rest_all_finger_amplitude_synergy_conditional",
+        "all_finger_rest_amplitude",
+    ):
+        raise ValueError(
+            "--amplitude-target-lead-bins requires an all-finger amplitude contrast"
+        )
+    if (
+        args.residual_input
+        not in ("current_candidate", "causal_candidate", "selected_causal")
+        and args.residual_input_width is not None
+    ):
+        raise ValueError(
+            "--residual-input-width only applies to current/causal candidate input"
+        )
+    if args.movement_modulation and args.movement_loss_weight <= 0:
+        raise ValueError("--movement-modulation requires --movement-loss-weight")
+    if args.movement_modulation and args.movement_head_scope != "target":
+        raise ValueError("--movement-modulation requires --movement-head-scope target")
+    if args.auxiliary_residual_readout_l2 is not None and (
+        args.movement_loss_weight <= 0
+        or args.movement_head_scope != "all_fingers"
+        or args.movement_head_objective != "continuous_trajectory"
+    ):
+        raise ValueError(
+            "--auxiliary-residual-readout-l2 requires a continuous all-finger "
+            "auxiliary head"
+        )
+    if args.initialization_only and args.auxiliary_residual_readout_l2 is not None:
+        raise ValueError(
+            "--auxiliary-residual-readout-l2 is unavailable with --initialization-only"
+        )
+    if args.spoc_auxiliary_weight and args.csp_contrast_mode not in (
+        "continuous_amplitude",
+        "dual_rest_amplitude",
+        "triple_rest_other_continuous_amplitude",
+    ):
+        raise ValueError(
+            "--spoc-auxiliary-weight requires a continuous-amplitude CSP contrast"
+        )
+    if args.frozen_only and (
+        args.wavelet_interlevel_skip
+        or args.wavelet_interlevel_normalization
+        or args.wavelet_signed_pooling
+    ):
+        raise ValueError(
+            "trainable wavelet paths require end-to-end raw-stem updates; "
+            "they cannot affect --frozen-only cached-feature training"
+        )
     if args.model_rate % 25:
         raise ValueError("model rate must be divisible by the 25 Hz target rate")
     args.samples_per_bin = args.model_rate // 25
@@ -1330,6 +3138,9 @@ def main() -> None:
         )
 
     started = time.perf_counter()
+    model_seed, split_seed, sampler_seed = resolve_seed_roles(
+        args.seed, args.split_seed, args.sampler_seed
+    )
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -1356,19 +3167,26 @@ def main() -> None:
     )
     rows = int(fold_definition["training_rows"])
     source_ecog = args.prepared_root / f"sub{args.subject}" / "train_ecog.npy"
-    if args.model_rate == SOURCE_RATE:
-        ecog = np.asarray(np.load(source_ecog, mmap_mode="r"))
-    else:
-        ecog = np.asarray(resample_ecog(source_ecog, args.resampled_cache))
+    ecog = load_runtime_ecog(source_ecog, args.resampled_cache, args.model_rate)
     raw_full = np.load(
         args.prepared_root / f"sub{args.subject}" / "train_glove_25hz_raw.npy",
         mmap_mode="r",
     )
     raw_matrix = np.asarray(raw_full[OFFSET : OFFSET + rows], dtype=np.float64)
     raw = raw_matrix[:, finger_index].astype(np.float32)
-    frontend = WaveletPacketEnergy(
+    frontend_levels = {
+        "depth3": 3,
+        "overcomplete_depth3_depth4": 4,
+        "overcomplete_depth3_depth4_depth5": 5,
+    }[args.wavelet_frontend]
+    frontend_type = (
+        OvercompleteWaveletPacketEnergy
+        if frontend_levels > 3
+        else WaveletPacketEnergy
+    )
+    frontend = frontend_type(
         wavelet="bior6.8",
-        levels=3,
+        levels=frontend_levels,
         kernel_size=17,
         trainable=False,
         padding_mode="constant",
@@ -1377,15 +3195,48 @@ def main() -> None:
         tap_resample_up=args.tap_resample_up,
         tap_resample_down=args.tap_resample_down,
     ).to(device).eval()
+    csp_frontend = (
+        frontend
+        if args.wavelet_frontend == "depth3"
+        else WaveletPacketEnergy(
+            wavelet="bior6.8",
+            levels=3,
+            kernel_size=17,
+            trainable=False,
+            padding_mode="constant",
+            energy_window_samples=args.samples_per_bin,
+            energy_stride_samples=args.samples_per_bin,
+            tap_resample_up=args.tap_resample_up,
+            tap_resample_down=args.tap_resample_down,
+        ).to(device).eval()
+    )
     hhl_path = args.leaf_cache / "linear_hhl_100_125.npy"
     hhh_path = args.leaf_cache / "linear_hhh_125_150.npy"
-    if not (
-        valid_leaf_cache(hhl_path, ecog.shape[0])
-        and valid_leaf_cache(hhh_path, ecog.shape[0])
-    ):
-        hhl_values, hhh_values = linear_gamma_leaf_signals(ecog, frontend, device)
-        atomic_save_npy(hhl_path, hhl_values)
-        atomic_save_npy(hhh_path, hhh_values)
+    lower_first_path = args.leaf_cache / "linear_50_75.npy"
+    lower_second_path = args.leaf_cache / "linear_75_100.npy"
+    use_lower_high_gamma = args.csp_band_mode == "separate_50_100_hhl_hhh"
+    # Outer folds run concurrently, but these linear leaf signals depend only on
+    # the subject. Serialize their first construction so several GPUs do not
+    # perform the same convolution and race to publish identical cache files.
+    with initialization_cache_lock(args.leaf_cache):
+        if not (
+            valid_leaf_cache(hhl_path, ecog.shape[0])
+            and valid_leaf_cache(hhh_path, ecog.shape[0])
+        ):
+            hhl_values, hhh_values = linear_gamma_leaf_signals(
+                ecog, csp_frontend, device
+            )
+            atomic_save_npy(hhl_path, hhl_values)
+            atomic_save_npy(hhh_path, hhh_values)
+        if use_lower_high_gamma and not (
+            valid_leaf_cache(lower_first_path, ecog.shape[0])
+            and valid_leaf_cache(lower_second_path, ecog.shape[0])
+        ):
+            lower_first, lower_second = linear_lower_high_gamma_leaf_signals(
+                ecog, csp_frontend, device
+            )
+            atomic_save_npy(lower_first_path, lower_first)
+            atomic_save_npy(lower_second_path, lower_second)
     hhl = np.load(hhl_path, mmap_mode="r")
     hhh = np.load(hhh_path, mmap_mode="r")
     if args.prepare_shared_only:
@@ -1402,16 +3253,52 @@ def main() -> None:
         )
         return
     bins = ecog.shape[0] // args.samples_per_bin
-    joint_bins = np.concatenate(
-        (
-            hhl[: bins * args.samples_per_bin].reshape(bins, args.samples_per_bin, -1),
-            hhh[: bins * args.samples_per_bin].reshape(bins, args.samples_per_bin, -1),
-        ),
-        axis=1,
+    hhl_bins = hhl[: bins * args.samples_per_bin].reshape(
+        bins, args.samples_per_bin, -1
     )
-    ecog_t = torch.from_numpy(ecog.copy()).to(device)
-    context = frontend.effective_kernel_size // 2
-    padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
+    hhh_bins = hhh[: bins * args.samples_per_bin].reshape(
+        bins, args.samples_per_bin, -1
+    )
+    joint_bins = np.concatenate((hhl_bins, hhh_bins), axis=1)
+    lower_high_gamma_bins = None
+    if use_lower_high_gamma:
+        lower_first = np.load(lower_first_path, mmap_mode="r")
+        lower_second = np.load(lower_second_path, mmap_mode="r")
+        lower_first_bins = lower_first[: bins * args.samples_per_bin].reshape(
+            bins, args.samples_per_bin, -1
+        )
+        lower_second_bins = lower_second[: bins * args.samples_per_bin].reshape(
+            bins, args.samples_per_bin, -1
+        )
+        lower_high_gamma_bins = np.concatenate(
+            (lower_first_bins, lower_second_bins), axis=1
+        )
+    designed_band_bins = None
+    if args.csp_band_mode == "designed_seven":
+        designed_path = (
+            args.csp_band_cache_root
+            / f"sub{args.subject}"
+            / "train_filtered_bands.npy"
+        )
+        designed = np.load(designed_path, mmap_mode="r")
+        if (
+            designed.ndim != 3
+            or designed.shape[0] != len(CSP_BANDS_HZ)
+            or designed.shape[2] != ecog.shape[1]
+        ):
+            raise ValueError(
+                "designed-band cache must have shape (7, samples, channels)"
+            )
+        usable = designed.shape[1] // args.samples_per_bin * args.samples_per_bin
+        designed_band_bins = designed[:, :usable].reshape(
+            len(CSP_BANDS_HZ), -1, args.samples_per_bin, designed.shape[2]
+        )
+    if args.initialization_only:
+        padded_ecog = None
+    else:
+        ecog_t = torch.from_numpy(ecog.copy()).to(device)
+        context = frontend.effective_kernel_size // 2
+        padded_ecog = F.pad(ecog_t.T[None], (context, context)).squeeze(0).T
 
     initialized_oof = np.full(rows, np.nan, dtype=np.float32)
     tuned_oof = np.full(rows, np.nan, dtype=np.float32)
@@ -1446,54 +3333,88 @@ def main() -> None:
             minimum_event_bins=args.minimum_event_bins,
             maximum_rest_group_bins=args.maximum_rest_group_bins,
             purge_bins=args.purge_bins,
-            seed=args.seed + outer_fold,
+            seed=split_seed + outer_fold,
             finger_index=finger_index,
         )
         inner_records = []
-        for split in ([] if reused_report is not None else splits):
+        for split in (
+            [] if reused_report is not None or args.initialization_only else splits
+        ):
             cache_root = args.initialization_cache_root or args.output
             cache = cache_root / "cache" / f"outer{outer_fold}" / f"inner{split['fold']}"
-            if (cache / "initialization.npz").exists():
-                initialization, spatial, target_np, cached_split = load_initialization(cache)
-                split = cached_split
-            else:
+            requested_split = split
+
+            def create_inner_initialization():
                 target_np = make_subject_target(
                     raw_matrix,
-                    split["training_intervals"],
-                    split["validation_intervals"],
+                    requested_split["training_intervals"],
+                    requested_split["validation_intervals"],
                     args.subject,
                     finger_index=finger_index,
                     little_event_decontamination=args.little_event_decontamination,
                     little_event_ratio_low=args.little_event_ratio_low,
                     little_event_ratio_high=args.little_event_ratio_high,
                 )
+                initialization_target, target_blend_audit = (
+                    split_local_initialization_target_blend(
+                        target_np,
+                        raw_matrix,
+                        indices_from_intervals(requested_split["training_intervals"]),
+                        args.initialization_raw_target_blend,
+                    )
+                )
                 initialization, spatial, audit = fit_initialization(
                     ecog=ecog,
                     joint_bins=joint_bins,
-                    target=target_np,
-                    training_intervals=split["training_intervals"],
-                    training_groups=split["training_groups"],
+                    target=initialization_target,
+                    training_intervals=requested_split["training_intervals"],
+                    training_groups=requested_split["training_groups"],
                     frontend=frontend,
                     device=device,
                     ica_prescreen=args.ica_prescreen,
                     component_chunk=args.component_chunk,
                     finger_index=finger_index,
                     csp_mode=args.csp_mode,
+                    csp_band_mode=args.csp_band_mode,
+                    csp_contrast_mode=args.csp_contrast_mode,
+                    amplitude_target_lead_bins=args.amplitude_target_lead_bins,
+                    hhl_bins=hhl_bins,
+                    hhh_bins=hhh_bins,
+                    lower_high_gamma_bins=lower_high_gamma_bins,
+                    designed_band_bins=designed_band_bins,
                     ica_weights=load_cached_ica(
                         args.ica_cache_root,
                         args.subject,
                         args.finger,
                         outer_fold,
-                        f"inner{split['fold']}",
+                        f"inner{requested_split['fold']}",
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
+                    future_context_bins=args.future_context_bins,
                     lasso_backend=args.lasso_backend,
+                    include_candidate_pool=args.residual_input
+                    in (
+                        "candidate",
+                        "current_candidate",
+                        "causal_candidate",
+                        "selected_causal",
+                    ),
                 )
-                save_initialization(cache, initialization, spatial, target_np, split, audit)
-            torch.manual_seed(args.seed)
+                audit["initialization_raw_target_blend"] = float(
+                    args.initialization_raw_target_blend
+                )
+                audit["initialization_raw_target_affine"] = target_blend_audit
+                return initialization, spatial, target_np, requested_split, audit
+
+            initialization, spatial, target_np, split = load_or_create_initialization(
+                cache, create_inner_initialization
+            )
+            torch.manual_seed(model_seed)
             model = make_model(spatial, initialization, args).to(device)
-            cached = torch.from_numpy(initialization["selected_features"]).to(device)
+            cached = torch.from_numpy(
+                cached_initialization_features(initialization, args.residual_input)
+            ).to(device)
             target = torch.from_numpy(target_np.astype(np.float32)).to(device)
             metrics = monitor_inner_fold(
                 model=model,
@@ -1505,8 +3426,9 @@ def main() -> None:
                 training_groups=split["training_groups"],
                 validation_intervals=split["validation_intervals"],
                 args=args,
-                seed=args.seed + int(split["fold"]),
+                seed=sampler_seed + int(split["fold"]),
                 finger_index=finger_index,
+                spoc_filtered_bins=joint_bins,
             )
             inner_records.append(
                 {
@@ -1514,45 +3436,71 @@ def main() -> None:
                     "training_bins": int(split["training_bins"]),
                     "validation_bins": int(split["validation_bins"]),
                     "training_group_count": len(split["training_groups"]),
-                    "selected_feature_count": int(cached.shape[1]),
+                    "selected_feature_count": int(
+                        initialization["selected_indices"].size
+                    ),
+                    "recurrent_input_feature_count": int(model.lstm.input_size),
                     "metrics": metrics,
                 }
             )
+            direct_feature_count = (
+                int(model.candidate_indices.numel())
+                if hasattr(model, "candidate_indices")
+                else int(model.selected_indices.numel())
+            )
             print(
-                f"outer={outer_fold} inner={split['fold']} features={cached.shape[1]}",
+                f"outer={outer_fold} inner={split['fold']} "
+                f"recurrent_features={model.lstm.input_size} "
+                f"direct_features={direct_feature_count}",
                 flush=True,
             )
-        if reused_report is not None:
+        if args.initialization_only:
+            selected_schedule = "initialization_only"
+            selection_summary = {
+                "rule": "representation-only outer initializer; no decoder selection",
+                "inner_fold_count": 0,
+            }
+        elif reused_report is not None:
             reused_outer = next(
                 record
                 for record in reused_report["outer_folds"]
                 if int(record["outer_fold"]) == outer_fold
             )
             inner_records = reused_outer["inner_records"]
-        selected_schedule, selection_summary = one_standard_error_selection(
-            inner_records,
-            require_lstm_update=args.require_lstm_update,
-            selection_metric=args.selection_metric,
-            selection_rule=args.selection_rule,
-        )
-        if args.force_schedule is not None:
-            if args.force_schedule not in schedule_order():
-                raise ValueError(
-                    f"forced schedule {args.force_schedule!r} is not in the configured grid"
-                )
-            selected_schedule = args.force_schedule
+        if not args.initialization_only:
+            selected_schedule, selection_summary = one_standard_error_selection(
+                inner_records,
+                require_lstm_update=args.require_lstm_update,
+                selection_metric=args.selection_metric,
+                selection_rule=args.selection_rule,
+            )
+            if args.force_schedule is not None:
+                if args.force_schedule not in schedule_order():
+                    raise ValueError(
+                        f"forced schedule {args.force_schedule!r} is not in the configured grid"
+                    )
+                selected_schedule = args.force_schedule
 
         outer_cache_root = args.initialization_cache_root or args.output
         outer_cache = outer_cache_root / "cache" / f"outer{outer_fold}" / "outer"
-        if (outer_cache / "initialization.npz").exists():
-            initialization, spatial, outer_target, _ = load_initialization(
-                outer_cache
+        fitted_outer_definition = {
+            **outer_definition,
+            "training_intervals": outer_training_intervals,
+        }
+
+        def create_outer_initialization():
+            initialization_target, target_blend_audit = (
+                split_local_initialization_target_blend(
+                    outer_target,
+                    raw_matrix,
+                    indices_from_intervals(outer_training_intervals),
+                    args.initialization_raw_target_blend,
+                )
             )
-        else:
             initialization, spatial, audit = fit_initialization(
                 ecog=ecog,
                 joint_bins=joint_bins,
-                target=outer_target,
+                target=initialization_target,
                 training_intervals=outer_training_intervals,
                 training_groups=[[int(start), int(stop)] for start, stop in groups],
                 frontend=frontend,
@@ -1561,6 +3509,13 @@ def main() -> None:
                 component_chunk=args.component_chunk,
                 finger_index=finger_index,
                 csp_mode=args.csp_mode,
+                csp_band_mode=args.csp_band_mode,
+                csp_contrast_mode=args.csp_contrast_mode,
+                amplitude_target_lead_bins=args.amplitude_target_lead_bins,
+                hhl_bins=hhl_bins,
+                hhh_bins=hhh_bins,
+                lower_high_gamma_bins=lower_high_gamma_bins,
+                designed_band_bins=designed_band_bins,
                 ica_weights=load_cached_ica(
                     args.ica_cache_root,
                     args.subject,
@@ -1570,41 +3525,84 @@ def main() -> None:
                     ecog.shape[1],
                 ),
                 samples_per_bin=args.samples_per_bin,
+                future_context_bins=args.future_context_bins,
                 lasso_backend=args.lasso_backend,
+                include_candidate_pool=args.residual_input
+                in (
+                    "candidate",
+                    "current_candidate",
+                    "causal_candidate",
+                    "selected_causal",
+                ),
             )
-            save_initialization(
-                outer_cache,
+            audit["initialization_raw_target_blend"] = float(
+                args.initialization_raw_target_blend
+            )
+            audit["initialization_raw_target_affine"] = target_blend_audit
+            return (
                 initialization,
                 spatial,
                 outer_target,
-                outer_definition,
+                fitted_outer_definition,
                 audit,
             )
-        torch.manual_seed(args.seed)
-        model = make_model(spatial, initialization, args).to(device)
-        cached = torch.from_numpy(initialization["selected_features"]).to(device)
+
+        initialization, spatial, outer_target, _ = load_or_create_initialization(
+            outer_cache, create_outer_initialization
+        )
         target_np = outer_target.astype(np.float32)
-        target = torch.from_numpy(target_np).to(device)
-        with torch.inference_mode():
-            initialized = model.direct_features(cached).float().cpu().numpy()
-        train_final_schedule(
-            model=model,
-            cached=cached,
-            padded_ecog=padded_ecog,
-            target=target,
-            training_groups=[[int(start), int(stop)] for start, stop in groups],
-            schedule=selected_schedule,
-            args=args,
-            seed=args.seed,
-            finger_index=finger_index,
-        )
-        if selected_schedule.startswith("unfrozen"):
-            final_features = extract_all(model, padded_ecog, rows, args.feature_chunk)
+        auxiliary_readout_audit = None
+        if args.initialization_only:
+            model = None
+            initialized = direct_initialization_prediction(
+                initialization, args.output_activation, args.softplus_beta
+            )
+            prediction = initialized
         else:
-            final_features = cached
-        prediction = predict_intervals(
-            model, final_features, outer_validation_intervals, rows
-        )
+            torch.manual_seed(model_seed)
+            model = make_model(spatial, initialization, args).to(device)
+            cached = torch.from_numpy(
+                cached_initialization_features(initialization, args.residual_input)
+            ).to(device)
+            target = torch.from_numpy(target_np).to(device)
+            with torch.inference_mode():
+                initialized = model.direct_features(cached).float().cpu().numpy()
+            train_final_schedule(
+                model=model,
+                cached=cached,
+                padded_ecog=padded_ecog,
+                target=target,
+                target_np=target_np,
+                raw=raw,
+                training_groups=[[int(start), int(stop)] for start, stop in groups],
+                schedule=selected_schedule,
+                args=args,
+                seed=sampler_seed,
+                finger_index=finger_index,
+                spoc_filtered_bins=joint_bins,
+            )
+            if selected_schedule.startswith("unfrozen"):
+                final_features = extract_all(model, padded_ecog, rows, args.feature_chunk)
+            else:
+                final_features = cached
+            prediction = predict_intervals(
+                model, final_features, outer_validation_intervals, rows
+            )
+            if args.auxiliary_residual_readout_l2 is not None:
+                primary_prediction, auxiliary_prediction = auxiliary_predictions(
+                    model,
+                    final_features,
+                    outer_training_intervals + outer_validation_intervals,
+                    rows,
+                )
+                prediction, auxiliary_readout_audit = auxiliary_residual_readout(
+                    primary_prediction,
+                    auxiliary_prediction,
+                    raw,
+                    outer_training_intervals,
+                    outer_validation_intervals,
+                    args.auxiliary_residual_readout_l2,
+                )
         validation = indices_from_intervals(outer_validation_intervals)
         initialized_oof[validation] = initialized[validation]
         tuned_oof[validation] = prediction[validation]
@@ -1631,13 +3629,15 @@ def main() -> None:
             "fold_assignment_objective": assignment_objective,
             "selected_schedule": selected_schedule,
             "selection_summary": selection_summary,
+            "auxiliary_residual_readout": auxiliary_readout_audit,
             "inner_records": inner_records,
             "initialized_outer_metrics": initialized_metrics,
             "selected_outer_metrics": selected_metrics,
             "runtime_seconds": time.perf_counter() - fold_started,
         }
         outer_records.append(record)
-        torch.save(model.state_dict(), args.output / f"outer{outer_fold}_model.pt")
+        if model is not None:
+            torch.save(model.state_dict(), args.output / f"outer{outer_fold}_model.pt")
         print(
             json.dumps(
                 {
@@ -1655,16 +3655,32 @@ def main() -> None:
     observed = np.isfinite(tuned_oof)
     report = {
         "protocol": (
-            "one single-path subject/finger model; five event-balanced inner folds per "
-            "outer-training scope; split-local target, "
-            "ICA, joint HHL/HHH CSP and LARS refits; "
-            f"{args.recurrent_cell} nonlinear gated LSTM decoder "
-            f"with {args.head_initialization}; {args.sampler_mode} minibatches; "
-            f"optimizer-update checkpoints; {args.selection_rule} selection on "
-            f"{args.selection_metric}; outer fold evaluated once; released test untouched"
+            "representation-only screen; split-local target, ICA, configured CSP, "
+            "and sparse initializer refitted in each outer-training scope; no inner "
+            "decoder selection and no LSTM updates; outer fold evaluated once; "
+            "released test untouched"
+            if args.initialization_only
+            else (
+                "one single-path subject/finger model; five event-balanced inner folds per "
+                "outer-training scope; split-local target, "
+                "ICA, configured HHL/HHH CSP and LARS refits; "
+                f"{args.recurrent_cell} nonlinear gated LSTM decoder with "
+                f"{args.residual_input} residual input "
+                f"with {args.head_initialization}; {args.sampler_mode} minibatches; "
+                f"optimizer-update checkpoints; {args.selection_rule} selection on "
+                f"{args.selection_metric}; outer fold evaluated once; released test untouched"
+            )
         ),
         "frontend": {
-            "name": "single_wavelet_frequency_compressed_depth3",
+            "name": {
+                "depth3": "single_wavelet_frequency_compressed_depth3",
+                "overcomplete_depth3_depth4": (
+                    "single_wavelet_frequency_compressed_depth3_depth4_overcomplete"
+                ),
+                "overcomplete_depth3_depth4_depth5": (
+                    "single_wavelet_frequency_compressed_depth3_depth4_depth5_overcomplete"
+                ),
+            }[args.wavelet_frontend],
             "source_rate_hz": SOURCE_RATE,
             "model_rate_hz": args.model_rate,
             "input_resampling": (
@@ -1676,11 +3692,27 @@ def main() -> None:
                 "method": "polyphase_kaiser_8.6",
             },
             "wavelet": "bior6.8",
-            "levels": 3,
-            "leaf_count": 8,
-            "nominal_frequency_edges_hz": list(range(0, 201, 25)),
+            "levels": list(range(3, frontend_levels + 1)),
+            "leaf_count": sum(2**level for level in range(3, frontend_levels + 1)),
+            "nominal_frequency_edges_hz": (
+                {
+                    f"depth{level}": [
+                        200.0 * index / (2**level)
+                        for index in range(2**level + 1)
+                    ]
+                    for level in range(3, frontend_levels + 1)
+                }
+                if frontend_levels > 3
+                else list(range(0, 201, 25))
+            ),
             "auxiliary_temporal_branches": [],
             "lmp_branch": False,
+            "zero_initialized_interlevel_skip": args.wavelet_interlevel_skip,
+            "zero_initialized_interlevel_normalization": (
+                args.wavelet_interlevel_normalization
+            ),
+            "final_leaf_normalization": args.wavelet_final_normalization,
+            "zero_initialized_signed_leaf_pooling": args.wavelet_signed_pooling,
             "energy_pool_samples": args.samples_per_bin,
         },
         "primary_selection_metric": args.selection_metric,
@@ -1695,6 +3727,7 @@ def main() -> None:
             "movement_balanced_accuracy",
         ],
         "released_test_touched": False,
+        "initialization_only": args.initialization_only,
         "subject": args.subject,
         "finger": args.finger,
         "target_policy": {
@@ -1712,10 +3745,88 @@ def main() -> None:
             if args.reuse_inner_metrics_from is not None
             else None
         ),
-        "decoder": f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM",
+        "decoder": (
+            "none; representation-only sparse initializer audit"
+            if args.initialization_only
+            else (
+                f"fixed split-local LARS direct path plus zero-initialized "
+                f"{args.recurrent_cell} nonlinear residual; recurrent input="
+                f"{args.residual_input}"
+                if args.recurrent_cell
+                in ("residual_lstm", "residual_gru", "residual_bilstm")
+                else f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM"
+            )
+        ),
+        "selected_prediction_is_initializer_alias": args.initialization_only,
         "training_objective": {
             "trajectory": "normalized mean squared error",
-            "model_outputs": ["trajectory"],
+            "movement_trajectory_weight": args.movement_trajectory_weight,
+            "movement_auxiliary_weight": args.movement_loss_weight,
+            "movement_head_objective": args.movement_head_objective,
+            "movement_state_bce_weight": (
+                args.movement_loss_weight
+                if args.movement_head_objective == "binary_state"
+                else 0.0
+            ),
+            "continuous_movement_trajectory_weight": (
+                args.movement_loss_weight
+                if args.movement_head_objective == "continuous_trajectory"
+                else 0.0
+            ),
+            "auxiliary_residual_readout_l2_per_training_row": (
+                args.auxiliary_residual_readout_l2
+            ),
+            "movement_state_trajectory_modulation": args.movement_modulation,
+            "auxiliary_velocity_mse_weight": args.velocity_loss_weight,
+            "within_sequence_correlation_weight": args.correlation_loss_weight,
+            "within_sequence_velocity_correlation_weight": (
+                args.derivative_correlation_weight
+            ),
+            "raw_movement_level_correlation_weight": (
+                args.raw_movement_correlation_weight
+            ),
+            "raw_movement_velocity_correlation_weight": (
+                args.raw_movement_derivative_correlation_weight
+            ),
+            "model_outputs": ["trajectory"]
+            + (
+                [
+                    (
+                        "all_finger_continuous_trajectories"
+                        if args.movement_head_scope == "all_fingers"
+                        else "target_finger_continuous_trajectory"
+                    )
+                    if args.movement_head_objective == "continuous_trajectory"
+                    else (
+                        "all_finger_movement_logits"
+                        if args.movement_head_scope == "all_fingers"
+                        else "target_finger_movement_logit"
+                    )
+                ]
+                if args.movement_loss_weight
+                else []
+            )
+            + (["target_finger_velocity"] if args.velocity_loss_weight else []),
+            "residual_recurrent_sees_direct_lars_logit": args.residual_include_direct,
+            "movement_head_scope": args.movement_head_scope,
+            "residual_output_initialization_std": args.residual_output_init_std,
+            "residual_dynamics": args.residual_dynamics,
+            "residual_decay": args.residual_decay,
+            "raw_trajectory_blend": args.raw_trajectory_blend,
+            "spatial_anchor_weight": args.spatial_anchor_weight,
+            "active_spoc_auxiliary_weight": args.spoc_auxiliary_weight,
+            "active_spoc_threshold": args.spoc_active_threshold,
+            "spatial_covariance_orthogonality_weight": (
+                args.spatial_orthogonality_weight
+            ),
+        },
+        "learning_rates": {
+            "head": args.head_learning_rate,
+            "movement_modulation": args.movement_modulation_learning_rate,
+            "spatial": args.spatial_learning_rate,
+            "wavelet_taps": args.wavelet_learning_rate,
+            "signed_leaf_pooling": args.signed_pooling_learning_rate,
+            "interlevel_paths": args.interlevel_learning_rate,
         },
         "initialization_cache_root": (
             str(args.initialization_cache_root)
@@ -1729,7 +3840,12 @@ def main() -> None:
             "forget_gate_bias": args.lars_forget_gate_bias,
             "recurrent_cell": args.recurrent_cell,
         },
-        "schedule_candidates": schedule_order(),
+        "randomization_seeds": {
+            "model_initialization": model_seed,
+            "event_split": split_seed,
+            "minibatch_sampler": sampler_seed,
+        },
+        "schedule_candidates": [] if args.initialization_only else schedule_order(),
         "outer_folds": outer_records,
         "mean_initialized_outer_raw_pcc": float(
             np.mean([record["initialized_outer_metrics"]["raw_pcc"] for record in outer_records])

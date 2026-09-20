@@ -35,7 +35,27 @@ def main() -> None:
     parser.add_argument("--fingers", nargs="+", choices=tuple(FINGER_NAMES), required=True)
     parser.add_argument("--parts-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument(
+        "--part-prefix",
+        default="outer",
+        help="per-fold directory prefix, for example outer or fold",
+    )
     parser.add_argument("--prepared-root", type=Path, default=Path("outputs/preprocessed_v2"))
+    parser.add_argument(
+        "--fixed-reference-pcc",
+        type=float,
+        default=None,
+        help=(
+            "immutable pre-ablation PCC for this subject-finger pair; when supplied, "
+            "report the primary gain without replacing it with the candidate initializer"
+        ),
+    )
+    parser.add_argument(
+        "--gain-threshold",
+        type=float,
+        default=0.1,
+        help="required PCC gain over --fixed-reference-pcc (default: 0.1)",
+    )
     args = parser.parse_args()
 
     raw = np.load(
@@ -44,7 +64,9 @@ def main() -> None:
     )[OFFSET:]
     for finger in args.fingers:
         finger_index = list(FINGER_NAMES).index(finger)
-        part_directories = [args.parts_root / finger / f"outer{fold}" for fold in range(3)]
+        part_directories = [
+            args.parts_root / finger / f"{args.part_prefix}{fold}" for fold in range(3)
+        ]
         reports = [json.loads((directory / "summary.json").read_text()) for directory in part_directories]
         outer_records = [item for report in reports for item in report["outer_folds"]]
         if sorted(int(item["outer_fold"]) for item in outer_records) != [0, 1, 2]:
@@ -81,6 +103,19 @@ def main() -> None:
         report["stitched_selected_raw_pcc"] = pearson(
             merged_arrays["selected_oof.npy"][observed], raw_target[observed]
         )
+        report["same_architecture_tuning_gain"] = float(
+            report["stitched_selected_raw_pcc"]
+            - report["stitched_initialized_raw_pcc"]
+        )
+        if args.fixed_reference_pcc is not None:
+            report["fixed_pre_ablation_reference_pcc"] = float(args.fixed_reference_pcc)
+            report["gain_over_fixed_reference"] = float(
+                report["stitched_selected_raw_pcc"] - args.fixed_reference_pcc
+            )
+            report["required_gain_over_fixed_reference"] = float(args.gain_threshold)
+            report["passes_fixed_reference_gain_threshold"] = bool(
+                report["gain_over_fixed_reference"] >= args.gain_threshold
+            )
         report["runtime_seconds"] = float(sum(item["runtime_seconds"] for item in reports))
         report["settings"]["outer_folds"] = [0, 1, 2]
         report["settings"]["output"] = str(output)
@@ -92,6 +127,13 @@ def main() -> None:
                     "finger": finger,
                     "initialized_oof_raw_pcc": report["stitched_initialized_raw_pcc"],
                     "selected_oof_raw_pcc": report["stitched_selected_raw_pcc"],
+                    "same_architecture_tuning_gain": report[
+                        "same_architecture_tuning_gain"
+                    ],
+                    "gain_over_fixed_reference": report.get("gain_over_fixed_reference"),
+                    "passes_fixed_reference_gain_threshold": report.get(
+                        "passes_fixed_reference_gain_threshold"
+                    ),
                 }
             ),
             flush=True,

@@ -1,7 +1,14 @@
 import numpy as np
 import torch
 
-from single_wavelet_model import PaperEquationLSTM, SingleWaveletDecoder
+from ecog_decoding.models import WaveletPacketEnergy
+from single_wavelet_model import (
+    OvercompleteWaveletPacketEnergy,
+    PaperEquationLSTM,
+    SingleWaveletDecoder,
+    leaky_integrate,
+)
+from single_wavelet_support import frontend_frequency_order
 
 
 def make_initialization(coefficients: np.ndarray) -> dict[str, np.ndarray]:
@@ -12,6 +19,95 @@ def make_initialization(coefficients: np.ndarray) -> dict[str, np.ndarray]:
         "coefficients": coefficients,
         "intercept": np.asarray(0.04, dtype=np.float32),
     }
+
+
+def make_candidate_initialization(
+    coefficients: np.ndarray,
+) -> dict[str, np.ndarray]:
+    initialization = make_initialization(coefficients)
+    initialization.update(
+        {
+            "candidate_indices": np.arange(coefficients.size + 2),
+            "candidate_feature_mean": np.zeros(
+                coefficients.size + 2, dtype=np.float32
+            ),
+            "candidate_feature_scale": np.ones(
+                coefficients.size + 2, dtype=np.float32
+            ),
+            "selected_candidate_positions": np.arange(coefficients.size),
+            "current_candidate_positions": np.asarray([1, 3], dtype=np.int64),
+            "causal_stream_positions": np.asarray([0, 3], dtype=np.int64),
+            "causal_feature_mean": np.zeros(2, dtype=np.float32),
+            "causal_feature_scale": np.ones(2, dtype=np.float32),
+            "selected_causal_stream_positions": np.asarray([0], dtype=np.int64),
+            "selected_causal_feature_mean": np.zeros(1, dtype=np.float32),
+            "selected_causal_feature_scale": np.ones(1, dtype=np.float32),
+        }
+    )
+    return initialization
+
+
+def test_overcomplete_tree_retains_coarse_parents_and_fine_children() -> None:
+    kwargs = {
+        "wavelet": "bior6.8",
+        "kernel_size": 17,
+        "trainable": False,
+        "padding_mode": "constant",
+        "energy_window_samples": 40,
+        "energy_stride_samples": 40,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+    }
+    overcomplete = OvercompleteWaveletPacketEnergy(**kwargs)
+    depth3 = WaveletPacketEnergy(levels=3, **kwargs)
+    depth4 = WaveletPacketEnergy(levels=4, **kwargs)
+    values = torch.randn(2, 3, 640)
+
+    observed = overcomplete(values)
+
+    assert observed.shape == (2, 3, 24, 16)
+    torch.testing.assert_close(observed[:, :, :8], depth3(values))
+    torch.testing.assert_close(observed[:, :, 8:], depth4(values))
+    np.testing.assert_array_equal(
+        frontend_frequency_order(overcomplete),
+        np.concatenate(
+            (
+                np.asarray((0, 1, 3, 2, 6, 7, 5, 4)),
+                8
+                + np.asarray(
+                    (0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8)
+                ),
+            )
+        ),
+    )
+
+
+def test_depth5_overcomplete_tree_retains_all_three_resolutions() -> None:
+    kwargs = {
+        "wavelet": "bior6.8",
+        "kernel_size": 17,
+        "trainable": False,
+        "padding_mode": "constant",
+        "energy_window_samples": 40,
+        "energy_stride_samples": 40,
+        "tap_resample_up": 5,
+        "tap_resample_down": 2,
+    }
+    overcomplete = OvercompleteWaveletPacketEnergy(levels=5, **kwargs)
+    depth3 = WaveletPacketEnergy(levels=3, **kwargs)
+    depth4 = WaveletPacketEnergy(levels=4, **kwargs)
+    depth5 = WaveletPacketEnergy(levels=5, **kwargs)
+    values = torch.randn(1, 2, 640)
+
+    observed = overcomplete(values)
+
+    assert observed.shape == (1, 2, 56, 16)
+    torch.testing.assert_close(observed[:, :, :8], depth3(values))
+    torch.testing.assert_close(observed[:, :, 8:24], depth4(values))
+    torch.testing.assert_close(observed[:, :, 24:], depth5(values))
+    order = frontend_frequency_order(overcomplete)
+    assert order.shape == (56,)
+    np.testing.assert_array_equal(np.sort(order), np.arange(56))
 
 
 def test_lars_is_embedded_in_a_standard_nonlinear_lstm() -> None:
@@ -58,6 +154,7 @@ def test_release_topology_and_nonnegative_output() -> None:
     assert model.wavelet.tap_resample_down == 2
     assert not any("lmp" in name.lower() for name, _ in model.named_modules())
     assert not hasattr(model, "movement_gate")
+    assert "candidate_indices" not in model.state_dict()
     prediction = model.decode_features(torch.randn(2, 12, 2))
     assert torch.all(prediction >= 0)
 
@@ -116,6 +213,109 @@ def test_residual_lstm_starts_exactly_at_softplus_lars() -> None:
     assert isinstance(model.lstm, torch.nn.LSTM)
 
 
+def test_bidirectional_residual_lstm_starts_exactly_at_softplus_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_bilstm",
+        movement_head=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.bidirectional
+    assert model.output.in_features == 10
+    assert model.movement_output.in_features == 10
+
+
+def test_auxiliary_velocity_uses_the_same_recurrent_state() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        movement_head=True,
+        velocity_head=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+
+    trajectory, movement_logit, velocity = model.decode_features_with_auxiliary(
+        features
+    )
+
+    torch.testing.assert_close(trajectory, model.decode_features(features))
+    assert movement_logit.shape == trajectory.shape
+    assert velocity.shape == trajectory.shape
+    assert model.velocity_output.in_features == model.lstm.hidden_size
+
+
+def test_movement_modulation_starts_as_an_exact_identity_gain() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        movement_head=True,
+        movement_modulation=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 2)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.movement_gain.item() == 0.0
+
+    with torch.no_grad():
+        model.movement_gain.fill_(1.0)
+        model.movement_output.weight.zero_()
+        model.movement_output.bias.fill_(2.0)
+    modulated = model.decode_features(features)
+    assert torch.all(modulated > model.direct_features(features))
+
+
+def test_signed_leaf_pooling_starts_as_exact_energy_and_can_change_features() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    initialization = make_initialization(coefficients)
+    plain = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        output_activation="softplus",
+    )
+    signed = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        wavelet_signed_pooling=True,
+        output_activation="softplus",
+    )
+    samples = (3 + 25 - 1) * plain.samples_per_bin
+    ecog = torch.randn(samples, 2)
+    padded = torch.nn.functional.pad(
+        ecog.T[None], (plain.context_samples, plain.context_samples)
+    ).squeeze(0).T
+    starts = torch.tensor([0])
+
+    expected = plain.extract_sequences(padded, starts, 3)
+    torch.testing.assert_close(signed.extract_sequences(padded, starts, 3), expected)
+
+    with torch.no_grad():
+        signed.signed_pooling_gates[0] = 0.5
+    observed = signed.extract_sequences(padded, starts, 3)
+    assert not torch.equal(observed, expected)
+
+
 def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
     coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
     model = SingleWaveletDecoder(
@@ -139,3 +339,353 @@ def test_residual_gru_starts_exactly_at_softplus_lars_and_can_learn() -> None:
         optimizer.step()
     assert torch.count_nonzero(model.output.weight).item() > 0
     assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
+def test_candidate_pool_residual_starts_exactly_at_selected_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.input_size == 4
+    assert model.direct.in_features == 2
+
+
+def test_current_candidate_residual_preserves_lars_and_uses_current_subset() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="current_candidate",
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    recurrent, direct = model._prepare_features(features)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    torch.testing.assert_close(recurrent, features[..., [1, 3]])
+    torch.testing.assert_close(direct, features)
+    assert model.lstm.input_size == 2
+    assert model.candidate_direct_weight.shape == (1, 4)
+
+    flat_features = torch.randn(12, 4)
+    recurrent_flat, direct_flat = model._prepare_features(flat_features)
+    torch.testing.assert_close(
+        model.direct_features(flat_features),
+        model.activate_output(
+            model._direct_prediction(recurrent_flat, direct_flat)
+        ).squeeze(-1),
+    )
+
+
+def test_current_candidate_positions_can_be_derived_from_legacy_cache() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    initialization = make_candidate_initialization(coefficients)
+    initialization.pop("current_candidate_positions")
+    initialization["candidate_indices"] = np.asarray([0, 17, 384, 399])
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="current_candidate",
+        output_activation="softplus",
+    )
+
+    # Two spatial components produce 16 features per bin. Indices 384 and 399
+    # are the two candidates in the newest (25th) history bin.
+    torch.testing.assert_close(
+        model.current_candidate_positions, torch.tensor([2, 3])
+    )
+
+
+def test_current_candidate_can_expose_a_short_recent_history() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    initialization = make_candidate_initialization(coefficients)
+    initialization["candidate_indices"] = np.asarray([0, 336, 352, 399])
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="current_candidate",
+        residual_history_bins=4,
+        output_activation="softplus",
+    )
+
+    # With 16 features per time bin, the newest four of 25 bins begin at 336.
+    torch.testing.assert_close(
+        model.current_candidate_positions, torch.tensor([1, 2, 3])
+    )
+    assert model.lstm.input_size == 3
+
+
+def test_current_candidate_can_be_zero_padded_to_a_fixed_compile_width() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="current_candidate",
+        residual_input_width=4,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    recurrent, _ = model._prepare_features(features)
+
+    torch.testing.assert_close(recurrent[..., :2], features[..., [1, 3]])
+    torch.testing.assert_close(recurrent[..., 2:], torch.zeros_like(recurrent[..., 2:]))
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.input_size == 4
+
+
+def test_residual_lstm_can_condition_on_fixed_direct_lars_logit() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="current_candidate",
+        residual_input_width=4,
+        residual_include_direct=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.input_size == 5
+
+    captured = {}
+
+    def capture_input(module, inputs):
+        captured["features"] = inputs[0].detach()
+
+    handle = model.lstm.register_forward_pre_hook(capture_input)
+    model.decode_features(features)
+    handle.remove()
+    direct_logit = model._direct_prediction(*model._prepare_features(features))
+    torch.testing.assert_close(captured["features"][..., -1:], direct_logit)
+
+
+def test_causal_candidate_uses_current_sources_and_preserves_lars_direct() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="causal_candidate",
+        residual_input_width=4,
+        output_activation="softplus",
+    )
+    candidate_features = torch.randn(2, 12, 4)
+    causal_features = torch.randn(2, 12, 2)
+    features = torch.cat((candidate_features, causal_features), dim=-1)
+
+    recurrent, direct = model._prepare_features(features)
+
+    torch.testing.assert_close(recurrent[..., :2], causal_features)
+    torch.testing.assert_close(recurrent[..., 2:], torch.zeros_like(recurrent[..., 2:]))
+    torch.testing.assert_close(direct, candidate_features)
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.input_size == 4
+
+
+def test_selected_causal_uses_only_nonzero_lars_streams() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="selected_causal",
+        residual_input_width=3,
+        output_activation="softplus",
+    )
+    selected_features = torch.randn(2, 12, 2)
+    causal_features = torch.randn(2, 12, 1)
+    features = torch.cat((selected_features, causal_features), dim=-1)
+
+    recurrent, direct = model._prepare_features(features)
+
+    torch.testing.assert_close(recurrent[..., :1], causal_features)
+    torch.testing.assert_close(recurrent[..., 1:], torch.zeros_like(recurrent[..., 1:]))
+    torch.testing.assert_close(direct, selected_features)
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+    assert model.lstm.input_size == 3
+
+
+def test_candidate_direct_path_is_fixed_width_and_matches_selected_scaling() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    initialization = make_candidate_initialization(coefficients)
+    initialization["feature_mean"] = np.asarray([2.0, -1.0], dtype=np.float32)
+    initialization["feature_scale"] = np.asarray([0.5, 4.0], dtype=np.float32)
+    initialization["candidate_feature_mean"] = np.asarray(
+        [1.5, -2.0, 3.0, 4.0], dtype=np.float32
+    )
+    initialization["candidate_feature_scale"] = np.asarray(
+        [2.0, 0.25, 5.0, 6.0], dtype=np.float32
+    )
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        initialization,
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        output_activation="linear",
+    )
+    features = torch.randn(2, 12, 4)
+    selected = features[..., :2]
+    expected = torch.nn.functional.linear(
+        (selected - model.feature_mean) / model.feature_scale,
+        model.direct.weight,
+        model.direct.bias,
+    ).squeeze(-1)
+
+    torch.testing.assert_close(model.direct_features(features), expected)
+    assert model.candidate_direct_weight.shape == (1, 4)
+    assert torch.count_nonzero(model.candidate_direct_weight[..., 2:]).item() == 0
+    assert "candidate_direct_weight" not in model.state_dict()
+
+
+def test_near_zero_residual_initialization_trains_recurrent_weights_immediately() -> None:
+    torch.manual_seed(19)
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        residual_output_init_std=1.0e-3,
+        output_activation="linear",
+    )
+    features = torch.randn(2, 12, 4)
+    direct = model.direct_features(features).detach()
+    prediction = model.decode_features(features)
+
+    delta = torch.sqrt(torch.mean((prediction.detach() - direct).square()))
+    assert 0 < delta < 1.0e-2
+    assert model.head_initialization == "near_zero_residual_on_lars"
+
+    prediction.square().mean().backward()
+    assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
+def test_leaky_integrator_matches_causal_recurrence() -> None:
+    innovation = torch.tensor([[[1.0], [0.0], [0.0]]])
+
+    integrated = leaky_integrate(innovation, decay=0.5)
+
+    torch.testing.assert_close(
+        integrated, torch.tensor([[[1.0], [0.5], [0.25]]])
+    )
+
+
+def test_zero_initialized_leaky_residual_starts_exactly_at_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        residual_dynamics="leaky_velocity",
+        residual_decay=0.95,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    torch.testing.assert_close(
+        model.decode_features(features), model.direct_features(features)
+    )
+
+
+def test_candidate_pool_residual_can_use_a_feature_excluded_by_lars() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        output_activation="linear",
+    )
+    with torch.no_grad():
+        model.output.weight.fill_(0.1)
+    features = torch.randn(2, 12, 4, requires_grad=True)
+
+    model.decode_features(features).sum().backward()
+
+    assert torch.count_nonzero(features.grad[..., 2:]).item() > 0
+
+
+def test_auxiliary_movement_head_preserves_lars_trajectory_and_trains_lstm() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        movement_head=True,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    trajectory, movement_logit = model.decode_features_with_movement(features)
+    torch.testing.assert_close(trajectory, model.direct_features(features))
+    assert movement_logit.shape == trajectory.shape
+
+    movement_target = torch.randint(0, 2, movement_logit.shape).float()
+    torch.nn.functional.binary_cross_entropy_with_logits(
+        movement_logit, movement_target
+    ).backward()
+    assert torch.count_nonzero(model.movement_output.weight.grad).item() > 0
+    assert torch.count_nonzero(model.lstm.weight_ih_l0.grad).item() > 0
+
+
+def test_all_finger_movement_head_preserves_single_trajectory_path() -> None:
+    coefficients = np.asarray([0.35, -0.20], dtype=np.float32)
+    model = SingleWaveletDecoder(
+        np.eye(2, dtype=np.float32),
+        make_candidate_initialization(coefficients),
+        hidden_size=5,
+        recurrent_cell="residual_lstm",
+        residual_input="candidate",
+        movement_head=True,
+        movement_head_outputs=5,
+        output_activation="softplus",
+    )
+    features = torch.randn(2, 12, 4)
+
+    trajectory, movement_logits = model.decode_features_with_auxiliary(features)
+
+    torch.testing.assert_close(trajectory, model.direct_features(features))
+    assert movement_logits.shape == (2, 12, 5)
+    assert model.output.out_features == 1

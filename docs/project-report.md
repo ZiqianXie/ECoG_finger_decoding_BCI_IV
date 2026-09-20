@@ -1,6 +1,6 @@
 # Project report: ECoG finger-trajectory decoding reimplementation
 
-**Report date:** 9 September 2026
+**Report date:** 20 September 2026
 **Original study:** Z. Xie, O. Schwartz, and A. Prasad, [*Decoding of finger
 trajectory from ECoG using deep learning*](https://doi.org/10.1088/1741-2552/aa9dbe),
 *Journal of Neural Engineering* 15(3), 036009 (2018)
@@ -19,9 +19,8 @@ remote experiment orchestration, quantitative checks, visual diagnosis, and
 documentation. I remain responsible for the scientific choices and
 interpretation.
 
-The released 2026 model uses one independently fitted model for each of 3
-subjects and 5 fingers, with the same single signal path in all 15 cases. The
-path is:
+The canonical 2026 release uses one development-selected structure for each of
+3 subjects and 5 fingers. The common single-wavelet baseline path is:
 
 ```text
 notched 1 kHz ECoG
@@ -33,17 +32,21 @@ notched 1 kHz ECoG
   -> nonnegative Softplus flexion
 ```
 
-There is no auxiliary low-frequency branch, conventional seven-band branch, or
-model stacking in the released result. Development folds select the size of
-the CSP initialization bank and the recurrent initialization; every model
-retains the same one-spatial-bank, one-wavelet-tree, one-LSTM topology.
+The final registry also includes development-selected residual-LSTM,
+future-context ridge, synergy-CSP, and overcomplete-wavelet variants. It does
+not permit heterogeneous model soups. A route is either one model or an
+equal-weight ensemble of independently refitted seeds with exactly the same
+structure. Every canonical route has strictly positive nested development OOF
+PCC gain over its own untuned initialization, and no released-test label is
+used for selection. See
+[`configs/canonical_models.yaml`](../configs/canonical_models.yaml) and the
+[`canonical release table`](canonical-model-release.md).
 
-Across six independent refits, the released-test Macro-5 Pearson correlations
-are **0.563 ± 0.0007 for S1, 0.414 ± 0.0011 for S2, and 0.597 ± 0.0005
-for S3** (mean ± population SD). The rounded values reported in the 2018
-paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed the
-paper's rounded aggregate results, although several individual finger
-trajectories remain weaker than their historical counterparts.
+The canonical released-test Macro-5 Pearson correlations are **0.577624 for
+S1, 0.422758 for S2, and 0.634211 for S3**. The rounded values reported in the
+2018 paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed
+the paper's rounded aggregate results, although eight individual finger
+trajectories remain at or below their rounded historical counterparts.
 
 ## Data
 
@@ -233,7 +236,10 @@ three subjects before nonlinear fine-tuning and most clearly for S2 after
 selection. Because fine-tuning did not improve every fold, the final schedule
 search also permits the initialized nonlinear LSTM with zero optimizer updates.
 
-## Final S1 development-selected routes
+## Historical single-tree S1 development-selected routes
+
+This section records the earlier homogeneous single-tree release. It is kept
+for provenance; the later canonical registry supersedes it.
 
 The remaining S1 gap was addressed without adding temporal branches. A
 split-local CSP-bank ablation first varied only the rows of the existing
@@ -279,12 +285,15 @@ the released test trace, raw/cleaned PCC and rest RMS improved while movement
 RMSE and state F1 were slightly worse, so the visual trade-off remains explicit.
 
 The exact checkpoint roots, seeds, target policy, CSP mode, recurrent-cell choice,
-and OOF provenance are recorded in
+and OOF provenance for that historical single-tree release are recorded in
 [`configs/final_single_wavelet_routes.yaml`](../configs/final_single_wavelet_routes.yaml).
 All four S1 overrides preserve the same one-spatial-convolution,
 one-eight-leaf-tree, one-LSTM signal path.
 
-## Final released-test result
+## Historical single-tree released-test result
+
+These values describe the superseded homogeneous single-tree release, not the
+current canonical per-pair routes.
 
 Pearson correlation coefficient (PCC) is computed against the unmodified
 released glove trace, matching the competition convention. `Macro-5` is the

@@ -1,0 +1,251 @@
+version: 1
+
+# A canonical entry is one model structure for one subject/finger pair.  An
+# equal-weight ensemble is allowed only when every member has the same
+# structure_id; heterogeneous cross-family blends are not canonical models.
+policy:
+  heterogeneous_model_soup_allowed: false
+  same_structure_seed_ensemble_allowed: true
+  tuning_gain_rule: selected_development_oof_pcc > initialized_development_oof_pcc
+  released_test_used_for_selection: false
+
+models:
+  S1_thumb:
+    structure_id: single_wavelet_paper_lstm_movement2
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/full_development_single_wavelet_1000hz_s1_spatial_grid_ensemble_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_paper_lstm_movement2]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_paper_s1_spatial_grid_v1/sub1/thumb/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_paper_s1_spatial_grid_v1/sub1/thumb/summary.json
+        key: stitched_selected_raw_pcc
+
+  S1_index:
+    structure_id: single_wavelet_paper_lstm_movement1
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_six_seed_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_paper_lstm_movement1]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_v1/sub1/index/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_tap5over2_paper_equations_s1_v1/sub1/index/summary.json
+        key: stitched_selected_raw_pcc
+
+  S1_middle:
+    structure_id: overcomplete_depth5_designed_csp_residual_lstm
+    artifact:
+      kind: single_model
+      root: outputs/canonical_refit_s1_middle_depth5_lstm_v1
+      status: complete
+      members: [2026]
+      member_structure_ids: [overcomplete_depth5_designed_csp_residual_lstm]
+    development_evidence:
+      initialized:
+        summary: outputs/candidate_residual_s1_middle_overcomplete_d3d4d5_designedcsp_lr3e5_batch48_oof_v1/sub1/middle/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/candidate_residual_s1_middle_overcomplete_d3d4d5_designedcsp_lr3e5_batch48_oof_v1/sub1/middle/summary.json
+        key: stitched_selected_raw_pcc
+
+  S1_ring:
+    structure_id: future16_fullbank_powercal_ridge
+    artifact:
+      kind: single_model
+      root: outputs/canonical_refit_s1_ring_future16_ridge_v1
+      status: complete
+      members: [ridge]
+      member_structure_ids: [future16_fullbank_powercal_ridge]
+    development_evidence:
+      initialized:
+        summary: outputs/fullbank_powercal_pcccv_future16_s1ring_v1/summary.json
+        key: stitched_raw_pcc.lars
+      selected:
+        summary: outputs/fullbank_powercal_pcccv_future16_s1ring_v1/summary.json
+        key: stitched_raw_pcc.ridge_all_lags
+
+  S1_little:
+    structure_id: single_wavelet_paper_lstm_tails4x4
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/full_development_single_wavelet_1000hz_s1_little_tails4x4_ensemble_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_paper_lstm_tails4x4]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_paper_s1_spatial_grid_v1/sub1/little/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_paper_s1_spatial_grid_v1/sub1/little/summary.json
+        key: stitched_selected_raw_pcc
+
+  S2_thumb:
+    structure_id: future16_synergy_selected_residual_lstm
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/canonical_refit_s2_thumb_future16_lstm_v1
+      status: complete
+      members: [2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035]
+      member_structure_ids: [future16_synergy_selected_residual_lstm]
+    development_evidence:
+      initialized:
+        summary: outputs/synergy_future16_selectedresidual_s2thumb_cont_batch48_oof_v1/merged/sub2/thumb/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/synergy_future16_selectedresidual_s2thumb_cont_fixeddata_tenseed_v1/equal_tenseed/summary.json
+        key: selected_oof_raw_pcc
+
+  S2_index:
+    structure_id: single_wavelet_standard_lstm_movement1
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_standard_lstm_movement1]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub2/index/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub2/index/summary.json
+        key: stitched_selected_raw_pcc
+
+  S2_middle:
+    structure_id: single_wavelet_standard_lstm_movement1
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_standard_lstm_movement1]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub2/middle/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub2/middle/summary.json
+        key: stitched_selected_raw_pcc
+
+  S2_ring:
+    structure_id: future16_fullbank_raw_ridge
+    artifact:
+      kind: single_model
+      root: outputs/canonical_refit_s2_ring_future16_raw_ridge_v1
+      status: complete
+      members: [ridge]
+      member_structure_ids: [future16_fullbank_raw_ridge]
+    development_evidence:
+      initialized:
+        summary: outputs/fullbank_ridge_pcccv_future16_s2ring_v1/summary.json
+        key: stitched_raw_pcc.lars
+      selected:
+        summary: outputs/fullbank_ridge_pcccv_future16_s2ring_v1/summary.json
+        key: stitched_raw_pcc.ridge_all_lags_raw
+
+  S2_little:
+    structure_id: single_wavelet_standard_lstm_movement1
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_standard_lstm_movement1]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub2/little/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub2/little/summary.json
+        key: stitched_selected_raw_pcc
+
+  S3_thumb:
+    structure_id: current_bin_residual_lstm_batch48
+    artifact:
+      kind: single_model
+      root: outputs/canonical_refit_s3_thumb_current_bin_lstm_v1
+      status: complete
+      members: [2026]
+      member_structure_ids: [current_bin_residual_lstm_batch48]
+    development_evidence:
+      initialized:
+        summary: outputs/candidate_residual_current_bin_batch48_oof_v1/sub3/thumb/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/candidate_residual_current_bin_batch48_oof_v1/sub3/thumb/summary.json
+        key: stitched_selected_raw_pcc
+
+  S3_index:
+    structure_id: synergy_spoc_allfinger_continuous_residual_lstm
+    artifact:
+      kind: single_model
+      root: outputs/canonical_refit_s3_index_synergy_lstm_v1
+      status: complete
+      members: [2026]
+      member_structure_ids: [synergy_spoc_allfinger_continuous_residual_lstm]
+    development_evidence:
+      initialized:
+        summary: outputs/target_rest_all_finger_amplitude_synergy_s3index_continuous_nested_weight_v1/sub3/index/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/target_rest_all_finger_amplitude_synergy_s3index_continuous_nested_weight_v1/sub3/index/summary.json
+        key: stitched_selected_raw_pcc
+
+  S3_middle:
+    structure_id: lead4_hidden128_selected_residual_lstm
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/canonical_refit_s3_middle_lead4_lstm_v1
+      status: complete
+      members: [2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034]
+      member_structure_ids: [lead4_hidden128_selected_residual_lstm]
+    development_evidence:
+      initialized:
+        summary: outputs/s3middle_seedgrid_lead4_lstm_v1/seed2027/merged/sub3/middle/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/s3middle_long_lstm_equal_nine_seed_v1/summary.json
+        key: selected_oof_raw_pcc
+
+  S3_ring:
+    structure_id: single_wavelet_standard_lstm_movement1
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/single_wavelet_1000hz_tap5over2_six_seed_refit_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_standard_lstm_movement1]
+    development_evidence:
+      initialized:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub3/ring/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/single_wavelet_1000hz_tap5over2_nested_v2/sub3/ring/summary.json
+        key: stitched_selected_raw_pcc
+
+  S3_little:
+    structure_id: single_wavelet_residual_lstm_movement1
+    artifact:
+      kind: same_structure_seed_ensemble
+      root: outputs/residual_recurrent_single_wavelet_s3_little_six_seed_v1
+      status: complete
+      members: [0, 1, 2, 3, 4, 5]
+      member_structure_ids: [single_wavelet_residual_lstm_movement1]
+    development_evidence:
+      initialized:
+        summary: outputs/residual_recurrent_single_wavelet_oof_v1/residual_lstm/lr1e-4/sub3/little/summary.json
+        key: stitched_initialized_raw_pcc
+      selected:
+        summary: outputs/residual_recurrent_single_wavelet_oof_v1/residual_lstm/lr1e-4/sub3/little/summary.json
+        key: stitched_selected_raw_pcc

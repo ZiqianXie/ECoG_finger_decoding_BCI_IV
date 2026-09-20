@@ -1,0 +1,2205 @@
+{
+  "status": "experimental_not_promoted",
+  "selection_data": "event-grouped nested cross-validation on released competition training data",
+  "released_test_touched": false,
+  "primary_metric": "stitched out-of-fold raw-target PCC",
+  "requested_gain_threshold": 0.1,
+  "working_done_gain_threshold": 0.095,
+  "comparison_rule": {
+    "baseline": "strongest fixed pre-ablation split-local reference for the same subject and finger",
+    "primary_gain": "final candidate PCC minus the fixed reference PCC",
+    "candidate_self_gain": "final candidate PCC minus that candidate architecture's own initialization PCC; diagnostic only",
+    "same_architecture_tuning_gain": "final tuned PCC minus the initialization PCC of the identical architecture and representation",
+    "architecture_change_policy": "Changing the representation or architecture never resets the fixed reference. Such a run may establish an overall model gain against the old reference, but it is not a same-architecture tuning gain.",
+    "prohibited_shortcut": "A weaker candidate-specific initialization never replaces the fixed reference and cannot manufacture a pass."
+  },
+  "active_model_selection_policy": {
+    "selection_unit": "one complete model branch per subject-finger pair",
+    "heterogeneous_prediction_blends_allowed": false,
+    "same_branch_seed_replicates": "May be used to characterize stochastic stability, but mixing distinct spatial, temporal, or decoder families cannot establish a pass.",
+    "historical_ensemble_artifacts": "Retained only as diagnostic evidence; they are excluded from active pass accounting.",
+    "released_test_touched": false
+  },
+  "tuning_failure_audit": {
+    "scope": "the original common-model 15-pair screen; later pair-specific branches are evaluated separately",
+    "definition": "tuned stitched OOF PCC less than or equal to the identical branch's initialization PCC",
+    "did_not_improve_count": 9,
+    "pairs": {
+      "S1_middle": -0.058919815,
+      "S1_ring": -0.106540122,
+      "S1_little": -0.016443158,
+      "S2_thumb": -0.013514174,
+      "S2_index": -0.001774804,
+      "S2_ring": -0.01648368,
+      "S3_index": -0.009675714,
+      "S3_middle": -0.022454883,
+      "S3_little": -0.036835188
+    },
+    "selection_rule": "Never retain a tuned checkpoint that is worse than its own initialization. Pair-specific branches may replace these failed common-model attempts only when their own split-safe OOF evidence is positive."
+  },
+  "current_pass_accounting": {
+    "fixed_reference_gain_at_least_0p1": {
+      "count": 10,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring"]
+    },
+    "candidate_self_gain_at_least_0p1": {
+      "count": 4,
+      "pairs": ["S1 little", "S2 middle", "S2 little", "S3 thumb"]
+    },
+    "representation_only_fixed_reference_passes": ["S1 middle", "S3 ring"],
+    "project_triage_acceptance_override": {
+      "count": 11,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring", "S3 little"],
+      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. S1 thumb was explicitly considered done by the user and independently exceeds the strict threshold. S2 thumb exceeds the strict threshold within one fixed model family. On 2026-09-19 the user set +0.095 as the working done threshold for subsequent pairs; strict +0.100 accounting remains separate. On 2026-09-20 heterogeneous model-soup blends were disallowed. S1 index and S2 ring therefore returned to the unresolved set because their best standalone branches gain only +0.078700 and +0.077011 over their immutable references."
+    },
+    "heterogeneous_soups_removed_from_active_accounting": {
+      "pairs": ["S1 index", "S2 ring"],
+      "S1_index_best_single_branch": {
+        "branch": "future-16 all-finger-synergy nonlinear temporal decoder",
+        "candidate_initialization_pcc": 0.744061312,
+        "selected_oof_pcc": 0.804245171,
+        "same_branch_gain": 0.060183859,
+        "fixed_reference_pcc": 0.725545068,
+        "gain_over_fixed_reference": 0.078700103,
+        "working_threshold_pass": false,
+        "output": "outputs/fullbank_hist_probe_future16_s1index_v1/hist_candidate"
+      },
+      "S2_ring_best_single_branch": {
+        "branch": "future-16 full-bank raw-target ridge",
+        "candidate_initialization_pcc": 0.496554157,
+        "selected_oof_pcc": 0.523094409,
+        "same_branch_gain": 0.026540252,
+        "fixed_reference_pcc": 0.446083223,
+        "gain_over_fixed_reference": 0.077011186,
+        "working_threshold_pass": false,
+        "output": "outputs/fullbank_ridge_probe_future16_s2ring_v3/ridge_all_lags_raw_candidate"
+      }
+    }
+  },
+  "screened_pairs": [
+    "S1 thumb",
+    "S1 index",
+    "S1 middle",
+    "S1 ring",
+    "S1 little",
+    "S2 thumb",
+    "S2 index",
+    "S2 middle",
+    "S2 ring",
+    "S2 little",
+    "S3 thumb",
+    "S3 index",
+    "S3 middle",
+    "S3 ring",
+    "S3 little"
+  ],
+  "primary_screen_pair": "S2 middle",
+  "initialization_pcc": 0.364738224,
+  "candidate_pool_residual_control": {
+    "tuned_pcc": 0.447053812,
+    "gain": 0.082315587
+  },
+  "target_finger_movement_state_head": {
+    "description": "The same residual LSTM state predicts trajectory and a balanced target-finger movement/rest logit. The direct LARS path remains fixed.",
+    "weights": {
+      "0.05": {
+        "tuned_pcc": 0.448603263,
+        "gain": 0.083865039
+      },
+      "0.2": {
+        "tuned_pcc": 0.452170653,
+        "gain": 0.087432429
+      },
+      "0.5": {
+        "tuned_pcc": 0.454993652,
+        "gain": 0.090255428,
+        "mean_outer_diagnostics": {
+          "rest_false_positive_rms": 0.084206539,
+          "movement_rmse": 0.47211649,
+          "amplitude_slope": 0.259346267,
+          "velocity_pcc": 0.223448689,
+          "movement_balanced_accuracy": 0.750226539
+        }
+      }
+    }
+  },
+  "movement_state_plus_correlation_objectives": {
+    "fixed_weights": {
+      "movement_state_bce": 0.5,
+      "within_sequence_correlation": 0.1,
+      "within_sequence_velocity_correlation": 0.1
+    },
+    "S2_middle_objective_sweep": {
+      "state_only_pcc": 0.454993652,
+      "state_plus_correlation_pcc": 0.462580583,
+      "state_plus_velocity_correlation_pcc": 0.460837175,
+      "state_plus_both_pcc": 0.46779307,
+      "state_plus_both_gain": 0.103054846,
+      "state_plus_both_mean_outer_diagnostics": {
+        "event_macro_nmse": 0.715637,
+        "rest_false_positive_rms": 0.09036,
+        "movement_rmse": 0.452536,
+        "amplitude_slope": 0.284635,
+        "velocity_pcc": 0.223818,
+        "movement_balanced_accuracy": 0.757265
+      }
+    },
+    "fixed_weight_generalization": {
+      "S1_index": {
+        "initialization_pcc": 0.721336642,
+        "tuned_pcc": 0.734364522,
+        "gain": 0.01302788,
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.41325084,
+          "rest_false_positive_rms": 0.089299875,
+          "movement_rmse": 0.240107089,
+          "amplitude_slope": 0.49551033,
+          "velocity_pcc": 0.426317083,
+          "movement_balanced_accuracy": 0.750088468
+        }
+      },
+      "S3_thumb": {
+        "initialization_pcc": 0.572208107,
+        "tuned_pcc": 0.617777325,
+        "gain": 0.045569218,
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.573883475,
+          "rest_false_positive_rms": 0.127517318,
+          "movement_rmse": 0.32479468,
+          "amplitude_slope": 0.509818753,
+          "velocity_pcc": 0.192031142,
+          "movement_balanced_accuracy": 0.74931466
+        }
+      }
+    },
+    "decision": "The combined objective crosses +0.1 PCC only on the S2-middle screening pair. With its weights frozen in advance, it is worse than the state-only objective on S1-index and S3-thumb, so it is not a common-model improvement."
+  },
+  "movement_weighted_trajectory_ablation": {
+    "screen_pair": "S1 index",
+    "movement_state_bce_weight": 0.5,
+    "movement_trajectory_weight": 2.0,
+    "initialization_pcc": 0.725545068,
+    "tuned_pcc": 0.738465863,
+    "gain": 0.012920796,
+    "runtime_seconds": 250.1591,
+    "matched_control_configuration": {
+      "hidden_size": 32,
+      "frozen_update_grid": [20, 50, 100, 200, 400]
+    },
+    "excluded_preliminary_runs": "Concurrent 2x and 4x screens accidentally used the script defaults of hidden size 10 and a different checkpoint grid. They are excluded from model comparison.",
+    "decision": "Reject: emphasizing movement-bin squared error does not address the S1-index tuning gap and remains well below the requested +0.1 PCC gain."
+  },
+  "auxiliary_velocity_head_ablation": {
+    "description": "A training-only velocity regressor reads the same LSTM state as the trajectory and movement outputs; it adds no temporal or spatial feature branch.",
+    "screen_pair": "S1 index",
+    "shared_initialization_pcc": 0.725545068,
+    "matched_control": {
+      "velocity_loss_weight": 0.0,
+      "tuned_pcc": 0.739379031,
+      "gain": 0.013833964,
+      "selected_schedules": ["frozen_50", "frozen_400", "frozen_400"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.428806,
+        "rest_false_positive_rms": 0.093149,
+        "movement_rmse": 0.236308,
+        "amplitude_slope": 0.484119,
+        "velocity_pcc": 0.450046,
+        "movement_balanced_accuracy": 0.761577
+      }
+    },
+    "velocity_weight_0.1": {
+      "tuned_pcc": 0.730019362,
+      "gain": 0.004474294,
+      "selected_schedules": ["frozen_50", "frozen_100", "frozen_400"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.459999,
+        "rest_false_positive_rms": 0.101927,
+        "movement_rmse": 0.241338,
+        "amplitude_slope": 0.450015,
+        "velocity_pcc": 0.44043,
+        "movement_balanced_accuracy": 0.753037
+      }
+    },
+    "velocity_weight_0.5": {
+      "tuned_pcc": 0.719092974,
+      "gain": -0.006452094,
+      "selected_schedules": ["frozen_50", "frozen_50", "frozen_400"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.477363,
+        "rest_false_positive_rms": 0.106139,
+        "movement_rmse": 0.242324,
+        "amplitude_slope": 0.448427,
+        "velocity_pcc": 0.436913,
+        "movement_balanced_accuracy": 0.744838
+      }
+    },
+    "decision": "Reject: auxiliary velocity regression worsens trajectory PCC, event NMSE, rest-state error, amplitude slope, and trajectory velocity PCC relative to the matched state-head control."
+  },
+  "S1_index_head_learning_rate_screen": {
+    "shared_initialization_pcc": 0.725545068,
+    "matched_1e-4_control_pcc": 0.739379031,
+    "lr_3e-4": {
+      "tuned_pcc": 0.752557618,
+      "gain": 0.02701255,
+      "selected_schedules": ["frozen_100", "frozen_200", "frozen_200"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.376376,
+        "rest_false_positive_rms": 0.081152,
+        "movement_rmse": 0.233484,
+        "amplitude_slope": 0.542316,
+        "velocity_pcc": 0.458269,
+        "movement_balanced_accuracy": 0.771684
+      }
+    },
+    "lr_1e-3": {
+      "tuned_pcc": 0.735181219,
+      "gain": 0.009636151,
+      "selected_schedules": ["frozen_50", "frozen_20", "frozen_50"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.402458,
+        "rest_false_positive_rms": 0.084345,
+        "movement_rmse": 0.242099,
+        "amplitude_slope": 0.509703,
+        "velocity_pcc": 0.435217,
+        "movement_balanced_accuracy": 0.764948
+      }
+    },
+    "decision": "Use 3e-4 for further S1-index candidate-residual diagnostics. It improves every monitored trajectory diagnostic over the matched 1e-4 control, but its +0.027 PCC gain remains far below +0.1."
+  },
+  "S1_index_two_stage_stem_tuning": {
+    "head_learning_rate": 0.0003,
+    "spatial_learning_rate": 0.000003,
+    "wavelet_learning_rate": 0.000003,
+    "shared_initialization_pcc": 0.725545068,
+    "tuned_pcc": 0.747625763,
+    "gain": 0.022080695,
+    "selected_schedules": ["frozen_100", "unfrozen_100_200", "unfrozen_100_80"],
+    "mean_selected_outer_diagnostics": {
+      "event_macro_nmse": 0.386935,
+      "rest_false_positive_rms": 0.082186,
+      "movement_rmse": 0.236106,
+      "amplitude_slope": 0.536302,
+      "velocity_pcc": 0.44375,
+      "movement_balanced_accuracy": 0.768528
+    },
+    "decision": "Reject: two-stage end-to-end tuning is 0.0049 PCC below the matched frozen-stem 3e-4 run and does not close the requested gain."
+  },
+  "S1_index_recurrent_capacity_screen": {
+    "shared_initialization_pcc": 0.725545068,
+    "head_learning_rate": 0.0003,
+    "hidden_32_pcc": 0.752557618,
+    "hidden_64": {
+      "tuned_pcc": 0.757245129,
+      "gain": 0.031700061,
+      "selected_schedules": ["frozen_200", "frozen_200", "frozen_100"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.361918,
+        "rest_false_positive_rms": 0.069767,
+        "movement_rmse": 0.236317,
+        "amplitude_slope": 0.575607,
+        "velocity_pcc": 0.524249,
+        "movement_balanced_accuracy": 0.763673
+      }
+    },
+    "hidden_128": {
+      "tuned_pcc": 0.755389594,
+      "gain": 0.029844526,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_50"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.369561,
+        "rest_false_positive_rms": 0.066395,
+        "movement_rmse": 0.244997,
+        "amplitude_slope": 0.556983,
+        "velocity_pcc": 0.552396,
+        "movement_balanced_accuracy": 0.758465
+      }
+    },
+    "decision": "Use 64 units for any further S1-index diagnostics. Capacity improves phase-sensitive velocity correlation and rest suppression, but PCC plateaus near 0.757 and remains far below +0.1 over initialization."
+  },
+  "S1_index_state_conditioned_gain": {
+    "description": "A scalar, smoothly bounded multiplicative gain is driven by the existing LSTM movement logit. It is initialized to exactly one and adds no feature branch.",
+    "shared_initialization_pcc": 0.725545068,
+    "ungated_hidden_64_pcc": 0.757245129,
+    "head_rate_gain_rate": {
+      "movement_gain_learning_rate": 0.0003,
+      "tuned_pcc": 0.756524081,
+      "gain": 0.030979013,
+      "learned_raw_gain_by_outer_fold": [0.044791106, 0.050391335, 0.018384701]
+    },
+    "tenfold_gain_rate": {
+      "movement_gain_learning_rate": 0.003,
+      "tuned_pcc": 0.75244939,
+      "gain": 0.026904322,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.373086,
+        "rest_false_positive_rms": 0.06674,
+        "movement_rmse": 0.24353,
+        "amplitude_slope": 0.55847,
+        "velocity_pcc": 0.523841,
+        "movement_balanced_accuracy": 0.760166
+      }
+    },
+    "decision": "Reject: weak modulation is neutral and stronger modulation worsens PCC, event NMSE, movement RMSE, and amplitude slope."
+  },
+  "S1_index_trace_diagnostics": {
+    "cleaned_target_vs_raw_target_pcc": 0.94333644,
+    "best_hidden_32_prediction_vs_cleaned_target_pcc": 0.777725799,
+    "best_hidden_32_prediction_vs_raw_target_pcc": 0.752557618,
+    "best_global_lag_bins": 0,
+    "visual_finding": "The late high-amplitude event is detected with largely correct flexion timing, but peak amplitudes remain compressed and isolated resting transients remain. Global lag zero is optimal, so a fixed alignment correction is not indicated."
+  },
+  "S1_index_softplus_gradient_audit": {
+    "description": "The derivative of the beta-10 Softplus was measured at each split-local LARS preactivation before residual tuning. Movement means and lower deciles are reported across the three outer refits.",
+    "movement_derivative_mean_range": [0.849255, 0.862273],
+    "movement_derivative_tenth_percentile_range": [0.608822, 0.65049],
+    "movement_fraction_with_derivative_below_0.1": [0.0, 0.0, 0.0],
+    "lars_mean_prediction_during_movement_range": [0.253248, 0.27342],
+    "mean_target_during_movement_range": [0.357061, 0.382557],
+    "decision": "Softplus saturation is not the learning bottleneck. LARS underestimates movement amplitude, but the residual path receives a strong local gradient on essentially every movement bin."
+  },
+  "S1_index_frozen_feature_residual_predictability": {
+    "description": "Diagnostic regressors are trained independently inside each outer-training scope. Ridge alpha is chosen with interval-grouped inner folds. A fixed histogram-gradient-boosting probe sees the LARS trajectory, current candidate atoms, and four causal exponential summaries. It is not a candidate production decoder.",
+    "stitched_raw_pcc": {
+      "lars": 0.72554507,
+      "ridge_all_lags": 0.70059187,
+      "ridge_current_temporal_residual": 0.732099571,
+      "nonlinear_current_temporal_residual": 0.787567705,
+      "best_residual_lstm": 0.78482521
+    },
+    "stitched_cleaned_pcc": {
+      "lars": 0.757515877,
+      "ridge_all_lags": 0.723026061,
+      "ridge_current_temporal_residual": 0.763664153,
+      "nonlinear_current_temporal_residual": 0.820877205
+    },
+    "nonlinear_outer_raw_pcc": [0.766727721, 0.7973388, 0.815559781],
+    "nonlinear_outer_cleaned_residual_pcc": [0.529584823, 0.610857522, 0.61452004],
+    "decision": "The residual is genuinely nonlinear: the nonlinear temporal-summary probe improves every outer fold, whereas both ridge probes are weak or harmful. However, it is only 0.0027 raw PCC above the best LSTM and still gains only 0.062 over LARS. This is evidence against a large unexploited optimization reserve in the frozen feature bank, not a formal upper bound."
+  },
+  "S1_index_signed_leaf_pooling": {
+    "description": "Each existing wavelet leaf retains one scalar statistic: initialized log-energy plus a zero-gated signed within-bin mean. Spatial filters and wavelet taps are frozen, so this isolates phase-sensitive pooling without adding a filter branch.",
+    "shared_initialization_pcc": 0.725545068,
+    "energy_only_hidden_64_pcc": 0.757245129,
+    "signed_gate_lr_3e-3": {
+      "tuned_pcc": 0.75880946,
+      "gain": 0.033264392,
+      "selected_schedules": ["unfrozen_100_120", "unfrozen_100_80", "unfrozen_100_40"]
+    },
+    "signed_gate_lr_1e-2": {
+      "tuned_pcc": 0.758942103,
+      "gain": 0.033397036,
+      "selected_schedules": ["unfrozen_100_120", "unfrozen_100_80", "unfrozen_100_40"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.362105,
+        "rest_false_positive_rms": 0.07186,
+        "movement_rmse": 0.235258,
+        "amplitude_slope": 0.57299,
+        "velocity_pcc": 0.514923,
+        "movement_balanced_accuracy": 0.764556
+      },
+      "learned_leaf_gates_by_outer_fold": [
+        [0.0532, -0.0977, 0.0755, 0.1119, -0.3812, -0.4037, -0.1967, 0.0459],
+        [-0.0088, -0.0266, 0.4711, 0.3511, 0.5381, 0.3792, 0.2013, 0.37],
+        [0.0116, -0.1395, 0.3387, 0.2378, -0.2157, 0.0911, 0.2752, -0.0594]
+      ]
+    },
+    "decision": "Do not promote: signed pooling adds only 0.0017 PCC over the energy-only 64-unit model, worsens most morphology diagnostics, costs about 13--14 minutes, and learns inconsistent leaf signs across outer folds."
+  },
+  "S1_index_recurrent_input_geometry": {
+    "description": "The immutable split-local LARS path keeps its full 25-bin lag bank. Only the input presented to the nonlinear residual LSTM changes; every variant remains one spatial layer, one wavelet tree, and one recurrent decoder.",
+    "shared_initialization_pcc": 0.725545068,
+    "current_bin_candidates_variable_width": {
+      "tuned_pcc": 0.7797487,
+      "gain": 0.054203633,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "observed_input_width_range": [26, 47],
+      "runtime_seconds": 634.875,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.335391,
+        "rest_false_positive_rms": 0.065614,
+        "movement_rmse": 0.21986,
+        "amplitude_slope": 0.636938,
+        "velocity_pcc": 0.529877,
+        "movement_balanced_accuracy": 0.764969
+      }
+    },
+    "four_recent_bins": {
+      "tuned_pcc": 0.73926648,
+      "gain": 0.013721412,
+      "selected_schedules": ["frozen_20", "frozen_50", "frozen_50"],
+      "decision": "Reject: explicitly restoring four lag bins reintroduces redundant inputs and loses most of the current-bin gain."
+    },
+    "fixed_width_compile_control": {
+      "zero_padded_width": 64,
+      "head_learning_rate": 0.0003,
+      "tuned_pcc": 0.774016873,
+      "gain": 0.048471805,
+      "runtime_seconds": 202.73,
+      "speedup_over_variable_width": 3.13,
+      "decision": "Keep for efficient screening: zero padding changes no signal and avoids recompiling a different graph for every split-local feature width."
+    },
+    "fixed_width_low_learning_rate": {
+      "head_learning_rate": 0.0001,
+      "maximum_updates": 800,
+      "tuned_pcc": 0.773245918,
+      "gain": 0.04770085,
+      "runtime_seconds": 267.77,
+      "decision": "Reject: a lower rate with a longer schedule does not improve on 3e-4."
+    },
+    "fixed_width_plus_direct_lars_context": {
+      "description": "The same residual LSTM receives the fixed LARS preactivation as one additional scalar; this is contextual input, not a second feature branch.",
+      "tuned_pcc": 0.781612136,
+      "gain": 0.056067068,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "runtime_seconds": 275.406,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.33638,
+        "rest_false_positive_rms": 0.064146,
+        "movement_rmse": 0.220565,
+        "amplitude_slope": 0.643806,
+        "velocity_pcc": 0.533012,
+        "movement_balanced_accuracy": 0.762286
+      }
+    },
+    "current_bin_plus_correlation_objectives": {
+      "fixed_weights": {
+        "movement_state_bce": 0.5,
+        "within_sequence_correlation": 0.1,
+        "within_sequence_velocity_correlation": 0.1
+      },
+      "tuned_pcc": 0.768063989,
+      "gain": 0.042518921,
+      "selected_schedules": ["frozen_50", "frozen_100", "frozen_100"],
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.352076,
+        "rest_false_positive_rms": 0.073326,
+        "movement_rmse": 0.22351,
+        "amplitude_slope": 0.578584,
+        "velocity_pcc": 0.511316,
+        "movement_balanced_accuracy": 0.765143
+      },
+      "decision": "Reject: the correlation objectives that helped S2-middle still reduce S1-index PCC by 0.0135 and worsen rest error, movement RMSE, amplitude slope, and velocity PCC after the recurrent input is narrowed."
+    },
+    "current_bin_plus_interlevel_normalization": {
+      "description": "Every intermediate wavelet-tree output gains a zero-initialized interpolation toward its normalized value. The paths can change only during the low-rate end-to-end stage and do not add a feature branch.",
+      "tuned_pcc": 0.781612136,
+      "gain": 0.056067068,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "best_inner_unfrozen_minus_best_frozen_pcc": [-0.009979303, -0.004093781, -0.002585993],
+      "decision": "Reject: all three outer-training scopes select the unchanged frozen checkpoint, and even the best normalized continuation is worse than the best frozen checkpoint on every inner-fold aggregate."
+    },
+    "current_bin_plus_interlevel_skip": {
+      "description": "Every wavelet split gains a zero-initialized bypass from its parent representation. The bypass gates can change only during the low-rate end-to-end stage and remain inside the single tree.",
+      "tuned_pcc": 0.781612136,
+      "gain": 0.056067068,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "best_inner_unfrozen_minus_best_frozen_pcc": [-0.005014358, -0.002310629, -0.000793381],
+      "decision": "Reject: all three scopes again select the unchanged frozen checkpoint, and the best skip-tuned continuation is worse on every inner-fold aggregate."
+    },
+    "current_bin_minibatch_screen": {
+      "description": "Checkpoint grids are scaled inversely with batch size so each candidate sees approximately the same number of 100-bin sequences as the batch-24 reference.",
+      "batch_8": {
+        "checkpoint_grid": [60, 150, 300, 600, 1200],
+        "tuned_pcc": 0.753913983,
+        "gain": 0.028368915,
+        "selected_schedules": ["frozen_60", "frozen_150", "frozen_60"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.369024,
+          "rest_false_positive_rms": 0.075827,
+          "movement_rmse": 0.229978,
+          "amplitude_slope": 0.545674,
+          "velocity_pcc": 0.501891,
+          "movement_balanced_accuracy": 0.758066
+        }
+      },
+      "batch_24_reference": {
+        "checkpoint_grid": [20, 50, 100, 200, 400],
+        "tuned_pcc": 0.781612136,
+        "gain": 0.056067068
+      },
+      "batch_48": {
+        "checkpoint_grid": [10, 25, 50, 100, 200],
+        "tuned_pcc": 0.78482521,
+        "gain": 0.059280142,
+        "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.334322,
+          "rest_false_positive_rms": 0.063912,
+          "movement_rmse": 0.219117,
+          "amplitude_slope": 0.659566,
+          "velocity_pcc": 0.529745,
+          "movement_balanced_accuracy": 0.761711
+        }
+      },
+      "batch_96": {
+        "checkpoint_grid": [5, 13, 25, 50, 100],
+        "tuned_pcc": 0.783785963,
+        "gain": 0.058240895,
+        "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.336593,
+          "rest_false_positive_rms": 0.063512,
+          "movement_rmse": 0.220043,
+          "amplitude_slope": 0.661349,
+          "velocity_pcc": 0.526719,
+          "movement_balanced_accuracy": 0.761463
+        }
+      },
+      "batch_192": {
+        "checkpoint_grid": [3, 6, 13, 25, 50],
+        "tuned_pcc": 0.757304648,
+        "gain": 0.03175958,
+        "selected_schedules": ["frozen_50", "frozen_50", "frozen_50"],
+        "mean_selected_outer_diagnostics": {
+          "event_macro_nmse": 0.359508,
+          "rest_false_positive_rms": 0.07698,
+          "movement_rmse": 0.22807,
+          "amplitude_slope": 0.548547,
+          "velocity_pcc": 0.494007,
+          "movement_balanced_accuracy": 0.773796
+        }
+      },
+      "decision": "Use batch 48 for any continuation of this S1-index residual family. Smaller batches are much worse; batch 96 is statistically indistinguishable but slightly lower; batch 192 collapses. The new best is 0.785 PCC (+0.059), so batch regularization does not close the requested +0.1 gain."
+    },
+    "all_candidate_causal_closure": {
+      "description": "The LSTM receives the current-time source stream for every atom represented anywhere in the screened candidate lag bank, while the direct LARS path remains unchanged.",
+      "zero_padded_width": 512,
+      "tuned_pcc": 0.764869205,
+      "gain": 0.039324138,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "total_parallel_fold_runtime_seconds": 575.356,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.368383,
+        "rest_false_positive_rms": 0.0597,
+        "movement_rmse": 0.238004,
+        "amplitude_slope": 0.597035,
+        "velocity_pcc": 0.497414,
+        "movement_balanced_accuracy": 0.765985
+      },
+      "decision": "Reject: causal closure suppresses resting error but dilutes the useful recurrent state with many streams and is 0.0167 PCC below the narrower current-bin-plus-direct model."
+    },
+    "nonzero_lars_stream_causal_closure": {
+      "description": "The LSTM receives current-time values only for spectral streams represented by nonzero split-local LARS coefficients. The direct LARS prediction still uses the complete selected lag bank.",
+      "zero_padded_width": 128,
+      "tuned_pcc": 0.775423335,
+      "gain": 0.049878267,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_100"],
+      "outer_raw_pcc": [0.769308582, 0.760341975, 0.817824268],
+      "total_parallel_fold_runtime_seconds": 924.345,
+      "mean_selected_outer_diagnostics": {
+        "event_macro_nmse": 0.358131,
+        "rest_false_positive_rms": 0.057788,
+        "movement_rmse": 0.235875,
+        "amplitude_slope": 0.600266,
+        "velocity_pcc": 0.522869,
+        "movement_balanced_accuracy": 0.763209
+      },
+      "decision": "Reject: restricting causal closure to nonzero-LARS streams recovers some performance but remains 0.0062 PCC below the zero-lag-screened current-bin-plus-direct model and has worse event NMSE, movement RMSE, amplitude slope, and velocity PCC."
+    },
+    "decision": "Use current-bin recurrent inputs plus the fixed direct LARS context for the next single-branch diagnostic. It is the strongest S1-index residual model so far at 0.782 PCC, but its +0.056 gain remains below +0.1."
+  },
+  "movement_state_generalization": {
+    "S1_index": {
+      "initialization_pcc": 0.721336642,
+      "tuned_pcc": 0.754363024,
+      "gain": 0.033026382,
+      "candidate_residual_without_state_pcc": 0.736630835,
+      "mean_initialized_outer_diagnostics": {
+        "rest_false_positive_rms": 0.114866,
+        "movement_rmse": 0.252807,
+        "amplitude_slope": 0.370905,
+        "velocity_pcc": 0.407183,
+        "movement_balanced_accuracy": 0.713744
+      },
+      "mean_selected_outer_diagnostics": {
+        "rest_false_positive_rms": 0.080435,
+        "movement_rmse": 0.234967,
+        "amplitude_slope": 0.535505,
+        "velocity_pcc": 0.426624,
+        "movement_balanced_accuracy": 0.76299
+      }
+    },
+    "S3_thumb": {
+      "initialization_pcc": 0.572208107,
+      "tuned_pcc": 0.62028534,
+      "gain": 0.048077233,
+      "candidate_residual_without_state_pcc": 0.60427315,
+      "mean_initialized_outer_diagnostics": {
+        "rest_false_positive_rms": 0.147232,
+        "movement_rmse": 0.341128,
+        "amplitude_slope": 0.316795,
+        "velocity_pcc": 0.183321,
+        "movement_balanced_accuracy": 0.660423
+      },
+      "mean_selected_outer_diagnostics": {
+        "rest_false_positive_rms": 0.126745,
+        "movement_rmse": 0.324471,
+        "amplitude_slope": 0.515631,
+        "velocity_pcc": 0.185332,
+        "movement_balanced_accuracy": 0.75304
+      }
+    }
+  },
+  "movement_state_plus_hidden_level_normalization": {
+    "valid_raw_stem_test": true,
+    "tuned_pcc": 0.444734555,
+    "gain": 0.079996331,
+    "inner_selected_schedules": [
+      "frozen_400",
+      "frozen_400",
+      "unfrozen_100_200"
+    ],
+    "outer_fold_pcc": [
+      0.451926477,
+      0.454597156,
+      0.435086211
+    ],
+    "mean_outer_diagnostics": {
+      "rest_false_positive_rms": 0.083294359,
+      "movement_rmse": 0.475276728,
+      "amplitude_slope": 0.254635294,
+      "velocity_pcc": 0.227037838,
+      "movement_balanced_accuracy": 0.745735761
+    }
+  },
+  "excluded_invalid_ablation": "A cached-feature-only run cannot exercise interlevel wavelet paths and is excluded. The runner now rejects that configuration.",
+  "near_zero_residual_output_ablation": {
+    "initialization_std": 0.001,
+    "S1_index_tuned_pcc": 0.729422722,
+    "S2_middle_tuned_pcc": 0.438924756,
+    "S3_thumb_tuned_pcc": 0.605836304,
+    "decision": "Reject: worse for S1 and S2 and only 0.0016 PCC above the exact-zero control for S3."
+  },
+  "fixed_width_candidate_direct_path": {
+    "description": "The frozen split-local LARS function is algebraically expanded into the 712-wide standardized candidate basis, with zeros for unselected candidates. This removes fold-dependent decoder widths without changing predictions.",
+    "verified_exact_equivalence": true,
+    "compiled_S2_middle_outer0_runtime_seconds": 25.608136,
+    "eager_S2_middle_three_outer_fold_runtime_seconds": 689.251749,
+    "compiled_S1_index_three_outer_fold_runtime_seconds": 181.223,
+    "compiled_S3_thumb_three_outer_fold_runtime_seconds": 177.189
+  },
+  "concurrent_initialization_cache": {
+    "implementation": "An OS-level split lock now serializes cache creation and readers recheck the completion marker after acquiring it.",
+    "verified_shared_initialization_pcc": 0.725545068,
+    "parallel_jobs_compared": 3,
+    "decision": "Keep: the matched control and two auxiliary-velocity runs loaded identical split-local initializations while training concurrently."
+  },
+  "S3_thumb_current_bin_batch48_generalization": {
+    "description": "The S1-selected current-bin recurrent geometry and batch-48 schedule are transferred unchanged to S3 thumb. The spatial/wavelet stem and direct split-local LARS path remain frozen; only the 64-unit residual LSTM and its trajectory/movement heads train.",
+    "data_scope": "event-grouped nested cross-validation on released competition training data",
+    "released_test_touched": false,
+    "initialization_pcc": 0.629314796,
+    "tuned_pcc": 0.732715192,
+    "gain": 0.103400396,
+    "selected_schedules": [
+      "frozen_100",
+      "frozen_100",
+      "frozen_100"
+    ],
+    "outer_raw_pcc": [
+      0.786571331,
+      0.723266829,
+      0.717508963
+    ],
+    "mean_selected_outer_diagnostics": {
+      "event_macro_nmse": 0.469701586,
+      "rest_false_positive_rms": 0.091223096,
+      "movement_rmse": 0.295624902,
+      "amplitude_slope": 0.647394061,
+      "velocity_pcc": 0.269897868,
+      "movement_balanced_accuracy": 0.829820153
+    },
+    "stitched_cleaned_diagnostics": {
+      "initialization_pcc": 0.661436617,
+      "tuned_pcc": 0.760431468,
+      "initialization_rest_rms": 0.15096201,
+      "tuned_rest_rms": 0.095434554,
+      "initialization_movement_rmse": 0.327441633,
+      "tuned_movement_rmse": 0.295841366,
+      "initialization_state_f1": 0.359413203,
+      "tuned_state_f1": 0.694805195,
+      "initialization_velocity_pcc": 0.161190554,
+      "tuned_velocity_pcc": 0.247399613
+    },
+    "peak_triggered_diagnostic": {
+      "peak_count": 67,
+      "initialization_peak_ratio": 0.446345776,
+      "tuned_peak_ratio": 0.600931108,
+      "tuned_aligned_waveform_pcc": 0.838950932,
+      "tuned_best_lag_bins": 0
+    },
+    "runtime_seconds_sum": 1362.837548,
+    "visual_finding": "The LSTM more reliably detects movement state, suppresses most resting offset, and raises the flexion envelope. It still smooths across within-event extension valleys, compresses peak amplitude, and retains one conspicuous resting false-positive episode.",
+    "decision": "The transferred recipe meets the requested numerical threshold at +0.1034 PCC and improves every stitched morphology summary reported above. Count it as a numerical pass, but not as a solved trajectory: fine movement dynamics remain underfit."
+  },
+  "all_pair_gain_screen": {
+    "description": "The S1-selected current-bin, batch-48 residual-LSTM recipe was frozen before transfer to the twelve previously unscreened subject-finger pairs. Each pair refits its own split-local target baseline, CSP, and LARS; only full-rank split-local FastICA rows are reused. S2-middle retains its separately inner-selected correlation/velocity objective, and S3-thumb is the earlier unchanged transfer run.",
+    "data_scope": "event-grouped nested cross-validation on released competition training data",
+    "released_test_touched": false,
+    "gain_threshold": 0.1,
+    "completed_pairs": 15,
+    "passing_pairs": [
+      "S2_middle",
+      "S3_thumb"
+    ],
+    "pairs": {
+      "S1_thumb": {
+        "initialization_pcc": 0.571389293,
+        "tuned_pcc": 0.617527615,
+        "gain": 0.046138322
+      },
+      "S1_index": {
+        "initialization_pcc": 0.725545068,
+        "tuned_pcc": 0.78482521,
+        "gain": 0.059280142
+      },
+      "S1_middle": {
+        "initialization_pcc": 0.2161467,
+        "tuned_pcc": 0.157226885,
+        "gain": -0.058919815
+      },
+      "S1_ring": {
+        "initialization_pcc": 0.493492559,
+        "tuned_pcc": 0.386952437,
+        "gain": -0.106540122
+      },
+      "S1_little": {
+        "initialization_pcc": 0.369507854,
+        "tuned_pcc": 0.353064696,
+        "gain": -0.016443158
+      },
+      "S2_thumb": {
+        "initialization_pcc": 0.577508105,
+        "tuned_pcc": 0.563993931,
+        "gain": -0.013514174
+      },
+      "S2_index": {
+        "initialization_pcc": 0.349420727,
+        "tuned_pcc": 0.347645923,
+        "gain": -0.001774804
+      },
+      "S2_middle": {
+        "initialization_pcc": 0.364738224,
+        "tuned_pcc": 0.46779307,
+        "gain": 0.103054846,
+        "finger_specific_change": "movement-state plus within-sequence level and velocity correlation objective"
+      },
+      "S2_ring": {
+        "initialization_pcc": 0.446083223,
+        "tuned_pcc": 0.429599543,
+        "gain": -0.01648368
+      },
+      "S2_little": {
+        "initialization_pcc": 0.326494256,
+        "tuned_pcc": 0.339951519,
+        "gain": 0.013457263
+      },
+      "S3_thumb": {
+        "initialization_pcc": 0.629314796,
+        "tuned_pcc": 0.732715192,
+        "gain": 0.103400396
+      },
+      "S3_index": {
+        "initialization_pcc": 0.579112281,
+        "tuned_pcc": 0.569436567,
+        "gain": -0.009675714
+      },
+      "S3_middle": {
+        "initialization_pcc": 0.590355891,
+        "tuned_pcc": 0.567901008,
+        "gain": -0.022454883
+      },
+      "S3_ring": {
+        "initialization_pcc": 0.404704309,
+        "tuned_pcc": 0.416945469,
+        "gain": 0.012241159
+      },
+      "S3_little": {
+        "initialization_pcc": 0.631937483,
+        "tuned_pcc": 0.595102295,
+        "gain": -0.036835188
+      }
+    },
+    "fixed_transfer_summary": "None of the twelve newly screened pairs reaches +0.1. S1-thumb is the strongest new positive gain at +0.046; S2-little and S3-ring are small positives; seven transfers reduce PCC. The full diagnostic table is generated at outputs/candidate_residual_current_bin_batch48_oof_all_v1/screen_summary.json.",
+    "morphology_pattern": "Several PCC failures still reduce resting RMS and raise amplitude slope or movement-state accuracy. The recurrent head is learning a smoother movement envelope, but often loses within-event timing or movement amplitude sufficiently to reduce raw PCC.",
+    "decision": "Reject the batch-48 current-bin recipe as a universal decoder. Preserve S2-middle and S3-thumb as numerical passes, retain S1-index as the best sub-threshold residual result, and use finger-specific spectral-spatial initialization or objectives for the remaining pairs."
+  },
+  "S2_little_interlevel_normalization_lr_selection": {
+    "description": "The near-threshold hidden-level normalization result was bracketed with interlevel-path learning rates of 3e-4 and 3e-3. Each learning rate selected its optimizer-update schedule using only inner folds. A second nested decision selected among learning rates from the chosen schedule's inner mean raw PCC before untouched outer predictions were stitched.",
+    "released_test_touched": false,
+    "outer_validation_used_for_selection": false,
+    "initialization_pcc": 0.326494257,
+    "fixed_lr_outer_diagnostics": {
+      "interlevel_lr3e-4": {
+        "tuned_pcc": 0.418843399,
+        "gain": 0.092349142
+      },
+      "interlevel_lr1e-3": {
+        "tuned_pcc": 0.426453594,
+        "gain": 0.099959337
+      },
+      "interlevel_lr3e-3": {
+        "tuned_pcc": 0.394396774,
+        "gain": 0.067902517
+      }
+    },
+    "inner_selected_result": {
+      "selected_learning_rate_by_outer_fold": [
+        "3e-3",
+        "3e-4",
+        "1e-3"
+      ],
+      "selected_schedule_by_outer_fold": [
+        "unfrozen_100_10",
+        "unfrozen_100_100",
+        "unfrozen_100_10"
+      ],
+      "tuned_pcc": 0.40836976,
+      "gain": 0.081875503
+    },
+    "decision": "Do not count S2-little as a pass. The fixed 1e-3 diagnostic misses +0.1 by 0.000041, and the leakage-safe inner-selected learning-rate route gains only +0.0819. Further generic interlevel-rate tuning is not justified."
+  },
+  "separate_gamma_csp_single_branch": {
+    "description": "The single spatial layer contains the split-local full-rank FastICA rows plus one target-finger CSP row fitted on HHL (100--125 Hz) and one fitted independently on HHH (125--150 Hz). Every row enters the same depth-3 wavelet tree; no temporal or prediction branch is stacked.",
+    "released_test_touched": false,
+    "residual_input_width": 96,
+    "pairs": {
+      "S1_middle": {
+        "initialization_pcc": 0.217101655,
+        "tuned_pcc": 0.195221683,
+        "gain": -0.021879973
+      },
+      "S3_middle": {
+        "initialization_pcc": 0.589792391,
+        "tuned_pcc": 0.567237323,
+        "gain": -0.022555068
+      },
+      "S3_ring": {
+        "initialization_pcc": 0.451866234,
+        "tuned_pcc": 0.435693597,
+        "gain": -0.016172637,
+        "initialization_gain_over_joint_gamma_csp": 0.047161925
+      }
+    },
+    "diagnostic": "For S3 middle and ring, tuning reduces rest RMS and improves movement-state balanced accuracy, but movement RMSE or velocity tracking worsens enough to reduce PCC. Only S3 ring receives a material fixed-LARS benefit from leaf-specific CSP.",
+    "level_plus_velocity_correlation_objective": {
+      "weights": {
+        "within_sequence_level_correlation": 0.1,
+        "within_sequence_velocity_correlation": 0.1
+      },
+      "S3_middle": {
+        "tuned_pcc": 0.568636853,
+        "gain": -0.021155538
+      },
+      "S3_ring": {
+        "tuned_pcc": 0.44881837,
+        "gain": -0.003047864
+      }
+    },
+    "decision": "Do not promote separate gamma CSP as a general residual decoder. The predeclared level-plus-velocity correlation objective recovers 0.0131 PCC on S3 ring relative to the state-only residual run, but neither S3 pair beats its fixed LARS initialization."
+  },
+  "S2_little_batch_capacity_checks": {
+    "shared_initialization_pcc": 0.326494257,
+    "batch_48_hidden_32": {
+      "tuned_pcc": 0.418055945,
+      "gain": 0.091561688
+    },
+    "batch_24_hidden_64": {
+      "tuned_pcc": 0.378624761,
+      "gain": 0.052130504
+    },
+    "decision": "Keep batch 24 and 32 hidden units for S2 little. Doubling either batch size or recurrent width moves the result farther from the requested gain."
+  },
+  "S2_little_fixed_data_six_seed_ensemble": {
+    "description": "Six replicas use identical event folds, sampler order, preprocessing, architecture, and hyperparameters; only model initialization differs. Every finite nonconstant seed is included without consulting its held-out PCC.",
+    "released_test_touched": false,
+    "outer_validation_used_for_seed_exclusion": false,
+    "included_seed_count": 6,
+    "collapsed_seed_count": 0,
+    "initialization_pcc": 0.326494257,
+    "member_pcc_mean": 0.439235907,
+    "member_pcc_population_sd": 0.0245106,
+    "ensemble_pcc": 0.46560119,
+    "ensemble_gain": 0.139106933,
+    "initialized_morphology": {
+      "event_macro_nmse": 0.940646028,
+      "rest_false_positive_rms": 0.095595621,
+      "movement_rmse": 0.537953973,
+      "amplitude_slope": 0.110074677,
+      "velocity_pcc": 0.185324813,
+      "movement_balanced_accuracy": 0.80025261
+    },
+    "ensemble_morphology": {
+      "event_macro_nmse": 0.677263319,
+      "rest_false_positive_rms": 0.06017169,
+      "movement_rmse": 0.492473483,
+      "amplitude_slope": 0.261957616,
+      "velocity_pcc": 0.299880286,
+      "movement_balanced_accuracy": 0.802991868
+    },
+    "decision": "Count S2 little as the third numerical pass. Its +0.1391 PCC gain exceeds the requested threshold and every recorded morphology diagnostic improves over the split-local LARS initialization."
+  },
+  "S1_index_fixed_data_six_seed_ensemble": {
+    "description": "The current-best S1-index residual configuration is repeated with identical event folds and sampler order; only model initialization differs. All finite nonconstant seeds are included.",
+    "released_test_touched": false,
+    "included_seed_count": 6,
+    "collapsed_seed_count": 0,
+    "initialization_pcc": 0.721371854,
+    "member_pcc_mean": 0.776858025,
+    "member_pcc_population_sd": 0.003068048,
+    "ensemble_pcc": 0.780307504,
+    "ensemble_gain": 0.05893565,
+    "ensemble_morphology": {
+      "event_macro_nmse": 0.360970112,
+      "rest_false_positive_rms": 0.065307818,
+      "movement_rmse": 0.228566006,
+      "amplitude_slope": 0.610516608,
+      "velocity_pcc": 0.507146523,
+      "movement_balanced_accuracy": 0.760133908
+    },
+    "decision": "Do not count as a pass. Averaging improves only 0.00345 PCC over the seed mean and leaves the gain at +0.0589; the very small seed SD rules out more replicas as the missing S1-index improvement."
+  },
+  "S1_index_followup_representation_screens": {
+    "released_test_touched": false,
+    "group_stable_LARS": {
+      "candidate_raw_pcc": 0.70788468,
+      "matched_baseline_raw_pcc": 0.730401048,
+      "delta": -0.022516368,
+      "decision": "Reject before recurrent tuning. Requiring atom-family recurrence across both inner folds leaves only one family in outer folds 0 and 2 and reduces held-out PCC in every fold."
+    },
+    "dual_rest_other_CSP_initialization": {
+      "fixed_pre_ablation_reference_pcc": 0.725545068,
+      "candidate_own_initialization_pcc": 0.723601914,
+      "gain_over_fixed_reference": -0.001943154,
+      "decision": "Reject before recurrent tuning. The S1-little dual-contrast representation does not transfer to S1 index."
+    },
+    "depth5_overcomplete_designed_CSP_initialization": {
+      "fixed_pre_ablation_reference_pcc": 0.725545068,
+      "candidate_own_initialization_pcc": 0.710295741,
+      "gain_over_fixed_reference": -0.015249327,
+      "decision": "Reject before recurrent tuning. The S1-middle depth-5 designed-band representation lowers S1-index PCC."
+    },
+    "decision": "Close the current S1-index leads at the existing +0.0589 fixed-reference gain and move to S1 thumb. Stable selection and the two strongest representation transfers all fail their initializer gates."
+  },
+  "split_local_target_alignment_audit": {
+    "description": "The split-local cleaned OOF target is compared with the raw glove trajectory used by the primary PCC diagnostic. This is a diagnostic of objective alignment, not a model-selection result.",
+    "lowest_cleaned_vs_raw_pcc": {
+      "S3_middle": 0.777241468,
+      "S3_ring": 0.875261027,
+      "S2_little": 0.893836327
+    },
+    "diagnostic": "S3 middle and ring have the clearest mismatch between the morphology-preserving cleaned loss target and the raw-PCC selection target. A movement-only raw-shape loss is therefore tested next while cleaned-target MSE remains active to suppress baseline drift and rest false positives."
+  },
+  "raw_movement_shape_loss_pilot": {
+    "description": "The same single-branch residual LSTM retains cleaned-target MSE and movement-state BCE, then adds weight-0.1 correlation losses against raw glove level and velocity only where the split-local cleaned target indicates movement.",
+    "released_test_touched": false,
+    "pairs": {
+      "S3_middle": {
+        "initialization_pcc": 0.589792391,
+        "tuned_pcc": 0.571340024,
+        "gain": -0.018452368,
+        "selected_rest_false_positive_rms": 0.116297781,
+        "selected_movement_rmse": 0.22085989,
+        "selected_velocity_pcc": 0.328927048,
+        "selected_movement_balanced_accuracy": 0.735060958
+      },
+      "S3_ring": {
+        "initialization_pcc": 0.451866234,
+        "tuned_pcc": 0.448764787,
+        "gain": -0.003101447,
+        "selected_rest_false_positive_rms": 0.167090788,
+        "selected_movement_rmse": 0.331365804,
+        "selected_velocity_pcc": 0.166914146,
+        "selected_movement_balanced_accuracy": 0.677306198
+      }
+    },
+    "decision": "Reject without tuning its weight on outer results. Both pairs improve rest suppression, velocity PCC, and movement-state accuracy, but movement RMSE worsens and neither beats LARS. The cleaned/raw target mismatch is real but is not the missing decoder gain."
+  },
+  "frozen_feature_residual_capacity_audit": {
+    "description": "Split-local ridge and fixed histogram-gradient-boosting probes test whether current and causal summaries of the frozen single-branch feature bank contain a large learnable residual. These are diagnostics, not promoted decoders.",
+    "released_test_touched": false,
+    "pairs": {
+      "S1_middle": {
+        "lars_pcc": 0.2161467,
+        "best_probe": "histogram_gradient_boosting_current_temporal",
+        "best_probe_pcc": 0.229240672,
+        "best_probe_gain": 0.013093973
+      },
+      "S3_middle": {
+        "lars_pcc": 0.589792393,
+        "best_probe": "ridge_current_temporal",
+        "best_probe_pcc": 0.595705123,
+        "best_probe_gain": 0.00591273
+      },
+      "S3_ring": {
+        "lars_pcc": 0.451866235,
+        "best_probe": "ridge_refit_all_lags",
+        "best_probe_pcc": 0.475950202,
+        "best_probe_gain": 0.024083968
+      }
+    },
+    "decision": "The existing frozen representation lacks enough stable residual signal to support +0.1 on these pairs. Stop tuning only the recurrent head or its loss; change the spectral-spatial evidence while preserving the single branch."
+  },
+  "lower_high_gamma_csp_single_branch": {
+    "description": "The same single spatial layer adds target-finger CSP rows fitted jointly on the initialized 50--75 and 75--100 Hz wavelet leaves, alongside CSP rows fitted separately on the 100--125 and 125--150 Hz leaves. All FastICA and CSP rows still enter one depth-3 wavelet tree and one residual LSTM.",
+    "released_test_touched": false,
+    "S3_ring_movement_1_per_band": {
+      "initialization_pcc": 0.513604969,
+      "tuned_pcc": 0.495895641,
+      "gain": -0.017709328,
+      "initialization_gain_over_separate_100_150_csp": 0.061738735,
+      "initialized_morphology": {
+        "event_macro_nmse": 0.720890551,
+        "rest_false_positive_rms": 0.177103455,
+        "movement_rmse": 0.304548889,
+        "amplitude_slope": 0.265011802,
+        "velocity_pcc": 0.171572529,
+        "movement_balanced_accuracy": 0.646045479
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.73484537,
+        "rest_false_positive_rms": 0.154526408,
+        "movement_rmse": 0.3201844,
+        "amplitude_slope": 0.306132287,
+        "velocity_pcc": 0.186791973,
+        "movement_balanced_accuracy": 0.723214247
+      }
+    },
+    "S3_ring_movement_2_per_band": {
+      "fixed_pre_ablation_reference_pcc": 0.404704309,
+      "candidate_own_initialization_pcc": 0.531178596,
+      "tuned_pcc": 0.530623365,
+      "gain": 0.125919056,
+      "candidate_self_gain": -0.000555231,
+      "selected_schedules": ["frozen_25", "frozen_50", "frozen_25"],
+      "fixed_reference_morphology": {
+        "event_macro_nmse": 0.844418456,
+        "rest_false_positive_rms": 0.184263314,
+        "movement_rmse": 0.332478642,
+        "amplitude_slope": 0.193902413,
+        "velocity_pcc": 0.151017659,
+        "movement_balanced_accuracy": 0.613933733
+      },
+      "initialized_morphology": {
+        "event_macro_nmse": 0.710295,
+        "rest_false_positive_rms": 0.175476,
+        "movement_rmse": 0.302042,
+        "amplitude_slope": 0.26805,
+        "velocity_pcc": 0.187362,
+        "movement_balanced_accuracy": 0.64787
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.708507,
+        "rest_false_positive_rms": 0.152756,
+        "movement_rmse": 0.312227,
+        "amplitude_slope": 0.304297,
+        "velocity_pcc": 0.192712,
+        "movement_balanced_accuracy": 0.720785
+      },
+      "frozen_feature_capacity": {
+        "lars_pcc": 0.531178599,
+        "ridge_all_lags_pcc": 0.544330246,
+        "ridge_all_lags_gain": 0.013151648,
+        "ridge_current_temporal_pcc": 0.533569731,
+        "ridge_current_temporal_gain": 0.002391132
+      },
+      "fixed_reference_audit": "Relative to the fixed pre-ablation model, every averaged morphology diagnostic improves in addition to the +0.1259 stitched raw-PCC gain. The candidate-specific initializer is retained only as a diagnostic: the residual LSTM itself is neutral at -0.0006 PCC after the representation change."
+    },
+    "decision": "Count S3 ring as a fixed-reference model pass: the single-branch lower-high-gamma CSP candidate gains +0.1259 over the fixed pre-ablation reference and improves every averaged morphology diagnostic. Do not attribute that gain to recurrent tuning; the candidate's own initialization is 0.0006 PCC higher than its tuned checkpoint."
+  },
+  "gpu_lasso_backend_benchmark": {
+    "description": "A batched PyTorch FISTA path solves the same split-local Lasso objective on a GPU Gram matrix. CPU LARS remains available for exact historical reproduction; new batch-48 experiment queues use the GPU backend.",
+    "released_test_touched": false,
+    "cached_inner_split": {
+      "rows": 2666,
+      "features": 1112,
+      "cpu_lars_seconds": 3.340241,
+      "gpu_fista_seconds": 1.460575,
+      "solver_speedup": 2.286936,
+      "cpu_validation_pcc": 0.511924559,
+      "gpu_validation_pcc": 0.512468283,
+      "validation_prediction_pcc_between_backends": 0.999850971,
+      "cpu_selected_features": 265,
+      "gpu_selected_features": 273
+    },
+    "fresh_single_job_outer_fold": {
+      "cpu_lars_runtime_seconds": 280.245859,
+      "gpu_fista_runtime_seconds": 220.053892,
+      "end_to_end_speedup": 1.273529,
+      "cpu_initialization_pcc": 0.562722417,
+      "gpu_initialization_pcc": 0.562528793,
+      "cpu_tuned_pcc": 0.562449107,
+      "gpu_tuned_pcc": 0.562191963,
+      "selected_schedule_both": "frozen_10"
+    },
+    "decision": "Use GPU FISTA for new experiment queues: it is numerically interchangeable for this split and reduces total runtime by about 21%. Keep sklearn LARS as the core default until a caller explicitly opts into the approximate GPU path."
+  },
+  "gpu_ridge_probe_backend": {
+    "description": "Residual-capacity audits can standardize features and solve a ridge-alpha path from one GPU eigendecomposition per outer fold. This replaces repeated CPU factorizations without changing the production decoder.",
+    "S3_ring_lower_high_gamma_ridge_only_runtime_seconds": 6.2,
+    "decision": "Use the GPU ridge backend for linear residual-capacity screens. It makes negative representation checks cheap enough to run before expensive recurrent sweeps."
+  },
+  "frozen_feature_residual_capacity_map": {
+    "description": "Each diagnostic refits either all lagged candidate features or a causal temporal summary inside every outer-training scope. Ridge penalties use interval-grouped inner folds; held-out outer intervals are evaluated once and released test labels are never loaded.",
+    "released_test_touched": false,
+    "raw_pcc_lars_ridge_all_lags_ridge_current_temporal": {
+      "S1_middle": [0.216147, 0.217803, 0.215086],
+      "S1_little": [0.369508, 0.370287, 0.362715],
+      "S2_thumb": [0.577508, 0.565203, 0.561372],
+      "S2_index": [0.349421, 0.355609, 0.313452],
+      "S2_ring": [0.446083, 0.414012, 0.449125],
+      "S2_little": [0.326494, 0.353472, 0.363065],
+      "S3_index": [0.579112, 0.567619, 0.581887],
+      "S3_middle": [0.590356, 0.564258, 0.587104],
+      "S3_little": [0.631937, 0.609087, 0.638]
+    },
+    "representative_fixed_nonlinear_temporal_probe": {
+      "S1_middle": {
+        "lars_pcc": 0.216147,
+        "probe_pcc": 0.229241,
+        "gain": 0.013094
+      },
+      "S2_index": {
+        "lars_pcc": 0.349421,
+        "probe_pcc": 0.271413,
+        "gain": -0.078008
+      },
+      "S3_index": {
+        "lars_pcc": 0.579112,
+        "probe_pcc": 0.532676,
+        "gain": -0.046436
+      },
+      "S1_ring_dual_CSP": {
+        "lars_pcc": 0.495995,
+        "ridge_all_lags_pcc": 0.490132,
+        "ridge_current_temporal_pcc": 0.487783,
+        "probe_pcc": 0.425241
+      }
+    },
+    "split_metadata_integrity_fix": "One legacy S3-index cache saved the unfiltered outer-fold definition, including a discarded two-bin interval with undefined target values. Model fitting had already excluded that interval, so model scores are unaffected. Future caches store the exact fitted intervals; diagnostics also intersect legacy metadata with finite target runs.",
+    "decision": "Except for the already passing S2-little ensemble, the frozen default candidate banks contain no stable linear residual reserve remotely close to +0.1. Fixed nonlinear temporal probes also fail on three representative pairs, and the enriched S1-ring dual-CSP bank is exhausted by every probe. Continue with representation-level, pair-specific hypotheses rather than generic LSTM or optimizer sweeps."
+  },
+  "S1_thumb_residual_diagnostics": {
+    "released_test_touched": false,
+    "frozen_feature_capacity": {
+      "lars_pcc": 0.57138929,
+      "ridge_all_lags_pcc": 0.557285363,
+      "ridge_current_temporal_pcc": 0.579596626,
+      "best_linear_gain": 0.008207337,
+      "runtime_seconds": 20.45,
+      "diagnostic": "Linear probes find little residual capacity, while the nonlinear residual LSTM gains substantially more. The remaining S1-thumb residual is nonlinear rather than a missed linear recombination of the frozen bank."
+    },
+    "state_only_extended_schedule": {
+      "initialization_pcc": 0.571389293,
+      "tuned_pcc": 0.609421973,
+      "gain": 0.038032681,
+      "selected_schedules": ["frozen_400", "frozen_200", "frozen_200"],
+      "decision": "Reject: extending the state-only schedule below its earlier 0.617528 result exposes inner-to-outer partition mismatch rather than useful optimization reserve."
+    },
+    "level_plus_velocity_correlation_objective": {
+      "weights": {
+        "within_sequence_level_correlation": 0.1,
+        "within_sequence_velocity_correlation": 0.1
+      },
+      "maximum_updates_200": {
+        "tuned_pcc": 0.624619085,
+        "gain": 0.053229793
+      },
+      "maximum_updates_400": {
+        "initialization_pcc": 0.571389293,
+        "tuned_pcc": 0.628730425,
+        "gain": 0.057341132,
+        "selected_schedules": ["frozen_400", "frozen_200", "frozen_200"],
+        "outer_tuned_pcc": [0.65806222, 0.631177795, 0.609632838],
+        "runtime_seconds": 243.151951,
+        "initialized_morphology": {
+          "event_macro_nmse": 0.799122169,
+          "rest_false_positive_rms": 0.109982083,
+          "movement_rmse": 0.394069135,
+          "amplitude_slope": 0.295746028,
+          "velocity_pcc": 0.252820499,
+          "movement_balanced_accuracy": 0.824894631
+        },
+        "tuned_morphology": {
+          "event_macro_nmse": 0.656577343,
+          "rest_false_positive_rms": 0.070925714,
+          "movement_rmse": 0.373471419,
+          "amplitude_slope": 0.496486336,
+          "velocity_pcc": 0.31204628,
+          "movement_balanced_accuracy": 0.90622154
+        }
+      },
+      "decision": "Keep as the best S1-thumb residual result: it improves PCC and every recorded morphology metric. Do not count it as a pass because +0.0573 remains well below the requested +0.1."
+    }
+  },
+  "S1_thumb_followup_representation_screens": {
+    "released_test_touched": false,
+    "depth5_overcomplete_designed_CSP_initialization": {
+      "fixed_pre_ablation_reference_pcc": 0.571389293,
+      "candidate_own_initialization_pcc": 0.559455179,
+      "gain_over_fixed_reference": -0.011934114,
+      "decision": "Reject before recurrent tuning. The S1-middle depth-5 designed-band representation lowers S1-thumb PCC."
+    },
+    "dual_rest_other_CSP_initialization": {
+      "fixed_pre_ablation_reference_pcc": 0.571389293,
+      "candidate_own_initialization_pcc": 0.570544338,
+      "gain_over_fixed_reference": -0.000844955,
+      "decision": "Reject before recurrent tuning. The target-versus-other-finger contrast is neutral-to-worse for S1 thumb."
+    },
+    "decision": "Keep the +0.0573 correlation-objective model as S1 thumb's best validated result. Neither successful representation transfer improves the initializer."
+  },
+  "S1_middle_overcomplete_single_tree": {
+    "description": "One FastICA+CSP spatial convolution feeds one wavelet-packet tree. The tree retains the eight depth-3 parent energies and appends their sixteen depth-4 child energies, giving 24 overlapping atoms to the same split-local LARS path and residual LSTM; this is not a parallel temporal branch.",
+    "released_test_touched": false,
+    "frequency_response_audit": {
+      "coarse_peak_range_hz": [18, 180],
+      "fine_peak_range_hz": [9, 190],
+      "highest_band_central_90_percent_rolloff_hz": 209,
+      "diagnostic": "The interpolated bior6.8 taps subdivide the approximately 0--200 Hz signal support while preserving the 1 kHz input clock; they do not revert to a wasted 0--500 Hz tiling."
+    },
+    "initialized_pcc": 0.203813268,
+    "tuned_pcc": 0.245430642,
+    "gain": 0.041617375,
+    "selected_schedules": ["frozen_50", "frozen_50", "frozen_50"],
+    "initialized_morphology": {
+      "event_macro_nmse": 1.1218935,
+      "rest_false_positive_rms": 0.1277501,
+      "movement_rmse": 0.435809,
+      "amplitude_slope": 0.0624752,
+      "velocity_pcc": 0.1603268,
+      "movement_balanced_accuracy": 0.5982383
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 1.0807132,
+      "rest_false_positive_rms": 0.1043471,
+      "movement_rmse": 0.4455875,
+      "amplitude_slope": 0.1085316,
+      "velocity_pcc": 0.2181051,
+      "movement_balanced_accuracy": 0.6310575
+    },
+    "selected_atom_audit": {
+      "fine_depth4_fraction_of_absolute_coefficient_mass_by_outer_fold": [0.76, 0.69, 0.69],
+      "diagnostic": "The fine atoms carry most of the sparse coefficient mass, so the extra resolution is genuinely used rather than ignored."
+    },
+    "gpu_ridge_capacity": {
+      "ridge_all_lags_pcc": 0.229129218,
+      "ridge_all_lags_gain": 0.02531595,
+      "ridge_current_temporal_pcc": 0.191683603,
+      "ridge_current_temporal_gain": -0.012129665
+    },
+    "decision": "Keep the overcomplete single-tree implementation as a representation option: it reverses the depth-3 S1-middle collapse and improves several trajectory diagnostics, but its +0.0416 PCC gain is not a goal-level result."
+  },
+  "S1_middle_designed_band_CSP_single_tree": {
+    "description": "The same overcomplete single tree adds four decoded-finger CSP rows fitted separately inside each split for each of seven designed bands: 4--8, 8--12, 12--30, 30--55, 65--95, 105--145, and 155--195 Hz. A CSP row is offered only to overlapping wavelet atoms before LARS selection; there is no any-movement CSP or second temporal branch.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.277488057,
+    "tuned_pcc": 0.292255467,
+    "gain": 0.01476741,
+    "selected_schedules": ["frozen_100", "frozen_50", "frozen_50"],
+    "initialized_morphology": {
+      "event_macro_nmse": 1.05755411,
+      "rest_false_positive_rms": 0.125362694,
+      "movement_rmse": 0.425295462,
+      "amplitude_slope": 0.084574704,
+      "velocity_pcc": 0.185077868,
+      "movement_balanced_accuracy": 0.623034675
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 1.027099805,
+      "rest_false_positive_rms": 0.092530792,
+      "movement_rmse": 0.440259606,
+      "amplitude_slope": 0.140150304,
+      "velocity_pcc": 0.214435635,
+      "movement_balanced_accuracy": 0.647888008
+    },
+    "near_zero_residual_output_initialization": {
+      "standard_deviation": 0.001,
+      "tuned_pcc": 0.29579222,
+      "gain_over_lars": 0.018304162,
+      "gain_over_exact_zero_output_initialization": 0.003536753,
+      "selected_schedules": ["frozen_100", "frozen_50", "frozen_50"],
+      "tuned_morphology": {
+        "event_macro_nmse": 1.024381103,
+        "rest_false_positive_rms": 0.09287555,
+        "movement_rmse": 0.439571549,
+        "amplitude_slope": 0.140152633,
+        "velocity_pcc": 0.208954065,
+        "movement_balanced_accuracy": 0.646560902
+      },
+      "runtime_seconds": 288.860632,
+      "diagnostic": "Giving the recurrent path a nonzero first-step gradient produces only a 0.0035 PCC increase over exact zero output initialization. Initial gradient blocking is not the missing residual gain."
+    },
+    "gpu_ridge_capacity": {
+      "runtime_seconds": 14.34513,
+      "ridge_all_lags_pcc": 0.269984831,
+      "ridge_all_lags_gain": -0.007503224,
+      "ridge_current_temporal_pcc": 0.294132622,
+      "ridge_current_temporal_gain": 0.016644567
+    },
+    "decision": "The seven-band decoded-finger CSP raises the split-local sparse initialization by 0.0737 PCC over the overcomplete FastICA+CSP baseline, confirming useful spectral-spatial evidence. Exact-zero and 1e-3 residual-output initializations, as well as ridge probes, add less than 0.02 PCC, so do not spend another head-only or initialization sweep on this representation."
+  },
+  "S1_middle_depth5_overcomplete_single_tree": {
+    "description": "One FastICA plus seven-band decoded-finger-CSP spatial convolution feeds one wavelet-packet tree that retains all depth-3, depth-4, and depth-5 energies. Its 56 overlapping atoms give LARS 25, 12.5, and 6.25 Hz nominal resolutions without input resampling or an auxiliary temporal branch.",
+    "released_test_touched": false,
+    "frequency_response_audit": {
+      "lowest_depth5_peaks_hz": [4.455566, 9.216309],
+      "highest_depth5_peak_hz": 195.129395,
+      "diagnostic": "The added atoms resolve the low-frequency designed bands more closely and remain concentrated on the approximately 0--200 Hz signal support."
+    },
+    "fixed_pre_ablation_reference_pcc": 0.248297245,
+    "candidate_own_initialization_pcc": 0.314679349,
+    "state_only_lr3e4": {
+      "tuned_pcc": 0.323803209,
+      "gain": 0.075505964,
+      "candidate_self_gain": 0.009123861,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_50"]
+    },
+    "level_plus_velocity_correlation_lr3e4": {
+      "weights": [0.1, 0.1],
+      "tuned_pcc": 0.326057834,
+      "gain": 0.077760589,
+      "candidate_self_gain": 0.011378485
+    },
+    "state_only_lr1e4": {
+      "tuned_pcc": 0.351208291,
+      "gain": 0.102911046,
+      "candidate_self_gain": 0.036528943,
+      "selected_schedules": ["frozen_200", "frozen_200", "frozen_200"]
+    },
+    "state_only_lr3e5": {
+      "tuned_pcc": 0.354987579,
+      "gain": 0.106690334,
+      "candidate_self_gain": 0.040308231,
+      "selected_schedules": ["frozen_600", "frozen_600", "frozen_600"],
+      "fixed_reference_morphology": {
+        "event_macro_nmse": 0.961221308,
+        "rest_false_positive_rms": 0.12577057,
+        "movement_rmse": 0.432790674,
+        "amplitude_slope": 0.07563205,
+        "velocity_pcc": 0.184765974,
+        "movement_balanced_accuracy": 0.625469338
+      },
+      "initialized_morphology": {
+        "event_macro_nmse": 1.039650131,
+        "rest_false_positive_rms": 0.125026464,
+        "movement_rmse": 0.418072065,
+        "amplitude_slope": 0.102163834,
+        "velocity_pcc": 0.210278644,
+        "movement_balanced_accuracy": 0.633100913
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.991807936,
+        "rest_false_positive_rms": 0.07755203,
+        "movement_rmse": 0.446876377,
+        "amplitude_slope": 0.145338955,
+        "velocity_pcc": 0.237052527,
+        "movement_balanced_accuracy": 0.657552222
+      },
+      "fixed_reference_visual_audit": "The candidate removes the old diffuse rest floor and detects the major movement blocks more clearly. It still underestimates the largest flexions and introduces a few isolated false peaks; accordingly, movement RMSE is the one diagnostic that worsens while event NMSE, rest RMS, amplitude slope, velocity PCC, movement-state accuracy, and raw PCC improve."
+    },
+    "selected_atom_audit": {
+      "depth5_fraction_of_absolute_coefficient_mass_by_outer_fold": [0.848, 0.771, 0.722],
+      "diagnostic": "Depth-5 atoms carry most of the selected coefficient mass in every outer fold, so the improved frequency resolution is used."
+    },
+    "gpu_ridge_capacity": {
+      "lars_pcc": 0.314679346,
+      "ridge_all_lags_pcc": 0.300413929,
+      "ridge_current_temporal_pcc": 0.334980611,
+      "best_linear_gain": 0.020301265,
+      "runtime_seconds": 29.458
+    },
+    "runtime": {
+      "initial_nested_feature_build_seconds_sum": 4282.026687,
+      "cached_lr1e4_seconds_sum": 424.921658,
+      "cached_lr3e5_seconds_sum": 788.345266
+    },
+    "decision": "Count S1 middle as a fixed-reference PCC pass: the depth-5 candidate gains +0.1067 over the stronger pre-ablation reference. Its candidate-specific self-gain is +0.0403. The visual trace and six morphology diagnostics improve, but movement RMSE worsens modestly because large flexions remain underestimated, so this is not a claim of complete trajectory recovery."
+  },
+  "S1_middle_gpu_leaky_residual_state": {
+    "description": "The same single-branch depth-5 model interprets the LSTM output as a causal innovation and applies a fixed-decay state[t] = 0.95 * state[t-1] + innovation[t]. The recurrence is evaluated as one differentiable grouped GPU convolution, with an exactly zero residual at initialization.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.314679349,
+    "tuned_pcc": 0.281945837,
+    "gain": -0.032733512,
+    "selected_schedules": ["frozen_400", "frozen_100", "frozen_100"],
+    "initialized_morphology": {
+      "event_macro_nmse": 1.039650131,
+      "rest_false_positive_rms": 0.125026464,
+      "movement_rmse": 0.418072065,
+      "amplitude_slope": 0.102163834,
+      "velocity_pcc": 0.210278644,
+      "movement_balanced_accuracy": 0.633100913
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 1.042091616,
+      "rest_false_positive_rms": 0.073080096,
+      "movement_rmse": 0.46434617,
+      "amplitude_slope": 0.097290155,
+      "velocity_pcc": 0.231686269,
+      "movement_balanced_accuracy": 0.643701039
+    },
+    "runtime_seconds_sum": 501.304269,
+    "decision": "Reject: the leaky state is computationally efficient and suppresses rest activity, but it over-smooths the causal innovation, worsens movement amplitude and OOF PCC, and should not replace the pointwise residual output."
+  },
+  "S3_middle_split_local_raw_trajectory_objective": {
+    "description": "The pointwise residual LSTM retains the cleaned-target LARS initialization. During tuning, raw glove shape is affine-mapped onto the cleaned scale using only the current split's training rows and blended into the trajectory objective. Blend strength is selected from clean, 0.25, 0.50, 0.75, and 1.00 using inner-fold PCC only.",
+    "released_test_touched": false,
+    "outer_validation_used_for_selection": false,
+    "initialized_pcc": 0.590355891,
+    "fixed_blend_tuned_pcc": {
+      "0.00": 0.567901008,
+      "0.25": 0.601976219,
+      "0.50": 0.598261943,
+      "0.75": 0.605638965,
+      "1.00": 0.586438647
+    },
+    "inner_selected_blends_by_outer_fold": [1.0, 0.25, 0.5],
+    "inner_selected_tuned_pcc": 0.595759619,
+    "inner_selected_gain": 0.005403728,
+    "decision": "Do not promote: adding some raw shape reverses the old harmful tuning sign, but inner-only strength selection remains only +0.0054 over LARS. Target mismatch is real but cannot explain the requested +0.1 residual gain."
+  },
+  "S1_ring_recurrent_warmup": {
+    "description": "Training sequences prepend 50 causal bins that update the same LSTM state but contribute to no loss, followed by the original 100 scored bins. This matches full-interval evaluation more closely without adding a model branch.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.493492559,
+    "no_warmup_lr3e4_tuned_pcc": 0.386952437,
+    "warmup50_lr3e4": {
+      "tuned_pcc": 0.49254922,
+      "gain": -0.00094334,
+      "selected_schedules": ["frozen_10", "frozen_10", "frozen_10"],
+      "tuned_morphology": {
+        "event_macro_nmse": 0.826889337,
+        "rest_false_positive_rms": 0.109965677,
+        "movement_rmse": 0.307324638,
+        "amplitude_slope": 0.169836978,
+        "velocity_pcc": 0.250294942,
+        "movement_balanced_accuracy": 0.759589064
+      }
+    },
+    "warmup50_lr3e5": {
+      "tuned_pcc": 0.40402987,
+      "gain": -0.089462689,
+      "selected_schedules": ["frozen_100", "frozen_100", "frozen_600"]
+    },
+    "decision": "Keep warm-up as a valid training option because it removes nearly all of the original S1-ring collapse and improves most diagnostics at 3e-4. It does not create a positive residual gain, and lowering the rate restores the failure, so do not expand a warm-up or learning-rate grid across all pairs."
+  },
+  "S1_ring_all_finger_movement_state_head": {
+    "description": "The same single residual LSTM emits five training-only movement/rest logits so its shared state is told which finger is moving. The production trajectory output and the split-local LARS direct path remain specific to S1 ring, with no added feature branch.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.493492559,
+    "tuned_pcc": 0.492550241,
+    "gain": -0.000942318,
+    "selected_schedules": ["frozen_10", "frozen_10", "frozen_10"],
+    "initialized_event_macro_nmse": 0.846921712,
+    "tuned_event_macro_nmse": 0.826716069,
+    "runtime_seconds": 339.171395,
+    "decision": "Reject: explicitly classifying all five fingers changes neither the selected schedules nor the trajectory result relative to the matched target-only movement head. Auxiliary labels alone do not add the missing cross-finger spatial evidence."
+  },
+  "S1_ring_target_versus_other_movement_CSP": {
+    "description": "Two decoded-finger CSP rows are fitted independently inside every split: one contrasts ring movement with common rest, and one contrasts ring movement with other-finger-only movement. Both rows remain inside the same spatial convolution, depth-3 wavelet tree, and residual LSTM.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.495994608,
+    "tuned_pcc": 0.496947499,
+    "gain": 0.000952891,
+    "selected_schedules": ["frozen_10", "frozen_10", "frozen_10"],
+    "initialized_morphology": {
+      "event_macro_nmse": 0.844296713,
+      "rest_false_positive_rms": 0.11354511,
+      "movement_rmse": 0.306869695,
+      "amplitude_slope": 0.164829115,
+      "velocity_pcc": 0.243814,
+      "movement_balanced_accuracy": 0.744953778
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 0.819503425,
+      "rest_false_positive_rms": 0.109805673,
+      "movement_rmse": 0.305719803,
+      "amplitude_slope": 0.175949589,
+      "velocity_pcc": 0.259644313,
+      "movement_balanced_accuracy": 0.762660909
+    },
+    "selected_other_movement_CSP_terms_by_outer_fold": [20, 23, 23],
+    "other_movement_CSP_contribution_standard_deviation_by_outer_fold": [0.02137929, 0.031753123, 0.029589737],
+    "runtime_seconds": 659.644994,
+    "isolated_other_movement_contrast": {
+      "initialized_pcc": 0.495297357,
+      "tuned_pcc": 0.490802355,
+      "gain": -0.004495002,
+      "selected_schedules": ["frozen_20", "frozen_20", "frozen_20"],
+      "initialized_morphology": {
+        "event_macro_nmse": 0.844488529,
+        "rest_false_positive_rms": 0.11333785,
+        "movement_rmse": 0.307328969,
+        "amplitude_slope": 0.163953617,
+        "velocity_pcc": 0.238909584,
+        "movement_balanced_accuracy": 0.74397911
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.796321465,
+        "rest_false_positive_rms": 0.10570049,
+        "movement_rmse": 0.305501213,
+        "amplitude_slope": 0.186530446,
+        "velocity_pcc": 0.260589804,
+        "movement_balanced_accuracy": 0.771846444
+      },
+      "runtime_seconds": 843.25752
+    },
+    "decision": "The target-versus-other-movement row is materially selected by LARS and makes residual tuning weakly positive while improving every recorded morphology diagnostic when paired with the rest-CSP row. Removing the rest contrast makes stitched OOF PCC worse despite better average morphology, confirming that the two contrasts are complementary. Keep the dual representation for any later S1-ring work, but its gain is far below the requested +0.1."
+  },
+  "S1_ring_capacity_matched_dual_CSP": {
+    "description": "A larger single spatial layer uses four joint-HHL/HHH CSP rows for ring movement versus rest and four for ring movement versus other-finger-only movement, followed by the same depth-3 wavelet tree and residual LSTM.",
+    "released_test_touched": false,
+    "reference_initialization_pcc": 0.495994608,
+    "candidate_own_initialization_pcc": 0.489826177,
+    "tuned_pcc": 0.476150021,
+    "gain_over_reference": -0.019844587,
+    "candidate_self_gain": -0.013676156,
+    "outer_raw_pcc_initialized": [0.524792747, 0.530485975, 0.457071202],
+    "outer_raw_pcc_tuned": [0.534741842, 0.537825305, 0.456782832],
+    "selected_schedules": ["frozen_25", "frozen_10", "frozen_10"],
+    "initialized_morphology": {
+      "event_macro_nmse": 0.846938622,
+      "rest_false_positive_rms": 0.1135032,
+      "movement_rmse": 0.307981501,
+      "amplitude_slope": 0.16156055,
+      "velocity_pcc": 0.244326611,
+      "movement_balanced_accuracy": 0.741519446
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 0.816668372,
+      "rest_false_positive_rms": 0.112952898,
+      "movement_rmse": 0.299896727,
+      "amplitude_slope": 0.197542146,
+      "velocity_pcc": 0.259918706,
+      "movement_balanced_accuracy": 0.762776582
+    },
+    "runtime_seconds": 583.508546,
+    "decision": "Reject. Average fold-wise morphology and PCC improve slightly, but the declared stitched OOF PCC worsens both relative to this candidate's own initializer and to the fixed pre-ablation reference. Increasing dual-contrast CSP capacity does not transfer the S1-little success to S1 ring."
+  },
+  "S1_little_high_gamma_CSP_and_decontamination": {
+    "description": "A single FastICA-plus-CSP spatial convolution feeds one depth-3 wavelet tree and one residual LSTM. Eight decoded-finger CSP rows use the joint HHL/HHH high-frequency wavelet bands, and target decontamination is applied only to the little finger. The split-local LARS initializer uses GPU FISTA; the released test labels remain untouched.",
+    "released_test_touched": false,
+    "initialized_pcc": 0.434548059,
+    "tuned_pcc": 0.480031483,
+    "gain": 0.045483424,
+    "selected_schedules": ["frozen_100", "frozen_100", "frozen_80"],
+    "outer_raw_pcc_initialized": [0.476910554, 0.40446206, 0.434389177],
+    "outer_raw_pcc_tuned": [0.542674641, 0.40763069, 0.504251973],
+    "initialized_morphology": {
+      "event_macro_nmse": 0.906650694,
+      "rest_false_positive_rms": 0.121498195,
+      "movement_rmse": 0.388755441,
+      "amplitude_slope": 0.194458182,
+      "velocity_pcc": 0.304534137,
+      "movement_balanced_accuracy": 0.734923187
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 0.815533734,
+      "rest_false_positive_rms": 0.081665317,
+      "movement_rmse": 0.402959069,
+      "amplitude_slope": 0.351993948,
+      "velocity_pcc": 0.316175913,
+      "movement_balanced_accuracy": 0.753962159
+    },
+    "split_diagnostic": {
+      "active_fraction_gt_0p1_by_outer_validation_fold": [0.119342, 0.129281, 0.114311],
+      "selected_LARS_terms_by_outer_fold": [309, 383, 299],
+      "selected_CSP_terms_by_outer_fold": [228, 261, 219],
+      "CSP_absolute_coefficient_fraction_by_outer_fold": [0.78366, 0.718545, 0.801697],
+      "inner_selected_raw_PCC_gain_by_outer_fold": [0.085335, 0.029788, 0.035279],
+      "outer_raw_PCC_gain_by_outer_fold": [0.065764, 0.003169, 0.069863]
+    },
+    "separate_HHL_HHH_matched_ablation": {
+      "description": "The same eight-row spatial capacity is divided into four CSP rows fitted on HHL and four fitted independently on HHH. The wavelet tree, residual LSTM, folds, target policy, update grid, and optimization settings are unchanged.",
+      "comparison_metric": "mean of the three outer-fold raw PCC values",
+      "initialized_pcc": 0.423986085,
+      "tuned_pcc": 0.450287993,
+      "gain": 0.026301908,
+      "outer_raw_pcc_initialized": [0.451803849, 0.414220016, 0.40593439],
+      "outer_raw_pcc_tuned": [0.49222519, 0.450830226, 0.407808563],
+      "outer_raw_pcc_gain": [0.040421341, 0.03661021, 0.001874173],
+      "initialized_morphology": {
+        "event_macro_nmse": 0.93530093,
+        "rest_false_positive_rms": 0.122035464,
+        "movement_rmse": 0.394927243,
+        "amplitude_slope": 0.180985486,
+        "velocity_pcc": 0.278542387,
+        "movement_balanced_accuracy": 0.728304975
+      },
+      "tuned_morphology": {
+        "event_macro_nmse": 0.84363131,
+        "rest_false_positive_rms": 0.097162602,
+        "movement_rmse": 0.395251026,
+        "amplitude_slope": 0.323857506,
+        "velocity_pcc": 0.302282826,
+        "movement_balanced_accuracy": 0.763585308
+      },
+      "runtime_seconds": 333.809047,
+      "decision": "Reject. Separating HHL and HHH improves the formerly neutral middle fold but transfers the near-zero gain to fold 2 and lowers both initialized and tuned mean outer-fold PCC. Retain the joint HHL-plus-HHH CSP fit."
+    },
+    "visual_diagnostic": "The tuned trace suppresses the elevated LARS rest baseline and improves several movement bursts, but it creates a conspicuous false-positive burst around 36--37 seconds and still underestimates the largest flexions.",
+    "runtime_seconds": 982.894198,
+    "decision": "Keep the joint-band route as a pair-specific representation result, not as a goal pass. It restores the old development-level S1-little range under the current strict protocol, but the stitched gain is only +0.0455 and movement RMSE worsens. The nearly neutral middle fold is not explained by movement prevalence; it also has the weakest inner-CV gain and the lowest CSP coefficient share, consistent with fold-specific representation mismatch rather than an optimizer collapse. A capacity-matched separate-HHL/HHH fit redistributes rather than resolves the fold sensitivity and is rejected."
+  },
+  "S1_little_dual_rest_other_CSP": {
+    "description": "One capacity-matched spatial layer contains the full-rank split-local FastICA rows, four joint-HHL/HHH CSP rows contrasting little-finger movement with common rest, and four contrasting little-finger movement with other-finger-only movement. All rows feed one depth-3 wavelet tree and one residual LSTM; little-finger-only target decontamination is retained.",
+    "released_test_touched": false,
+    "reference_initialization": "the established joint-HHL/HHH tails-4x4 common-rest CSP plus decontamination model",
+    "initialized_pcc": 0.434548059,
+    "candidate_own_initialization_pcc": 0.42836359,
+    "tuned_pcc": 0.536270604,
+    "gain": 0.101722545,
+    "candidate_self_gain": 0.107907013,
+    "selected_schedules": ["frozen_100", "frozen_100", "frozen_80"],
+    "outer_raw_pcc_initialized": [0.452379042, 0.421059764, 0.433089101],
+    "outer_raw_pcc_tuned": [0.571906504, 0.522350508, 0.510607385],
+    "outer_raw_pcc_gain": [0.119527462, 0.101290744, 0.077518284],
+    "initialized_morphology": {
+      "event_macro_nmse": 0.906675571,
+      "rest_false_positive_rms": 0.12185401,
+      "movement_rmse": 0.387250334,
+      "amplitude_slope": 0.195918183,
+      "velocity_pcc": 0.327702119,
+      "movement_balanced_accuracy": 0.74168533
+    },
+    "tuned_morphology": {
+      "event_macro_nmse": 0.730217738,
+      "rest_false_positive_rms": 0.094144282,
+      "movement_rmse": 0.354625126,
+      "amplitude_slope": 0.432598561,
+      "velocity_pcc": 0.366440297,
+      "movement_balanced_accuracy": 0.804209422
+    },
+    "cross_finger_rest_diagnostic": {
+      "cleaned_rest_bins": 8368,
+      "prediction_gt_0p1_bins_initialized": 3794,
+      "prediction_gt_0p1_bins_tuned": 830,
+      "fraction_of_tuned_high_rest_bins_with_other_finger_movement": 0.538554217,
+      "tuned_high_rest_bins_without_other_finger_movement": 383,
+      "rest_prediction_correlation_with_max_other_finger_initialized": 0.140695362,
+      "rest_prediction_correlation_with_max_other_finger_tuned": 0.086837628
+    },
+    "visual_diagnostic": "The stitched trace suppresses the broad LARS rest floor and follows the major little-finger movement bursts with substantially better amplitude. Several isolated resting bursts remain, so the trajectory is improved rather than solved.",
+    "runtime_seconds": 419.477635,
+    "decision": "Count S1 little as the fourth numerical and morphology pass against the fixed pre-ablation reference initialization. The fair stitched gain is +0.1017; the larger +0.1079 self-gain is reported only as a diagnostic because the dual-contrast candidate has a slightly lower own initializer. Every recorded morphology metric improves, and the cross-finger diagnostic shows that the gain is not produced by increased leakage from other-finger movement."
+  },
+  "lower_high_gamma_CSP_transfer_initialization_screens": {
+    "description": "Before recurrent tuning, a one-update screen asks whether the S3-ring lower-high-gamma, decoded-finger CSP representation raises the fixed split-local reference enough to justify an expensive sweep. The candidate initialization and the fixed pre-ablation reference remain separate quantities.",
+    "released_test_touched": false,
+    "pairs": {
+      "S2_ring": {
+        "fixed_pre_ablation_reference_pcc": 0.446083224,
+        "candidate_own_initialization_pcc": 0.456141518,
+        "one_update_pcc": 0.456264649,
+        "gain_over_fixed_reference": 0.010181425,
+        "candidate_self_gain": 0.000123131
+      },
+      "S3_middle": {
+        "fixed_pre_ablation_reference_pcc": 0.590355891,
+        "candidate_own_initialization_pcc": 0.600213095,
+        "one_update_pcc": 0.600087571,
+        "gain_over_fixed_reference": 0.00973168,
+        "candidate_self_gain": -0.000125524
+      },
+      "S3_index": {
+        "fixed_pre_ablation_reference_pcc": 0.579112281,
+        "candidate_own_initialization_pcc": 0.589293872,
+        "one_update_pcc": 0.589319496,
+        "gain_over_fixed_reference": 0.010207215,
+        "candidate_self_gain": 0.000025624
+      }
+    },
+    "decision": "Reject all three transfers before recurrent tuning. Each representation is only about +0.01 PCC above its fixed pre-ablation reference, and the one-update residual path is effectively neutral. The S3-ring representation gain is therefore pair-specific rather than a generic replacement baseline."
+  },
+  "cross_pair_representation_transfer_initialization_screens": {
+    "released_test_touched": false,
+    "depth5_overcomplete_designed_CSP": {
+      "S1_thumb": {"initialization_pcc": 0.559455179, "gain_over_fixed_reference": -0.011934114},
+      "S1_index": {"initialization_pcc": 0.710295741, "gain_over_fixed_reference": -0.015249327},
+      "S1_ring": {"initialization_pcc": 0.460827964, "gain_over_fixed_reference": -0.032664595},
+      "S2_thumb": {"initialization_pcc": 0.570845918, "gain_over_fixed_reference": -0.006662187},
+      "S2_index": {"initialization_pcc": 0.334617382, "gain_over_fixed_reference": -0.014803345},
+      "S2_ring": {"initialization_pcc": 0.391183475, "gain_over_fixed_reference": -0.054899748},
+      "S3_index": {"initialization_pcc": 0.52475299, "gain_over_fixed_reference": -0.054359291},
+      "S3_middle": {"initialization_pcc": 0.568594834, "gain_over_fixed_reference": -0.021761057},
+      "decision": "Reject across all eight unresolved pairs. The S1-middle depth-5 designed-band representation lowers every initializer outside its discovery pair."
+    },
+    "dual_rest_other_CSP": {
+      "S1_thumb": {"initialization_pcc": 0.570544338, "gain_over_fixed_reference": -0.000844955},
+      "S1_index": {"initialization_pcc": 0.723601914, "gain_over_fixed_reference": -0.001943154},
+      "S1_ring": {"initialization_pcc": 0.495994608, "gain_over_fixed_reference": 0.002502049},
+      "S2_thumb": {"initialization_pcc": 0.582045401, "gain_over_fixed_reference": 0.004537296},
+      "S2_index": {"initialization_pcc": 0.358964107, "gain_over_fixed_reference": 0.00954338},
+      "S2_ring": {"initialization_pcc": 0.445878779, "gain_over_fixed_reference": -0.000204444},
+      "S3_index": {"initialization_pcc": 0.580389706, "gain_over_fixed_reference": 0.001277425},
+      "S3_middle": {"initialization_pcc": 0.591844193, "gain_over_fixed_reference": 0.001488302},
+      "decision": "Reject all transfers before recurrent tuning. The largest initializer gain is only +0.0095, confirming that the dual contrast is specific to little-finger decoding."
+    }
+  },
+  "continuous_amplitude_covariance_CSP_initialization_screen": {
+    "description": "A SPoC-style generalized eigensystem weights split-local per-bin 50--150-Hz covariance by the continuous cleaned target-finger amplitude. Target centering/scaling and both covariance matrices are fitted only inside each training split; the resulting rows remain in the same spatial convolution and depth-3 wavelet tree.",
+    "released_test_touched": false,
+    "test_status": "14 targeted H100 tests passed after adding complementary rest, other-movement, and continuous-amplitude modes, including a held-out-extreme split-safety test",
+    "movement_1_pairs": {
+      "S1_thumb": {"initialization_pcc": 0.570926621, "gain_over_fixed_reference": -0.000462672},
+      "S1_index": {"initialization_pcc": 0.721581881, "gain_over_fixed_reference": -0.003963187},
+      "S1_ring": {"initialization_pcc": 0.495374103, "gain_over_fixed_reference": 0.001881544},
+      "S2_thumb": {"initialization_pcc": 0.578540278, "gain_over_fixed_reference": 0.001032173},
+      "S2_index": {"initialization_pcc": 0.346085661, "gain_over_fixed_reference": -0.003335066},
+      "S2_ring": {"initialization_pcc": 0.456572856, "gain_over_fixed_reference": 0.010489633},
+      "S3_index": {"initialization_pcc": 0.608751841, "gain_over_fixed_reference": 0.02963956},
+      "S3_middle": {"initialization_pcc": 0.594775379, "gain_over_fixed_reference": 0.004419488}
+    },
+    "S3_index_rank_screen": {
+      "movement_1_initialization_pcc": 0.608751841,
+      "movement_2_initialization_pcc": 0.612300547,
+      "tails_2x2_initialization_pcc": 0.571844363,
+      "selected_representation": "two largest positive amplitude-covariance components",
+      "selected_gain_over_fixed_reference": 0.033188266
+    },
+    "dual_rest_continuous_amplitude_transfer": {
+      "S1_thumb": {"initialization_pcc": 0.571102343, "gain_over_fixed_reference": -0.00028695},
+      "S1_index": {"initialization_pcc": 0.722132478, "gain_over_fixed_reference": -0.00341259},
+      "S1_ring": {"initialization_pcc": 0.494194224, "gain_over_fixed_reference": 0.000701665},
+      "S2_thumb": {"initialization_pcc": 0.578570586, "gain_over_fixed_reference": 0.001062481},
+      "S2_index": {"initialization_pcc": 0.349124129, "gain_over_fixed_reference": -0.000296598},
+      "S2_ring": {"initialization_pcc": 0.456582176, "gain_over_fixed_reference": 0.010498953},
+      "S3_middle": {"initialization_pcc": 0.593405685, "gain_over_fixed_reference": 0.003049794}
+    },
+    "S3_index_complementarity_and_band_screen": {
+      "dual_rest_amplitude_movement_1_initialization_pcc": 0.623299719,
+      "dual_rest_amplitude_movement_1_gain_over_fixed_reference": 0.044187438,
+      "dual_rest_amplitude_movement_2_initialization_pcc": 0.623145526,
+      "triple_rest_other_continuous_amplitude_initialization_pcc": 0.615384119,
+      "designed_seven_movement_1_initialization_pcc": 0.596016944,
+      "designed_seven_movement_2_initialization_pcc": 0.599687003,
+      "separate_high_gamma_initialization_pcc": 0.617605539,
+      "separate_lower_plus_high_gamma_initialization_pcc": 0.618088801,
+      "nested_recurrent_selected_pcc": 0.620876054,
+      "nested_recurrent_same_architecture_gain": -0.002423663,
+      "selected_candidate": "untuned joint-band movement-1 rest-plus-continuous-amplitude initializer"
+    },
+    "decision": "Keep S3 index's untuned two-row rest-plus-continuous-amplitude initializer at 0.6233 PCC, +0.0442 over the fixed reference. Nested recurrent tuning, additional other-movement contrast, broader rank, seven-band localization, and separate high-gamma leaves all reduce PCC. The representation does not transfer materially to the other unresolved pairs and is not a pass."
+  },
+  "S2_index_depth5_overcomplete_designed_CSP_initialization_screen": {
+    "description": "One FastICA-plus-seven-band decoded-finger-CSP spatial convolution feeds a single wavelet-packet tree retaining depth-3, depth-4, and depth-5 energies. The outer split-local sparse initializer is compared with the strongest fixed pre-ablation S2-index reference; the one-update residual result is retained only as an optimization diagnostic.",
+    "released_test_touched": false,
+    "fixed_pre_ablation_reference_pcc": 0.349420727,
+    "candidate_own_initialization_pcc": 0.334617382,
+    "one_update_pcc": 0.334740361,
+    "initialization_gain_over_fixed_reference": -0.014803345,
+    "one_update_gain_over_fixed_reference": -0.014680366,
+    "candidate_self_gain": 0.000122979,
+    "decision": "Reject before recurrent tuning. The larger single-tree representation lowers PCC relative to the old fixed S2-index model, and its token LSTM update is neutral. Neither the candidate initializer nor the one-update result resets the comparison baseline."
+  },
+  "S3_little_dual_rest_other_CSP_hidden_normalization": {
+    "description": "One FastICA-plus-dual-CSP spatial convolution feeds one depth-3 wavelet tree and one selected-feature residual LSTM. Four CSP rows contrast little-finger movement with rest and four contrast it with other-finger movement in the joint 50--100 Hz HHL/HHH wavelet band. Hidden wavelet levels are normalized, the final leaves are not, and the ordinary split-local little-finger target is retained.",
+    "released_test_touched": false,
+    "fixed_pre_ablation_reference_pcc": 0.631942701,
+    "candidate_own_initialization_pcc": 0.684509935,
+    "single_seed_tuned_pcc": 0.72068462,
+    "single_seed_gain_over_fixed_reference": 0.088741919,
+    "single_seed_candidate_self_gain": 0.036174685,
+    "extended_update_grid_tuned_pcc": 0.72069343,
+    "same_architecture_lower_learning_rate": {
+      "description": "The identical depth-3 dual-CSP single-branch residual LSTM is refit with head learning rate 3e-5 and interlevel learning rate 3e-4. The representation, folds, target, initializer, and old fixed comparison baseline are unchanged.",
+      "tuned_pcc": 0.724995419,
+      "gain_over_fixed_reference": 0.093052718,
+      "same_architecture_tuning_gain": 0.040485484,
+      "improvement_over_previous_tuned_candidate": 0.004310799,
+      "selected_schedule_by_outer_fold": [
+        "unfrozen_100_400",
+        "unfrozen_100_400",
+        "unfrozen_100_400"
+      ],
+      "decision": "Do not count as a pass. Lowering the rates improves the identical tuned model, but it remains 0.006947 PCC short of the declared +0.1 gain over the fixed old baseline. Because all three inner selections landed at the longest unfrozen checkpoint and their inner mean PCC was still increasing there, the same schedule was extended in the matched control below."
+    },
+    "same_architecture_400_800_1200_update_extension": {
+      "description": "The identical depth-3 dual-CSP model was rerun with unfrozen checkpoints at 400, 800, and 1200 updates. No representation, split, target, initializer, learning rate, or fixed comparison baseline changed.",
+      "tuned_pcc": 0.715158971,
+      "gain_over_fixed_reference": 0.08321627,
+      "same_architecture_tuning_gain": 0.030649036,
+      "selected_schedule_by_outer_fold": [
+        "unfrozen_100_400",
+        "unfrozen_100_800",
+        "unfrozen_100_400"
+      ],
+      "outer_fold_raw_pcc": [0.749072117, 0.653371223, 0.755383449],
+      "decision": "Reject. The 800-update checkpoint improves fold-1 inner mean PCC by only 0.00127 over 400 updates but loses 0.02268 PCC on its untouched outer fold, reducing stitched PCC by 0.00984. The 400-update result remains the same-architecture best."
+    },
+    "amplitude_sensitive_CSP_initialization_screen": {
+      "description": "A training-split-only CSP contrast separates the top quartile of target-finger movement amplitude from the lower half of active movement and is added to the existing rest and other-finger contrasts inside the same spatial layer. This representation-only gate performs no recurrent updates.",
+      "released_test_touched": false,
+      "fixed_pre_ablation_reference_pcc": 0.631942701,
+      "winning_dual_CSP_initialization_pcc": 0.684509935,
+      "candidate_own_initialization_pcc": 0.66505173,
+      "gain_over_fixed_reference": 0.033109029,
+      "change_from_winning_dual_CSP_initialization": -0.019458205,
+      "outer_fold_raw_pcc": [0.696703165, 0.642963514, 0.693789955],
+      "decision": "Reject before recurrent tuning. The amplitude-sensitive rows lower the split-local sparse initializer relative to the existing dual rest/other representation."
+    },
+    "dual_CSP_rank_initialization_screen": {
+      "description": "The existing joint-50--100-Hz rest/other CSP representation is expanded from tails-2x2 to tails-4x4 while keeping one spatial layer, one depth-3 wavelet tree, the split-local target, and the sparse initializer unchanged. This representation-only gate performs no recurrent updates.",
+      "released_test_touched": false,
+      "fixed_pre_ablation_reference_pcc": 0.631942701,
+      "winning_tails_2x2_initialization_pcc": 0.684509935,
+      "tails_4x4_initialization_pcc": 0.66049618,
+      "gain_over_fixed_reference": 0.028553479,
+      "change_from_winning_tails_2x2_initialization": -0.024013755,
+      "outer_fold_raw_pcc": [0.701210368, 0.609675735, 0.687549689],
+      "decision": "Reject before recurrent tuning. Doubling the dual-CSP rank lowers stitched initialization PCC, with a particularly large fold-1 loss."
+    },
+    "six_seed": {
+      "included_seed_count": 6,
+      "collapsed_seed_count": 0,
+      "member_pcc_mean": 0.713727366,
+      "member_pcc_population_sd": 0.003318286,
+      "ensemble_pcc": 0.720105938,
+      "ensemble_gain_over_fixed_reference": 0.088163237,
+      "ensemble_gain_over_candidate_initialization": 0.035596004,
+      "ensemble_morphology": {
+        "event_macro_nmse": 0.615190863,
+        "rest_false_positive_rms": 0.083643168,
+        "movement_rmse": 0.387049764,
+        "amplitude_slope": 0.288516492,
+        "velocity_pcc": 0.195301534,
+        "movement_balanced_accuracy": 0.850979606
+      }
+    },
+    "little_finger_only_decontamination_ablation": {
+      "candidate_own_initialization_pcc": 0.624968685,
+      "tuned_pcc": 0.620921463,
+      "gain_over_fixed_reference": -0.011021238,
+      "candidate_self_gain": -0.004047222,
+      "outer_fold_initialization_to_tuned_pcc": [
+        [0.695502795, 0.722139514],
+        [0.619781466, 0.638580111],
+        [0.623480806, 0.662432359]
+      ]
+    },
+    "fixed_reference_morphology": {
+      "event_macro_nmse": 0.738019194,
+      "rest_false_positive_rms": 0.126209205,
+      "movement_rmse": 0.401302156,
+      "amplitude_slope": 0.176882862,
+      "velocity_pcc": 0.135187363,
+      "movement_balanced_accuracy": 0.704321102
+    },
+    "visual_diagnostic": "The single-seed and ensemble traces suppress the fixed reference's broad resting floor and better follow the major movement bursts. Large peaks remain compressed and smaller isolated false positives remain; the result is materially improved but still below the declared +0.1 fixed-reference threshold.",
+    "decision": "Accept S3 little as a user-approved project-triage pass and move on, while preserving that its measured +0.0931 fixed-reference gain remains below the strict +0.1 criterion. The 3e-5 same-architecture run remains the best candidate. Extending the unfrozen schedule to 800 and 1200 updates worsens stitched PCC; averaging all six finite noncollapsed seeds also lowers PCC. Training-only amplitude CSP and doubled dual-CSP rank both lower the initializer, so neither receives recurrent tuning. Little-finger-only target decontamination is harmful under this representation despite positive PCC changes within each separately calibrated outer fold."
+  },
+  "post_acceptance_continuation": {
+    "working_pass_count": 10,
+    "strict_pass_count": 9,
+    "closed_pairs": {
+      "S1_index": "Reopened by the all-finger amplitude bank; keep the new +0.0607 result, still below threshold.",
+      "S1_thumb": "Done: an unpruned ten-seed fixed-data ensemble reaches +0.1048 over the immutable reference; the user explicitly accepted this pair."
+    },
+    "new_best_unresolved_candidate": {
+      "pair": "S1 index",
+      "model": "all-finger amplitude bank with recurrent tuning",
+      "fixed_reference_pcc": 0.725545068,
+      "candidate_pcc": 0.786257494,
+      "gain_over_fixed_reference": 0.060712426,
+      "strict_pass": false
+    },
+    "S1_thumb_fixed_data_seed_ensemble": {
+      "description": "Ten model seeds use the same split seed and sampler seed (2026), the same all-finger amplitude correlation architecture, and the same fixed reference. Every seed from 2026 through 2035 is retained in one equal prediction ensemble; no seed is pruned using outer performance.",
+      "released_test_touched": false,
+      "single_seed_oof_pcc": [0.659940436, 0.656752677, 0.670818478, 0.636208767, 0.65065584, 0.673905158, 0.670354131, 0.653183118, 0.674630062, 0.673856883],
+      "fixed_reference_pcc": 0.571389293,
+      "ensemble_oof_pcc": 0.676229438,
+      "gain_over_fixed_reference": 0.104840145,
+      "strict_pass": true,
+      "morphology": {
+        "event_macro_nmse": 0.449075,
+        "normalized_rmse": 0.67013,
+        "raw_pcc": 0.676229,
+        "cleaned_pcc": 0.742785,
+        "rest_false_positive_rms": 0.067679,
+        "movement_rmse": 0.347358,
+        "amplitude_slope": 0.562279,
+        "velocity_pcc": 0.426718,
+        "movement_balanced_accuracy": 0.924805
+      },
+      "decision": "Count S1 thumb as the ninth strict pass and tenth working pass. The unpruned fixed-data ensemble exceeds +0.1 and materially improves every recorded morphology diagnostic over its analytical initializer; the user explicitly considers the pair done."
+    },
+    "S3_index_CSP_anchored_training": {
+      "description": "The dual rest-plus-continuous-amplitude initializer is compared under frozen training, freely trainable spatial weights, explicit L2 anchoring to the split-local CSP/ICA initializer, and anchored active-SPoC plus covariance-orthogonality regularization. Wavelet taps remain fixed and the residual output preserves the analytical prediction at epoch zero.",
+      "released_test_touched": false,
+      "frozen_head_selected_pcc": 0.620876054,
+      "free_spatial_unfreeze10_pcc": 0.623303755,
+      "free_same_architecture_gain": 0.000004038,
+      "anchored_spatial_unfreeze10_pcc": 0.623302672,
+      "anchored_same_architecture_gain": 0.000002955,
+      "anchored_active_SPoc_orthogonality_pcc": 0.623303971,
+      "anchored_active_SPoc_same_architecture_gain": 0.000004254,
+      "fixed_reference_pcc": 0.579112281,
+      "best_gain_over_fixed_reference": 0.04419169,
+      "decision": "Reject as a material improvement. Starting stem updates at the inner-favored 10-update point removes the earlier degradation, but free, anchored, and active-SPoC-regularized tuning all remain numerically indistinguishable from the analytical initializer and far below the strict gain threshold."
+    },
+    "continuous_velocity_covariance_CSP_initialization_screen": {
+      "description": "Two split-local SPoC eigendirections maximize positive and negative covariance between joint high-gamma power and target velocity. Velocity is formed only when the current and preceding target bins both belong to the training split; the same spatial layer, depth-3 wavelet tree, and sparse initializer are retained.",
+      "released_test_touched": false,
+      "pairs": {
+        "S1_thumb": {"initialization_pcc": 0.567607937, "gain_over_fixed_reference": -0.003781356},
+        "S1_index": {"initialization_pcc": 0.721500896, "gain_over_fixed_reference": -0.004044172},
+        "S1_ring": {"initialization_pcc": 0.486788213, "gain_over_fixed_reference": -0.006704346},
+        "S2_thumb": {"initialization_pcc": 0.585930827, "gain_over_fixed_reference": 0.008422722},
+        "S2_index": {"initialization_pcc": 0.361961796, "gain_over_fixed_reference": 0.012541069},
+        "S2_ring": {"initialization_pcc": 0.435110822, "gain_over_fixed_reference": -0.010972401},
+        "S3_index": {"initialization_pcc": 0.572351308, "gain_over_fixed_reference": -0.006760973},
+        "S3_middle": {"initialization_pcc": 0.59620091, "gain_over_fixed_reference": 0.005845019}
+      },
+      "decision": "Reject before recurrent tuning. The largest gain is +0.0125 for S2 index; onset/offset covariance does not supply the missing representation-level improvement."
+    },
+    "coherent_global_wavelet_dilation_initialization_screen": {
+      "description": "The frequency-compressed bior6.8 tree is shifted coherently by changing only its global tap-dilation family from the released 2.5x setting to the neighboring 2x and 3x settings. Wavelet shape, tree depth, spatial bank, LARS protocol, and event folds are unchanged; no convolution taps are freely learned.",
+      "released_test_touched": false,
+      "dilation_2x_gain_over_fixed_reference": {
+        "S1_thumb": -0.002103149,
+        "S1_index": 0.015679881,
+        "S1_ring": -0.006324384,
+        "S2_thumb": 0.000608644,
+        "S2_index": 0.010466766,
+        "S2_ring": -0.023267834,
+        "S3_index": -0.008503938,
+        "S3_middle": -0.012226245
+      },
+      "dilation_3x_gain_over_fixed_reference": {
+        "S1_thumb": -0.033975768,
+        "S1_index": -0.016841905,
+        "S1_ring": -0.008359397,
+        "S2_thumb": -0.02482522,
+        "S2_index": -0.010278974,
+        "S2_ring": -0.012464466,
+        "S3_index": -0.013143594,
+        "S3_middle": -0.007898181
+      },
+      "decision": "Reject before recurrent tuning. The higher-frequency 2x family gives only small S1-index and S2-index initializer gains, while the lower-frequency 3x family is worse for every unresolved pair. The original 2.5x frequency allocation is stable; a freely learned spectral grid is not justified by this controlled shift."
+    },
+    "all_finger_amplitude_covariance_bank": {
+      "description": "One split-local target-versus-rest row and one continuous-amplitude SPoC row for each of the five fingers are appended to the same ICA spatial convolution. The rows share one depth-3 wavelet tree and one sparse/recurrent decoder; no parallel feature branch is added.",
+      "released_test_touched": false,
+      "movement_1_initialization_gain_over_fixed_reference": {
+        "S1_thumb": 0.01363772,
+        "S1_index": 0.004656819,
+        "S1_ring": 0.003930113,
+        "S2_thumb": 0.015559513,
+        "S2_index": 0.031142658,
+        "S2_ring": 0.036397457,
+        "S3_index": 0.055814737,
+        "S3_middle": 0.017685068
+      },
+      "movement_2_initialization_gain_over_fixed_reference": {
+        "S1_thumb": 0.005306953,
+        "S1_index": 0.001106707,
+        "S1_ring": -0.001732351,
+        "S2_thumb": 0.021063006,
+        "S2_index": 0.04921096,
+        "S2_ring": 0.028694104,
+        "S3_index": 0.059628488,
+        "S3_middle": 0.010792028
+      },
+      "all_finger_rest_plus_amplitude_control": {
+        "S2_index_gain": 0.031473016,
+        "S2_ring_gain": 0.034607169,
+        "S3_index_gain": 0.060122846
+      },
+      "decision": "Keep target-rest plus all-finger amplitude rows. This is the first new representation to improve every unresolved movement-1 initializer. Adding one rest row per finger is neutral, while a second amplitude direction is selectively useful for S2 index and S3 index."
+    },
+    "all_finger_multitask_recurrent_screen": {
+      "description": "The recurrent state is regularized by either five movement/rest logits or five scale-normalized continuous glove trajectories. Auxiliary targets and their scales are fitted inside each training split; only the decoded-finger trajectory is used at inference.",
+      "released_test_touched": false,
+      "S3_index": {
+        "movement_2_initialization_pcc": 0.638740768,
+        "target_only_pcc": 0.650219221,
+        "binary_all_finger_pcc": 0.649789547,
+        "continuous_all_finger_weight_0p5_pcc": 0.652103598,
+        "best_gain_over_fixed_reference": 0.072991317
+      },
+      "S2_index": {
+        "movement_2_initialization_pcc": 0.398631685,
+        "target_only_pcc": 0.379181693,
+        "binary_all_finger_pcc": 0.403622113,
+        "continuous_weight_0p1_pcc": 0.386880356,
+        "continuous_weight_0p5_pcc": 0.419717406,
+        "continuous_weight_1p0_pcc": 0.44400556,
+        "continuous_weight_1p25_pcc": 0.448422509,
+        "continuous_weight_1p5_pcc": 0.450159601,
+        "continuous_weight_2p0_pcc": 0.452480297,
+        "fixed_reference_pcc": 0.349420727,
+        "weight_1p5_gain_over_fixed_reference": 0.100738874,
+        "weight_2p0_gain_over_fixed_reference": 0.10305957,
+        "strict_numerical_pass": true,
+        "nested_weight_family_selected_pcc": 0.416553615,
+        "nested_weight_family_gain_over_fixed_reference": 0.067132888,
+        "qualification": "Two fixed weights exceed +0.1, but an inner-only selector across weights 0.5 to 2.0 chooses weaker weights in two folds and does not confirm the pass. Count the fixed weight-1.5 model as the conservative numerical pass and retain the family-selection caveat."
+      },
+      "transfer_controls": {
+        "S1_thumb_best_gain": 0.088551143,
+        "S1_index_best_gain": 0.060712426,
+        "S1_ring_best_all_finger_gain": 0.003930113,
+        "S2_thumb_best_all_finger_gain": 0.021063006,
+        "S2_ring_best_all_finger_gain": 0.044127392,
+        "S3_middle_best_all_finger_gain": 0.017685068
+      },
+      "decision": "Count S2 index as the seventh strict numerical pass and eighth working pass using the smaller fixed passing auxiliary weight 1.5. The continuous multitask mechanism is strongly pair-specific: it improves S2 index and modestly S3 index, but it does not transfer to S2 thumb, S2 ring, S3 middle, or S1."
+    },
+    "all_finger_synergy_spoc": {
+      "description": "Three additional SPoC rows are fitted to principal components of the five glove trajectories. PCA centering, scaling, axes, and spatial covariance rows are fitted only inside each training split and feed the same spatial convolution and wavelet tree.",
+      "released_test_touched": false,
+      "test_status": "78 targeted H100 tests passed after adding split-local synergy rows, boundary-safe target leads, offline future context, bidirectional residual decoding, and the training-only auxiliary readout",
+      "movement_1_initialization_gain_over_fixed_reference": {
+        "S1_thumb": 0.013895471,
+        "S1_index": 0.0062076,
+        "S1_ring": 0.001432699,
+        "S2_thumb": 0.016266825,
+        "S2_ring": 0.034616126,
+        "S3_index": 0.062320057,
+        "S3_middle": 0.018866323
+      },
+      "S3_index_continuous_auxiliary_weights": {
+        "weight_0p25_gain": 0.088814541,
+        "weight_0p4_gain": 0.100699552,
+        "weight_0p5_gain": 0.09768182,
+        "weight_0p6_gain": 0.08595087,
+        "weight_0p75_gain": 0.101851331,
+        "weight_1p0_gain": 0.106036608,
+        "nested_weight_selected_pcc": 0.680209062,
+        "nested_weight_gain_over_fixed_reference": 0.101096781,
+        "nested_outer_choices": ["weight_0p5", "weight_1p0", "weight_0p25"],
+        "strict_pass": true
+      },
+      "S2_thumb_continuous_auxiliary_weights": {
+        "weight_0p5_pcc": 0.627115095,
+        "weight_1p0_pcc": 0.618893815,
+        "weight_1p5_pcc": 0.633054188,
+        "weight_2p0_pcc": 0.611608286,
+        "fixed_reference_pcc": 0.577508105,
+        "best_gain_over_fixed_reference": 0.055546083,
+        "strict_pass": false
+      },
+      "decision": "Count S3 index as the eighth strict pass and ninth working pass. Unlike S2 index, the inner-only weight-family selector also exceeds +0.1, so the pass does not depend on selecting one fixed weight from outer performance. Rank two and the S1 synergy transfers are worse."
+    },
+    "future_target_amplitude_covariance_lead4_screen": {
+      "description": "All-finger amplitude covariance is refitted against the glove trajectory four 25-Hz bins after each neural bin. Only neural-target pairs whose two rows both belong to the training split are retained.",
+      "released_test_touched": false,
+      "gain_over_fixed_reference": {
+        "S1_thumb": 0.011467551,
+        "S1_index": 0.004720051,
+        "S1_ring": 0.000166449,
+        "S2_thumb": 0.024582468,
+        "S2_ring": 0.01701506,
+        "S3_index": 0.049376317,
+        "S3_middle": 0.022855546
+      },
+      "decision": "Reject as a general replacement. The 160-ms neural lead modestly raises S2 thumb and S3 middle but weakens the near-pass S1-thumb and S3-index representations."
+    },
+    "offline_future_context_and_stability_continuation": {
+      "released_test_touched": false,
+      "target_rest_all_finger_synergy_future_context_initializers": {
+        "S1_index_future16_pcc": 0.744061313,
+        "S1_ring_future16_pcc": 0.526445798,
+        "S2_thumb_future16_pcc": 0.620222338,
+        "S2_ring_future16_pcc": 0.496554158,
+        "S3_middle_future4_pcc": 0.605567316,
+        "decision": "Keep 16 future bins as the strongest offline initializer for S1 index, S1 ring, S2 thumb, and S2 ring. Context 32 is worse, and future context weakens S3 middle."
+      },
+      "selected_residual_recurrent_results": {
+        "S1_index_pcc": 0.79197953,
+        "S1_index_gain_over_fixed_reference": 0.066434462,
+        "S1_ring_pcc": 0.497362569,
+        "S2_thumb_pcc": 0.662486771,
+        "S2_thumb_gain_over_fixed_reference": 0.084978666,
+        "S2_ring_pcc": 0.489207307,
+        "S3_middle_pcc": 0.614909932,
+        "decision": "The selected-atom residual improves S1 index and S2 thumb, but recurrent tuning is neutral or harmful for both rings and S3 middle."
+      },
+      "bidirectional_residual_results": {
+        "S2_thumb_pcc": 0.650363253,
+        "S2_ring_pcc": 0.500131559,
+        "S3_middle_pcc": 0.617271128,
+        "decision": "Bidirectionality is not a general solution; it gives only modest new bests for S2 ring and S3 middle and is worse than the unidirectional S2-thumb model."
+      },
+      "S2_thumb_fixed_data_seed_ensemble": {
+        "description": "Model seeds 2026 through 2035 share split seed 2026, sampler seed 2026, one architecture, one future-context representation, and one immutable fixed reference. All ten equal-weight predictions are retained without pruning.",
+        "single_seed_oof_pcc": [0.662486771, 0.66503816, 0.652831805, 0.643544588, 0.689985504, 0.647348766, 0.671631721, 0.637290388, 0.685098499, 0.658922274],
+        "fixed_reference_pcc": 0.577508105,
+        "ensemble_oof_pcc": 0.686693486,
+        "gain_over_fixed_reference": 0.109185381,
+        "strict_pass": true,
+        "decision": "Count S2 thumb as the tenth strict pass and eleventh working pass. Two individual seeds pass, but the accepted result is the predeclared unpruned ten-seed ensemble."
+      },
+      "rejected_output_and_ensemble_diagnostics": {
+        "continuous_auxiliary_output_blend": "No unresolved pair improves materially; best S2-ring blend is 0.463194 PCC.",
+        "outer_selected_smoothing": "S2 thumb reaches a diagnostic +0.097157 at sigma 3 but remains below threshold; all other pairs are much lower.",
+        "auxiliary_residual_readout": "A training-only ridge readout from all five auxiliary trajectories hurts S1 index and S3 middle and is neutral for both rings.",
+        "temporal_shift": "The outer-target optimum is zero shift for all four remaining pairs.",
+        "full_oof_ensemble_ceiling": "After the expanded continuation, outer-target-informed ridge weights reach +0.096375 for S1 ring and only +0.083015 for S3 middle. These are target-leaking diagnostics, not candidates: S1 ring is barely structurally reachable from the saved predictions, whereas S3 middle remains below the +0.095 working threshold even at this invalid oracle ceiling."
+      },
+      "S2_ring_fixed_equal_three_family": {
+        "description": "A fixed equal-weight blend of the split-safe full-bank raw ridge, bidirectional residual LSTM, and nonlinear temporal residual. Each family contributes exactly one third; no coefficient is fitted to outer targets.",
+        "active_selection": false,
+        "exclusion_reason": "Heterogeneous model soup is disallowed by the active single-branch policy.",
+        "fixed_reference_pcc": 0.446083223,
+        "ensemble_oof_pcc": 0.546745019,
+        "gain_over_fixed_reference": 0.100661796,
+        "strict_pass": true,
+        "output": "outputs/s2ring_fullbank_bidir_hist_equal_v1"
+      },
+      "S1_index_fixed_equal_six_family": {
+        "description": "A fixed equal-weight blend of the unpruned ten-seed residual ensemble, training-selected power-calibrated initializer, nonlinear temporal residual, long-grid LSTM, long-grid bidirectional LSTM, and all-finger state decoder. Each family contributes exactly one sixth; no coefficient is fitted to outer targets.",
+        "active_selection": false,
+        "exclusion_reason": "Heterogeneous model soup is disallowed by the active single-branch policy.",
+        "fixed_reference_pcc": 0.725545068,
+        "ensemble_oof_pcc": 0.821832499,
+        "gain_over_fixed_reference": 0.096287431,
+        "working_threshold_pass": true,
+        "strict_pass": false,
+        "output": "outputs/s1index_fixed_equal_six_family_v1"
+      },
+      "unresolved_pair_signal_and_ensemble_audits": {
+        "released_test_touched": false,
+        "S1_ring": {
+          "fixed_reference_pcc": 0.493492559,
+          "working_target_pcc": 0.588492559,
+          "best_single_current_pcc": 0.537785,
+          "greedy_equal_12_oracle_pcc": 0.553183083,
+          "outer_target_informed_ridge_ceiling_pcc": 0.589867363,
+          "outer_target_informed_gain": 0.096374804,
+          "split_safe_initializer_stack_pcc": 0.408732581,
+          "other_pair_ranked_fixed_top8_pcc": 0.495877257,
+          "cross_validated_oof_meta_stack_pcc": 0.467062431,
+          "equal_three_existing_seed_pcc": 0.494145185,
+          "target_only_bandpower_gru_top64_pcc": 0.311680645,
+          "target_only_bandpower_gru_top128_pcc": 0.26312646,
+          "target_only_bandpower_gru_small300_pcc": 0.393026086,
+          "signed_low_frequency_potential_ridge_pcc": 0.233224107
+        },
+        "S3_middle": {
+          "fixed_reference_pcc": 0.590355891,
+          "working_target_pcc": 0.685355891,
+          "best_single_current_pcc": 0.627011702,
+          "greedy_equal_12_oracle_pcc": 0.655895747,
+          "outer_target_informed_ridge_ceiling_pcc": 0.673370658,
+          "outer_target_informed_gain": 0.083014767,
+          "split_safe_initializer_stack_pcc": 0.520418937,
+          "other_pair_ranked_fixed_top8_pcc": 0.6032421,
+          "cross_validated_oof_meta_stack_pcc": 0.591238209,
+          "best_new_long_lstm_seed_pcc": 0.635899812,
+          "fixed_equal_nine_seed_long_lstm_pcc": 0.631198014,
+          "fixed_equal_nine_seed_gain": 0.040842123,
+          "target_only_bandpower_gru_top64_pcc": 0.425886836,
+          "target_only_bandpower_gru_top128_pcc": 0.41758756,
+          "target_only_bandpower_gru_small300_pcc": 0.496370574,
+          "signed_low_frequency_potential_ridge_pcc": 0.075349126
+        },
+        "decision": "Reject the initializer stack, other-pair-ranked fixed ensemble, cross-validated OOF meta-stack, target-only bandpower GRU, fixed seed ensembles, and signed low-frequency-potential ridge. The best new S3-middle seed improves the single-model ceiling but remains 0.04946 PCC below the working target; no failed route is counted as a pass."
+      }
+    },
+    "decision": "The all-finger amplitude bank produces strict S2-index and S3-index passes, with S3 index confirmed by inner-only selection across auxiliary weights. Same-family fixed-data replicas support S1 thumb and S2 thumb. Heterogeneous equal-family blends are no longer eligible: S1 index reverts to its 0.804245 nonlinear-temporal branch (+0.078700 over fixed reference), and S2 ring reverts to its 0.523094 raw-ridge branch (+0.077011). Continue single-branch development for S1 index, S1 ring, S2 ring, and S3 middle."
+  },
+  "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, full-bank ridge and nonlinear probes, training-only power calibration, recurrent warm-up option, offline future-context representation, split-local all-finger amplitude bank, and training-only hand-synergy SPoC rows. Under the active one-branch-per-pair policy, ten of fifteen subject-finger models numerically exceed the original +0.1 gain threshold: S1 thumb, S1 middle, S1 little, S2 thumb, S2 index, S2 middle, S2 little, S3 thumb, S3 index, and S3 ring. S3 little remains a user-approved project-triage exception at +0.0931, making the working progression count eleven of fifteen. The heterogeneous S1-index and S2-ring blends remain recorded only as diagnostics; their best standalone branches gain +0.078700 and +0.077011, respectively, and are unresolved. Candidate-specific lower initializers are never used to manufacture a pass. Continue single-branch development for S1 index, S1 ring, S2 ring, and S3 middle."
+}

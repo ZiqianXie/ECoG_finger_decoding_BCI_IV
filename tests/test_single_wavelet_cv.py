@@ -1,5 +1,9 @@
 import numpy as np
+import torch
 import cross_validate_single_wavelet as cv
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+from time import sleep
 
 from cross_validate_single_wavelet import (
     DenseSequenceSampler,
@@ -7,11 +11,96 @@ from cross_validate_single_wavelet import (
     UNFREEZE_AFTER,
     UNFROZEN_UPDATES,
     UniformGroupSampler,
+    cached_initialization_features,
+    direct_initialization_prediction,
+    load_initialization,
+    load_or_create_initialization,
+    load_runtime_ecog,
     one_standard_error_selection,
+    grouped_velocity_scale,
+    masked_sequence_correlation_loss,
+    movement_positive_weight,
+    save_initialization,
     scoped_event_groups,
+    sequence_correlation_loss,
+    split_local_raw_trajectory_blend,
     suppress_weak_little_events,
+    trajectory_mse_loss,
     validation_metrics,
 )
+
+
+def test_direct_initialization_prediction_matches_linear_and_softplus() -> None:
+    initialization = {
+        "selected_indices": np.asarray([0, 1], dtype=np.int64),
+        "selected_features": np.asarray([[1.0, 4.0], [3.0, 2.0]], dtype=np.float32),
+        "feature_mean": np.asarray([1.0, 2.0], dtype=np.float32),
+        "feature_scale": np.asarray([2.0, 4.0], dtype=np.float32),
+        "coefficients": np.asarray([0.5, -2.0], dtype=np.float32),
+        "intercept": np.asarray(0.25, dtype=np.float32),
+    }
+    expected_linear = np.asarray([-0.75, 0.75], dtype=np.float32)
+    observed_linear = direct_initialization_prediction(initialization, "linear", 10.0)
+    np.testing.assert_allclose(observed_linear, expected_linear, atol=1.0e-7)
+    observed_softplus = direct_initialization_prediction(
+        initialization, "softplus", 10.0
+    )
+    expected_softplus = np.logaddexp(0.0, 10.0 * expected_linear) / 10.0
+    np.testing.assert_allclose(observed_softplus, expected_softplus, atol=1.0e-7)
+    model = cv.SingleWaveletDecoder(
+        np.ones((1, 1), dtype=np.float32),
+        initialization,
+        hidden_size=2,
+        recurrent_cell="standard",
+        output_activation="softplus",
+        softplus_beta=10.0,
+    )
+    with torch.inference_mode():
+        model_prediction = model.direct_features(
+            torch.from_numpy(initialization["selected_features"])
+        ).numpy()
+    np.testing.assert_allclose(observed_softplus, model_prediction, atol=1.0e-7)
+
+
+def test_direct_initialization_prediction_rejects_unknown_activation() -> None:
+    initialization = {
+        "selected_features": np.ones((2, 1), dtype=np.float32),
+        "feature_mean": np.zeros(1, dtype=np.float32),
+        "feature_scale": np.ones(1, dtype=np.float32),
+        "coefficients": np.ones(1, dtype=np.float32),
+        "intercept": np.asarray(0.0, dtype=np.float32),
+    }
+    with np.testing.assert_raises_regex(ValueError, "unsupported output activation"):
+        direct_initialization_prediction(initialization, "unknown", 10.0)
+
+
+def test_movement_positive_weight_balances_training_scope() -> None:
+    target = torch.zeros(6, 5)
+    target[[1, 4], 2] = 0.2
+
+    weight = movement_positive_weight(target, np.arange(6), 2, 0.1)
+
+    torch.testing.assert_close(weight, torch.tensor(2.0))
+
+
+def test_movement_positive_weight_can_balance_all_fingers() -> None:
+    target = torch.zeros(6, 5)
+    target[[1, 4], 0] = 0.2
+    target[[0, 2, 4], 1] = 0.2
+
+    weight = movement_positive_weight(target, np.arange(6), None, 0.1)
+
+    torch.testing.assert_close(
+        weight, torch.tensor([2.0, 1.0, 6.0, 6.0, 6.0])
+    )
+
+
+def test_grouped_velocity_scale_excludes_interval_jumps() -> None:
+    target = torch.tensor([0.0, 1.0, 2.0, 100.0, 101.0, 102.0])
+
+    scale = grouped_velocity_scale(target, [[0, 3], [3, 6]])
+
+    torch.testing.assert_close(scale, torch.tensor(0.01))
 
 
 def schedules() -> list[str]:
@@ -87,6 +176,195 @@ def test_validation_metrics_are_ideal_for_exact_prediction() -> None:
     assert np.isclose(metrics["amplitude_slope"], 1.0)
     assert np.isclose(metrics["velocity_pcc"], 1.0)
     assert np.isclose(metrics["movement_balanced_accuracy"], 1.0)
+
+
+def test_sequence_correlation_loss_rewards_shape_and_backpropagates() -> None:
+    target = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]])
+    exact = target.clone().requires_grad_(True)
+    reversed_values = torch.flip(target, dims=(1,))
+
+    exact_loss = sequence_correlation_loss(exact, target)
+    reversed_loss = sequence_correlation_loss(reversed_values, target)
+    exact_loss.backward()
+
+    assert torch.isclose(exact_loss, torch.tensor(0.0), atol=1.0e-6)
+    assert reversed_loss > exact_loss
+    assert exact.grad is not None
+    assert torch.isfinite(exact.grad).all()
+
+
+def test_masked_sequence_correlation_uses_only_movement_bins() -> None:
+    target = torch.tensor([[50.0, 0.0, 1.0, 2.0, -50.0]])
+    prediction = torch.tensor([[-50.0, 0.0, 1.0, 2.0, 50.0]], requires_grad=True)
+    mask = torch.tensor([[False, True, True, True, False]])
+
+    loss = masked_sequence_correlation_loss(prediction, target, mask)
+    loss.backward()
+
+    assert torch.isclose(loss, torch.tensor(0.0), atol=1.0e-6)
+    assert prediction.grad is not None
+    assert torch.isfinite(prediction.grad).all()
+
+
+def test_masked_sequence_correlation_skips_rows_without_three_bins() -> None:
+    prediction = torch.tensor([[0.0, 1.0], [2.0, 1.0]], requires_grad=True)
+    target = prediction.detach().clone()
+    mask = torch.ones_like(prediction, dtype=torch.bool)
+
+    loss = masked_sequence_correlation_loss(prediction, target, mask)
+    loss.backward()
+
+    assert torch.isclose(loss, torch.tensor(0.0))
+    assert prediction.grad is not None
+
+
+def test_trajectory_mse_loss_can_emphasize_movement_bins() -> None:
+    target = torch.tensor([[0.0, 0.2]])
+    prediction = torch.tensor([[1.0, 1.2]])
+
+    unweighted = trajectory_mse_loss(prediction, target, torch.tensor(1.0), 0.1, 1.0)
+    weighted = trajectory_mse_loss(prediction, target, torch.tensor(1.0), 0.1, 3.0)
+
+    torch.testing.assert_close(unweighted, torch.tensor(1.0))
+    torch.testing.assert_close(weighted, torch.tensor(1.0))
+
+
+def test_trajectory_mse_loss_changes_relative_bin_contribution() -> None:
+    target = torch.tensor([[0.0, 0.2]])
+    prediction = torch.tensor([[1.0, 0.2]])
+
+    unweighted = trajectory_mse_loss(prediction, target, torch.tensor(1.0), 0.1, 1.0)
+    movement_weighted = trajectory_mse_loss(
+        prediction, target, torch.tensor(1.0), 0.1, 3.0
+    )
+
+    torch.testing.assert_close(unweighted, torch.tensor(0.5))
+    torch.testing.assert_close(movement_weighted, torch.tensor(0.25))
+
+
+def test_raw_trajectory_blend_fits_affine_map_on_training_rows_only() -> None:
+    cleaned = torch.tensor([0.0, 1.0, 2.0, 100.0])
+    raw = torch.tensor([1.0, 3.0, 5.0, 7.0])
+    training_rows = torch.tensor([0, 1, 2])
+
+    blended = split_local_raw_trajectory_blend(
+        cleaned, raw, training_rows, blend=1.0
+    )
+
+    torch.testing.assert_close(blended, torch.tensor([0.0, 1.0, 2.0, 3.0]))
+
+
+def test_initialization_cache_atomic_round_trip(tmp_path) -> None:
+    initialization = {
+        "selected_indices": np.asarray([1, 3], dtype=np.int64),
+        "coefficients": np.asarray([0.2, -0.4], dtype=np.float32),
+    }
+    spatial = np.arange(6, dtype=np.float32).reshape(2, 3)
+    target = np.asarray([[0.1], [0.2]], dtype=np.float32)
+    split = {"fold": 1}
+    audit = {"selected_features": 2}
+
+    save_initialization(tmp_path, initialization, spatial, target, split, audit)
+    loaded, loaded_spatial, loaded_target, loaded_split = load_initialization(
+        tmp_path
+    )
+
+    assert set(loaded) == set(initialization)
+    for name, values in initialization.items():
+        np.testing.assert_array_equal(loaded[name], values)
+    np.testing.assert_array_equal(loaded_spatial, spatial)
+    np.testing.assert_array_equal(loaded_target, target)
+    assert loaded_split["fold"] == 1
+    assert loaded_split["initialization_audit"] == audit
+    assert not list(tmp_path.glob(".*"))
+
+
+def test_causal_cached_features_join_direct_candidates_and_current_sources() -> None:
+    initialization = {
+        "candidate_features": np.arange(12, dtype=np.float32).reshape(3, 4),
+        "causal_features": np.arange(6, dtype=np.float32).reshape(3, 2),
+    }
+
+    observed = cached_initialization_features(initialization, "causal_candidate")
+
+    np.testing.assert_array_equal(observed[:, :4], initialization["candidate_features"])
+    np.testing.assert_array_equal(observed[:, 4:], initialization["causal_features"])
+
+
+def test_selected_causal_cached_features_join_selected_and_current_sources() -> None:
+    initialization = {
+        "selected_features": np.arange(6, dtype=np.float32).reshape(3, 2),
+        "selected_causal_features": np.arange(3, dtype=np.float32).reshape(3, 1),
+    }
+
+    observed = cached_initialization_features(initialization, "selected_causal")
+
+    np.testing.assert_array_equal(observed[:, :2], initialization["selected_features"])
+    np.testing.assert_array_equal(
+        observed[:, 2:], initialization["selected_causal_features"]
+    )
+
+
+def test_initialization_cache_creation_is_serialized(tmp_path) -> None:
+    calls = 0
+    calls_lock = Lock()
+
+    def create():
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        sleep(0.05)
+        return (
+            {"coefficients": np.asarray([0.3], dtype=np.float32)},
+            np.asarray([[1.0]], dtype=np.float32),
+            np.asarray([[0.2]], dtype=np.float32),
+            {"fold": 0},
+            {"selected_features": 1},
+        )
+
+    cache = tmp_path / "outer0" / "inner0"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda _: load_or_create_initialization(cache, create), range(2)
+            )
+        )
+
+    assert calls == 1
+    assert [result[3]["fold"] for result in results] == [0, 0]
+    np.testing.assert_array_equal(
+        results[0][0]["coefficients"], results[1][0]["coefficients"]
+    )
+
+
+def test_same_rate_runtime_ecog_is_reused_from_node_local_cache(tmp_path) -> None:
+    source = tmp_path / "prepared" / "train_ecog.npy"
+    cache = tmp_path / "shm" / "train_ecog.npy"
+    source.parent.mkdir()
+    expected = np.arange(24, dtype=np.float32).reshape(8, 3)
+    np.save(source, expected)
+
+    first = load_runtime_ecog(source, cache, model_rate=1000)
+    np.testing.assert_array_equal(first, expected)
+    assert cache.is_file()
+
+    np.save(source, np.full_like(expected, -1.0))
+    second = load_runtime_ecog(source, cache, model_rate=1000)
+    np.testing.assert_array_equal(second, expected)
+
+
+def test_same_rate_runtime_ecog_repairs_invalid_cache(tmp_path) -> None:
+    source = tmp_path / "prepared" / "train_ecog.npy"
+    cache = tmp_path / "shm" / "train_ecog.npy"
+    source.parent.mkdir()
+    cache.parent.mkdir()
+    expected = np.arange(15, dtype=np.float32).reshape(5, 3)
+    np.save(source, expected)
+    np.save(cache, np.zeros((2, 3), dtype=np.float32))
+
+    observed = load_runtime_ecog(source, cache, model_rate=1000)
+
+    np.testing.assert_array_equal(observed, expected)
 
 
 def test_one_standard_error_prefers_earlier_checkpoint() -> None:

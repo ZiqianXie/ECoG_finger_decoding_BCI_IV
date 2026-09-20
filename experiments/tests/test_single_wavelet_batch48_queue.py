@@ -1,0 +1,502 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from experiments.scripts.run_single_wavelet_batch48_queue import (
+    build_command,
+    completed_summary,
+    missing_designed_band_caches,
+    parse_spec,
+)
+
+
+def test_parse_spec_validates_all_fields() -> None:
+    assert parse_spec("3:little:2") == (3, "little", 2)
+    with pytest.raises(Exception):
+        parse_spec("4:little:2")
+    with pytest.raises(Exception):
+        parse_spec("3:toe:2")
+
+
+def test_completed_summary_requires_requested_single_fold(tmp_path) -> None:
+    path = tmp_path / "summary.json"
+    path.write_text(json.dumps({"outer_folds": [{"outer_fold": 1}]}))
+    assert completed_summary(path, 1)
+    assert not completed_summary(path, 0)
+
+
+def test_designed_band_preflight_checks_each_subject_once(tmp_path) -> None:
+    specs = [(2, "index", 0), (2, "index", 1), (3, "little", 0)]
+    expected = [
+        tmp_path / "sub2" / "train_filtered_bands.npy",
+        tmp_path / "sub3" / "train_filtered_bands.npy",
+    ]
+    assert missing_designed_band_caches(specs, "designed_seven", tmp_path) == expected
+    expected[0].parent.mkdir(parents=True)
+    expected[0].touch()
+    assert missing_designed_band_caches(specs, "designed_seven", tmp_path) == [
+        expected[1]
+    ]
+    assert missing_designed_band_caches(specs, "joint_hhl_hhh", tmp_path) == []
+
+
+def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "ring",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+    )
+    joined = " ".join(command)
+    assert "--recurrent-cell residual_lstm" in joined
+    assert "--residual-input current_candidate" in joined
+    assert "--residual-include-direct" in command
+    assert "--frozen-only" in command
+    assert "--csp-band-mode joint_hhl_hhh" in joined
+    assert "--csp-mode movement_1" in joined
+    assert "--residual-input-width 64" in joined
+    assert "--correlation-loss-weight 0.0" in joined
+    assert "--derivative-correlation-weight 0.0" in joined
+    assert "--raw-movement-correlation-weight 0.0" in joined
+    assert "--raw-movement-derivative-correlation-weight 0.0" in joined
+    assert "--lasso-backend torch_fista" in joined
+    assert "--wavelet-frontend depth3" in joined
+    assert "--frozen-update-grid 10 25 50 100 200" in joined
+    assert "--wavelet-interlevel-skip" not in command
+    assert "--wavelet-interlevel-normalization" not in command
+    assert "--future-context-bins 0" in joined
+    assert "--initialization-raw-target-blend 0.0" in joined
+
+
+def test_command_can_add_offline_future_context(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "thumb",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        future_context_bins=4,
+    )
+    assert "--future-context-bins 4" in " ".join(command)
+
+
+def test_command_can_feed_selected_noncausal_atoms_to_residual_decoder(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        residual_input="selected",
+        future_context_bins=16,
+    )
+    joined = " ".join(command)
+    assert "--residual-input selected" in joined
+    assert "--future-context-bins 16" in joined
+    assert "--residual-input-width" not in command
+
+
+def test_command_can_request_bidirectional_residual_lstm(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "middle",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        recurrent_cell="residual_bilstm",
+    )
+    assert "--recurrent-cell residual_bilstm" in " ".join(command)
+
+
+def test_command_can_reuse_one_outer_folds_inner_metrics(tmp_path) -> None:
+    source = tmp_path / "source"
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "thumb",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        reuse_inner_metrics_root=source,
+    )
+    index = command.index("--reuse-inner-metrics-from")
+    assert command[index + 1] == str(source / "sub2" / "thumb" / "outer1")
+
+
+def test_command_can_request_two_csp_components_per_band(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_band_mode="separate_50_100_hhl_hhh",
+        csp_mode="movement_2",
+    )
+    joined = " ".join(command)
+    assert "--csp-mode movement_2" in joined
+    assert "--csp-band-mode separate_50_100_hhl_hhh" in joined
+
+
+def test_command_can_extend_the_frozen_training_schedule(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "thumb",
+        2,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        frozen_update_grid=(10, 25, 50, 100, 200, 400, 800),
+    )
+    joined = " ".join(command)
+    assert "--frozen-update-grid 10 25 50 100 200 400 800" in joined
+
+
+def test_command_can_request_one_overcomplete_wavelet_tree(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        wavelet_frontend="overcomplete_depth3_depth4",
+    )
+    joined = " ".join(command)
+    assert "--wavelet-frontend overcomplete_depth3_depth4" in joined
+    assert "--csp-band-mode joint_hhl_hhh" in joined
+    assert "--recurrent-cell residual_lstm" in joined
+
+
+def test_command_can_shift_the_coherent_wavelet_dilation(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "index",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        tap_resample_up=3,
+        tap_resample_down=1,
+    )
+    joined = " ".join(command)
+    assert "--tap-resample-up 3" in joined
+    assert "--tap-resample-down 1" in joined
+    assert "/dev/shm/ecog_wavelet_1000hz_taps3over1/sub2" in joined
+
+
+def test_command_can_request_initialization_only_screen(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "index",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        initialization_only=True,
+    )
+    assert "--initialization-only" in command
+    assert "--no-require-lstm-update" in command
+    assert "--require-lstm-update" not in command
+
+
+def test_command_can_request_depth5_overcomplete_wavelet_tree(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        wavelet_frontend="overcomplete_depth3_depth4_depth5",
+    )
+    joined = " ".join(command)
+    assert "--wavelet-frontend overcomplete_depth3_depth4_depth5" in joined
+    assert "--recurrent-cell residual_lstm" in joined
+
+
+def test_command_can_fit_separate_gamma_csp_rows(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "middle",
+        2,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_band_mode="separate_hhl_hhh",
+        residual_input_width=96,
+        correlation_loss_weight=0.1,
+        derivative_correlation_weight=0.1,
+        raw_movement_correlation_weight=0.2,
+        raw_movement_derivative_correlation_weight=0.3,
+        lasso_backend="torch_fista",
+    )
+    joined = " ".join(command)
+    assert "--csp-band-mode separate_hhl_hhh" in joined
+    assert "--residual-input-width 96" in joined
+    assert "--correlation-loss-weight 0.1" in joined
+    assert "--derivative-correlation-weight 0.1" in joined
+    assert "--raw-movement-correlation-weight 0.2" in joined
+    assert "--raw-movement-derivative-correlation-weight 0.3" in joined
+    assert "--lasso-backend torch_fista" in joined
+
+
+def test_command_can_request_designed_band_csp_rows(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_band_mode="designed_seven",
+        csp_band_cache_root=tmp_path / "bands",
+        csp_mode="tails_2x2",
+        residual_input_width=256,
+        wavelet_frontend="overcomplete_depth3_depth4",
+    )
+    joined = " ".join(command)
+    assert "--csp-band-mode designed_seven" in joined
+    assert f"--csp-band-cache-root {tmp_path / 'bands'}" in joined
+    assert "--csp-mode tails_2x2" in joined
+    assert "--residual-input-width 256" in joined
+    assert "--wavelet-frontend overcomplete_depth3_depth4" in joined
+
+
+def test_command_can_randomize_near_zero_residual_output(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        residual_output_init_std=0.001,
+    )
+    joined = " ".join(command)
+    assert "--residual-output-init-std 0.001" in joined
+
+
+def test_command_can_lower_the_head_learning_rate(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        head_learning_rate=1.0e-4,
+    )
+    joined = " ".join(command)
+    assert "--head-learning-rate 0.0001" in joined
+
+
+def test_command_can_anchor_spatial_stem_while_leaving_wavelets_fixed(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "index",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        frozen_update_grid=(25, 50, 100),
+        train_stem=True,
+        spatial_learning_rate=1.0e-6,
+        spatial_anchor_weight=0.01,
+        wavelet_learning_rate=0.0,
+        unfreeze_after=50,
+        unfrozen_update_grid=(10, 25, 50),
+        spoc_auxiliary_weight=0.02,
+        spoc_active_threshold=0.25,
+        spatial_orthogonality_weight=0.03,
+    )
+    joined = " ".join(command)
+    assert "--frozen-only" not in command
+    assert "--unfreeze-after 50" in joined
+    assert "--unfrozen-update-grid 10 25 50" in joined
+    assert "--spatial-learning-rate 1e-06" in joined
+    assert "--spatial-anchor-weight 0.01" in joined
+    assert "--wavelet-learning-rate 0.0" in joined
+    assert "--spoc-auxiliary-weight 0.02" in joined
+    assert "--spoc-active-threshold 0.25" in joined
+    assert "--spatial-orthogonality-weight 0.03" in joined
+
+
+def test_command_can_use_gpu_vectorized_leaky_residual_state(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "middle",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        residual_dynamics="leaky_velocity",
+        residual_decay=0.95,
+    )
+    joined = " ".join(command)
+    assert "--residual-dynamics leaky_velocity" in joined
+    assert "--residual-decay 0.95" in joined
+
+
+def test_command_can_blend_split_local_raw_trajectory_target(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "middle",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        raw_trajectory_blend=0.25,
+    )
+    assert "--raw-trajectory-blend 0.25" in " ".join(command)
+
+
+def test_command_can_warm_up_recurrent_state_before_scoring(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        warmup_steps=50,
+    )
+    joined = " ".join(command)
+    assert "--sequence-steps 100" in joined
+    assert "--warmup-steps 50" in joined
+
+
+def test_command_can_train_all_finger_movement_context(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        movement_head_scope="all_fingers",
+    )
+    assert "--movement-head-scope all_fingers" in " ".join(command)
+
+
+def test_command_can_use_continuous_all_finger_auxiliary_target(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        movement_loss_weight=0.1,
+        movement_head_scope="all_fingers",
+        movement_head_objective="continuous_trajectory",
+        amplitude_target_lead_bins=4,
+    )
+    joined = " ".join(command)
+    assert "--movement-head-scope all_fingers" in joined
+    assert "--movement-head-objective continuous_trajectory" in joined
+    assert "--movement-loss-weight 0.1" in joined
+    assert "--amplitude-target-lead-bins 4" in joined
+
+
+def test_command_can_fit_training_only_auxiliary_residual_readout(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        movement_loss_weight=1.5,
+        movement_head_scope="all_fingers",
+        movement_head_objective="continuous_trajectory",
+        auxiliary_residual_readout_l2=0.1,
+    )
+    assert "--auxiliary-residual-readout-l2 0.1" in " ".join(command)
+
+
+def test_command_can_vary_only_model_seed_on_fixed_data(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "thumb",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        model_seed=2027,
+        split_seed=2026,
+        sampler_seed=2026,
+    )
+    joined = " ".join(command)
+    assert "--seed 2027" in joined
+    assert "--split-seed 2026" in joined
+    assert "--sampler-seed 2026" in joined
+
+
+def test_command_can_initialize_csp_against_other_finger_movement(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        csp_contrast_mode="dual_rest_other",
+    )
+    assert "--csp-contrast-mode dual_rest_other" in " ".join(command)

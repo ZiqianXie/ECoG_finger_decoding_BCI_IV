@@ -19,9 +19,32 @@ HISTORY = 25
 OFFSET = HISTORY - 1
 LITTLE = 4
 
-# Literal QMF paths are Gray-coded after a high-pass split.  This index maps
-# lexicographic path order to ascending physical frequency.
-FREQUENCY_ORDER = np.asarray((0, 1, 3, 2, 6, 7, 5, 4), dtype=np.int64)
+def gray_frequency_order(levels: int) -> np.ndarray:
+    """Map literal QMF path order to ascending physical frequency."""
+    if levels < 1:
+        raise ValueError("wavelet levels must be positive")
+    indices = np.arange(2**levels, dtype=np.int64)
+    return indices ^ (indices >> 1)
+
+
+# Literal QMF paths are Gray-coded after a high-pass split.
+FREQUENCY_ORDER = gray_frequency_order(3)
+
+
+def frontend_frequency_order(frontend: WaveletPacketEnergy) -> np.ndarray:
+    """Return ascending-frequency indices for every retained packet level."""
+    level_counts = getattr(frontend, "output_band_level_counts", None)
+    if level_counts is None:
+        level_counts = (2**frontend.levels,)
+    result = []
+    offset = 0
+    for count in level_counts:
+        levels = int(np.log2(count))
+        if 2**levels != count:
+            raise ValueError("retained wavelet level must contain a power-of-two band count")
+        result.append(offset + gray_frequency_order(levels))
+        offset += count
+    return np.concatenate(result)
 
 
 def pearson(x: np.ndarray, y: np.ndarray) -> float:
@@ -64,7 +87,9 @@ def extract_energy(
 ) -> np.ndarray:
     values = torch.from_numpy(np.asarray(ecog).T.copy()).unsqueeze(0).to(device)
     parts: list[np.ndarray] = []
-    order = torch.as_tensor(FREQUENCY_ORDER, dtype=torch.long, device=device)
+    order = torch.as_tensor(
+        frontend_frequency_order(frontend), dtype=torch.long, device=device
+    )
     for begin in range(0, weights.shape[0], component_chunk):
         spatial = torch.nn.functional.conv1d(
             values,
@@ -91,21 +116,49 @@ def training_ecog_samples(
 
 
 @torch.inference_mode()
+def linear_wavelet_leaf_signals(
+    ecog: np.ndarray,
+    frontend: WaveletPacketEnergy,
+    device: torch.device,
+    physical_positions: tuple[int, ...],
+) -> tuple[np.ndarray, ...]:
+    """Return initialized tree leaves in ascending-frequency positions."""
+    order = frontend_frequency_order(frontend)
+    if not physical_positions or any(
+        position < 0 or position >= order.size
+        for position in physical_positions
+    ):
+        raise ValueError(
+            f"physical leaf positions must be nonempty values from 0 to {order.size - 1}"
+        )
+    values = torch.from_numpy(np.asarray(ecog).T.copy()).to(device)[:, None]
+    bands = values
+    for layer in frontend.layers:
+        bands = frontend._same_filter(bands, layer)
+    indices = order[np.asarray(physical_positions, dtype=np.int64)]
+    return tuple(
+        bands[:, int(index)].T.float().cpu().numpy() for index in indices
+    )
+
+
 def linear_gamma_leaf_signals(
     ecog: np.ndarray,
     frontend: WaveletPacketEnergy,
     device: torch.device,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return the two initialized 100--150 Hz tree paths before energy pooling."""
-    values = torch.from_numpy(np.asarray(ecog).T.copy()).to(device)[:, None]
-    bands = values
-    for layer in frontend.layers:
-        bands = frontend._same_filter(bands, layer)
-    # Lexicographic HHL/HHH paths occupy physical-frequency positions 4/5.
-    return (
-        bands[:, 6].T.float().cpu().numpy(),
-        bands[:, 7].T.float().cpu().numpy(),
-    )
+    """Return the initialized 100--125 and 125--150 Hz tree leaves."""
+    first, second = linear_wavelet_leaf_signals(ecog, frontend, device, (4, 5))
+    return first, second
+
+
+def linear_lower_high_gamma_leaf_signals(
+    ecog: np.ndarray,
+    frontend: WaveletPacketEnergy,
+    device: torch.device,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the 50--75 and 75--100 Hz leaves used for one 50--100 Hz CSP row."""
+    first, second = linear_wavelet_leaf_signals(ecog, frontend, device, (2, 3))
+    return first, second
 
 
 def regularized_covariance(
@@ -120,14 +173,144 @@ def regularized_covariance(
     )
 
 
+def continuous_amplitude_covariance_matrices(
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    shrinkage: float = 0.05,
+    minimum_target: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Return split-local reference and amplitude-weighted covariances.
+
+    Every statistic, including target centering/scaling and the covariance
+    reference, is fitted only from ``training`` rows. ``minimum_target`` can
+    restrict the objective to within-movement amplitude without using held-out
+    target values.
+    """
+    response = np.asarray(target[training, finger_index], dtype=np.float64)
+    finite = np.isfinite(response)
+    if minimum_target is not None:
+        finite &= response > minimum_target
+    rows = np.asarray(training, dtype=np.int64)[finite]
+    response = response[finite]
+    if rows.size < 4:
+        raise RuntimeError("too few finite training bins for amplitude covariance")
+    response_mean = float(response.mean())
+    response_scale = float(response.std())
+    if response_scale <= np.finfo(np.float64).eps:
+        raise RuntimeError("training target has no amplitude variation")
+
+    channels = filtered_bins.shape[-1]
+    values = np.asarray(filtered_bins[rows + OFFSET], dtype=np.float64).reshape(
+        rows.size, -1, channels
+    )
+    values = values - values.mean(axis=1, keepdims=True)
+    denominator = max(1, values.shape[1] - 1)
+    trial_covariances = np.einsum(
+        "ntc,ntd->ncd", values, values, optimize=True
+    ) / denominator
+    reference = trial_covariances.mean(axis=0)
+    isotropic = float(np.trace(reference) / channels)
+    reference = (
+        (1.0 - shrinkage) * reference
+        + shrinkage * isotropic * np.eye(channels)
+    )
+    standardized = (response - response_mean) / response_scale
+    amplitude_covariance = np.einsum(
+        "n,ncd->cd", standardized, trial_covariances, optimize=True
+    ) / rows.size
+    amplitude_covariance = 0.5 * (
+        amplitude_covariance + amplitude_covariance.T
+    )
+    return reference, amplitude_covariance, {
+        "active_bins": int(rows.size),
+        "training_target_mean": response_mean,
+        "training_target_scale": response_scale,
+        "training_target_min": float(response.min()),
+        "training_target_max": float(response.max()),
+        "minimum_target": minimum_target,
+        "shrinkage": float(shrinkage),
+    }
+
+
+def continuous_amplitude_spatial_bank(
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    shrinkage: float = 0.05,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC-style rows whose band power covaries with finger amplitude."""
+    reference, amplitude_covariance, covariance_audit = (
+        continuous_amplitude_covariance_matrices(
+            filtered_bins,
+            target,
+            training,
+            finger_index,
+            shrinkage=shrinkage,
+        )
+    )
+    eigenvalues, eigenvectors = linalg.eigh(
+        amplitude_covariance,
+        reference,
+        check_finite=False,
+    )
+    selected = [index % eigenvalues.size for index in component_indices]
+    weights = eigenvectors[:, selected].T
+    weights /= np.linalg.norm(weights, axis=1, keepdims=True).clip(min=1.0e-12)
+    return weights.astype(np.float32), {
+        **covariance_audit,
+        "rest_bins": 0,
+        "negative_class": "continuous_amplitude",
+        "component_indices": list(component_indices),
+        "eigenvalues": [float(eigenvalues[index]) for index in selected],
+    }
+
+
+def continuous_velocity_spatial_bank(
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    shrinkage: float = 0.05,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC rows to target velocity using training-adjacent bins only."""
+    training = np.asarray(training, dtype=np.int64)
+    in_training = np.zeros(target.shape[0], dtype=bool)
+    in_training[training] = True
+    valid = training[(training > 0) & in_training[np.maximum(training - 1, 0)]]
+    velocity_target = np.full_like(target, np.nan, dtype=np.float64)
+    velocity_target[valid, finger_index] = (
+        target[valid, finger_index] - target[valid - 1, finger_index]
+    )
+    weights, audit = continuous_amplitude_spatial_bank(
+        filtered_bins,
+        velocity_target,
+        training,
+        finger_index,
+        component_indices,
+        shrinkage=shrinkage,
+    )
+    return weights, {
+        **audit,
+        "negative_class": "continuous_velocity",
+        "velocity_bins": int(valid.size),
+        "velocity_definition": "current minus previous target bin, both in training",
+    }
+
+
 def finger_csp_bank(
     filtered_bins: np.ndarray,
     target: np.ndarray,
     training: np.ndarray,
     finger_index: int,
     component_indices: tuple[int, ...],
+    negative_class: str = "common_rest",
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Fit selected rows from one finger-versus-common-rest CSP eigensystem."""
+    """Fit selected rows from one target-finger CSP eigensystem."""
     if not component_indices:
         return np.empty((0, filtered_bins.shape[-1]), dtype=np.float32), {
             "active_bins": 0,
@@ -135,23 +318,70 @@ def finger_csp_bank(
             "component_indices": [],
             "eigenvalues": [],
         }
+    if negative_class not in (
+        "common_rest",
+        "other_movement",
+        "lower_target_movement",
+        "continuous_amplitude",
+        "continuous_velocity",
+    ):
+        raise ValueError(f"unsupported CSP negative class {negative_class!r}")
+    if negative_class == "continuous_amplitude":
+        return continuous_amplitude_spatial_bank(
+            filtered_bins,
+            target,
+            training,
+            finger_index,
+            component_indices,
+        )
+    if negative_class == "continuous_velocity":
+        return continuous_velocity_spatial_bank(
+            filtered_bins,
+            target,
+            training,
+            finger_index,
+            component_indices,
+        )
     rest = np.max(np.nan_to_num(target, nan=np.inf), axis=1) < 0.05
-    active = target[:, finger_index] > 0.20
+    target_finger = target[:, finger_index]
+    active = target_finger > 0.20
+    other = np.delete(target, finger_index, axis=1)
+    other_movement = (
+        (np.max(np.nan_to_num(other, nan=-np.inf), axis=1) > 0.20)
+        & (target_finger < 0.05)
+    )
+    high_movement_threshold = None
+    lower_movement_ceiling = None
+    if negative_class == "lower_target_movement":
+        training_movement = target_finger[training[active[training]]]
+        if training_movement.size < 4:
+            raise RuntimeError("too few target-movement bins for amplitude CSP")
+        lower_movement_ceiling = float(np.quantile(training_movement, 0.50))
+        high_movement_threshold = float(np.quantile(training_movement, 0.75))
+        active = target_finger >= high_movement_threshold
+        negative = (
+            (target_finger > 0.20)
+            & (target_finger <= lower_movement_ceiling)
+        )
+    elif negative_class == "common_rest":
+        negative = rest
+    else:
+        negative = other_movement
     active_rows = training[active[training]]
-    rest_rows = training[rest[training]]
-    if active_rows.size < 2 or rest_rows.size < 2:
-        raise RuntimeError("too few movement or common-rest bins for CSP")
+    negative_rows = training[negative[training]]
+    if active_rows.size < 2 or negative_rows.size < 2:
+        raise RuntimeError("too few positive or negative bins for CSP")
     active_values = filtered_bins[active_rows + OFFSET].reshape(
         -1, filtered_bins.shape[-1]
     )
-    rest_values = filtered_bins[rest_rows + OFFSET].reshape(
+    negative_values = filtered_bins[negative_rows + OFFSET].reshape(
         -1, filtered_bins.shape[-1]
     )
     active_covariance = regularized_covariance(active_values)
-    rest_covariance = regularized_covariance(rest_values)
+    negative_covariance = regularized_covariance(negative_values)
     eigenvalues, eigenvectors = linalg.eigh(
         active_covariance,
-        active_covariance + rest_covariance,
+        active_covariance + negative_covariance,
         check_finite=False,
     )
     selected = [index % eigenvalues.size for index in component_indices]
@@ -159,7 +389,18 @@ def finger_csp_bank(
     weights /= np.linalg.norm(weights, axis=1, keepdims=True).clip(min=1.0e-12)
     return weights.astype(np.float32), {
         "active_bins": int(active_rows.size),
-        "rest_bins": int(rest_rows.size),
+        "rest_bins": int(negative_rows.size) if negative_class == "common_rest" else 0,
+        "other_movement_bins": (
+            int(negative_rows.size) if negative_class == "other_movement" else 0
+        ),
+        "lower_target_movement_bins": (
+            int(negative_rows.size)
+            if negative_class == "lower_target_movement"
+            else 0
+        ),
+        "high_movement_threshold": high_movement_threshold,
+        "lower_movement_ceiling": lower_movement_ceiling,
+        "negative_class": negative_class,
         "component_indices": list(component_indices),
         "eigenvalues": [float(eigenvalues[index]) for index in selected],
     }
@@ -186,10 +427,26 @@ def csp_candidate_union(
     ica_per_bin: int,
     ica_prescreen: int,
     finger_index: int = LITTLE,
+    csp_per_bin_positions: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, int]]:
     position = np.arange(features.shape[1]) % per_bin
     ica_candidates = np.flatnonzero(position < ica_per_bin)
-    csp_candidates = np.flatnonzero(position >= ica_per_bin)
+    if csp_per_bin_positions is None:
+        csp_candidates = np.flatnonzero(position >= ica_per_bin)
+    else:
+        aligned = np.unique(np.asarray(csp_per_bin_positions, dtype=np.int64))
+        if (
+            aligned.ndim != 1
+            or aligned.size == 0
+            or aligned[0] < ica_per_bin
+            or aligned[-1] >= per_bin
+        ):
+            raise ValueError("aligned CSP positions must lie in the CSP part of one bin")
+        history = features.shape[1] // per_bin
+        csp_candidates = (
+            np.arange(history, dtype=np.int64)[:, None] * per_bin
+            + aligned[None]
+        ).reshape(-1)
     selected_local = correlation_screen(
         features[training][:, ica_candidates],
         target[training, finger_index],
@@ -199,4 +456,7 @@ def csp_candidate_union(
     return np.concatenate((selected_ica, csp_candidates)), {
         "ica_prescreen_candidates": int(selected_ica.size),
         "guaranteed_csp_candidates": int(csp_candidates.size),
+        "aligned_csp_positions_per_bin": int(
+            csp_candidates.size // max(1, features.shape[1] // per_bin)
+        ),
     }
