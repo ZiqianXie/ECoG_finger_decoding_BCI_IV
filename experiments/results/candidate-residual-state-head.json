@@ -1884,6 +1884,31 @@
       },
       "decision": "Reject before recurrent tuning. The largest gain is +0.0125 for S2 index; onset/offset covariance does not supply the missing representation-level improvement."
     },
+    "coherent_global_wavelet_dilation_initialization_screen": {
+      "description": "The frequency-compressed bior6.8 tree is shifted coherently by changing only its global tap-dilation family from the released 2.5x setting to the neighboring 2x and 3x settings. Wavelet shape, tree depth, spatial bank, LARS protocol, and event folds are unchanged; no convolution taps are freely learned.",
+      "released_test_touched": false,
+      "dilation_2x_gain_over_fixed_reference": {
+        "S1_thumb": -0.002103149,
+        "S1_index": 0.015679881,
+        "S1_ring": -0.006324384,
+        "S2_thumb": 0.000608644,
+        "S2_index": 0.010466766,
+        "S2_ring": -0.023267834,
+        "S3_index": -0.008503938,
+        "S3_middle": -0.012226245
+      },
+      "dilation_3x_gain_over_fixed_reference": {
+        "S1_thumb": -0.033975768,
+        "S1_index": -0.016841905,
+        "S1_ring": -0.008359397,
+        "S2_thumb": -0.02482522,
+        "S2_index": -0.010278974,
+        "S2_ring": -0.012464466,
+        "S3_index": -0.013143594,
+        "S3_middle": -0.007898181
+      },
+      "decision": "Reject before recurrent tuning. The higher-frequency 2x family gives only small S1-index and S2-index initializer gains, while the lower-frequency 3x family is worse for every unresolved pair. The original 2.5x frequency allocation is stable; a freely learned spectral grid is not justified by this controlled shift."
+    },
     "decision": "The two previously closest unresolved pairs remain closed after negative transfer screens. Continuous-amplitude covariance filtering creates a genuine S3-index representation gain, but recurrent tuning, CSP anchoring, active-SPoC regularization, onset/offset velocity covariance, and all tested rank, contrast, and band refinements fail to add a material gain. Continue from pair-specific signal construction rather than generic head tuning."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",

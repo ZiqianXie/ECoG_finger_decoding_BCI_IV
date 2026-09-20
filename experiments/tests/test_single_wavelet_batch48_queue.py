@@ -124,6 +124,25 @@ def test_command_can_request_one_overcomplete_wavelet_tree(tmp_path) -> None:
     assert "--recurrent-cell residual_lstm" in joined
 
 
+def test_command_can_shift_the_coherent_wavelet_dilation(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "index",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        tap_resample_up=3,
+        tap_resample_down=1,
+    )
+    joined = " ".join(command)
+    assert "--tap-resample-up 3" in joined
+    assert "--tap-resample-down 1" in joined
+    assert "/dev/shm/ecog_wavelet_1000hz_taps3over1/sub2" in joined
+
+
 def test_command_can_request_initialization_only_screen(tmp_path) -> None:
     command = build_command(
         "python",

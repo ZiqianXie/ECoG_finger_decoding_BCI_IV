@@ -93,6 +93,8 @@ def build_command(
     spoc_auxiliary_weight: float = 0.0,
     spoc_active_threshold: float = 0.20,
     spatial_orthogonality_weight: float = 0.0,
+    tap_resample_up: int = 5,
+    tap_resample_down: int = 2,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -112,13 +114,16 @@ def build_command(
         "--resampled-cache",
         f"/dev/shm/ecog_wavelet_1000hz/sub{subject}/train_ecog.npy",
         "--leaf-cache",
-        f"/dev/shm/ecog_wavelet_1000hz_taps5over2/sub{subject}",
+        (
+            f"/dev/shm/ecog_wavelet_1000hz_taps"
+            f"{tap_resample_up}over{tap_resample_down}/sub{subject}"
+        ),
         "--model-rate",
         "1000",
         "--tap-resample-up",
-        "5",
+        str(tap_resample_up),
         "--tap-resample-down",
-        "2",
+        str(tap_resample_down),
         "--wavelet-frontend",
         wavelet_frontend,
         "--output",
@@ -326,6 +331,8 @@ def main() -> None:
     parser.add_argument("--spoc-auxiliary-weight", type=float, default=0.0)
     parser.add_argument("--spoc-active-threshold", type=float, default=0.20)
     parser.add_argument("--spatial-orthogonality-weight", type=float, default=0.0)
+    parser.add_argument("--tap-resample-up", type=int, default=5)
+    parser.add_argument("--tap-resample-down", type=int, default=2)
     parser.add_argument("--wavelet-learning-rate", type=float, default=0.0)
     parser.add_argument("--unfreeze-after", type=int, default=100)
     parser.add_argument(
@@ -439,6 +446,8 @@ def main() -> None:
             args.spoc_auxiliary_weight,
             args.spoc_active_threshold,
             args.spatial_orthogonality_weight,
+            args.tap_resample_up,
+            args.tap_resample_down,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)
