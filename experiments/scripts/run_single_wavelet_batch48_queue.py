@@ -84,6 +84,15 @@ def build_command(
     movement_head_scope: str = "target",
     csp_contrast_mode: str = "common_rest",
     initialization_only: bool = False,
+    train_stem: bool = False,
+    spatial_learning_rate: float = 3.0e-6,
+    spatial_anchor_weight: float = 0.0,
+    wavelet_learning_rate: float = 0.0,
+    unfreeze_after: int = 100,
+    unfrozen_update_grid: tuple[int, ...] = (20, 40, 80, 120, 200),
+    spoc_auxiliary_weight: float = 0.0,
+    spoc_active_threshold: float = 0.20,
+    spatial_orthogonality_weight: float = 0.0,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -192,9 +201,20 @@ def build_command(
         "48",
         "--head-learning-rate",
         str(head_learning_rate),
+        "--spatial-learning-rate",
+        str(spatial_learning_rate),
+        "--spatial-anchor-weight",
+        str(spatial_anchor_weight),
+        "--spoc-auxiliary-weight",
+        str(spoc_auxiliary_weight),
+        "--spoc-active-threshold",
+        str(spoc_active_threshold),
+        "--spatial-orthogonality-weight",
+        str(spatial_orthogonality_weight),
+        "--wavelet-learning-rate",
+        str(wavelet_learning_rate),
         "--frozen-update-grid",
         *(str(update) for update in frozen_update_grid),
-        "--frozen-only",
         "--weight-decay",
         "0.0001",
         "--movement-loss-weight",
@@ -231,6 +251,17 @@ def build_command(
     ]
     if initialization_only:
         command.append("--initialization-only")
+    if train_stem:
+        command.extend(
+            [
+                "--unfreeze-after",
+                str(unfreeze_after),
+                "--unfrozen-update-grid",
+                *(str(update) for update in unfrozen_update_grid),
+            ]
+        )
+    else:
+        command.append("--frozen-only")
     return command
 
 
@@ -269,7 +300,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--csp-mode",
-        choices=("ica_only", "movement_1", "movement_2", "movement_4", "tails_2x2", "tails_4x4"),
+        choices=("ica_only", "movement_1", "movement_2", "movement_4", "tails_1x1", "tails_2x2", "tails_4x4"),
         default="movement_1",
     )
     parser.add_argument(
@@ -281,12 +312,22 @@ def main() -> None:
             "dual_rest_amplitude",
             "triple_rest_other_continuous_amplitude",
             "continuous_amplitude",
+            "continuous_velocity",
+            "dual_rest_velocity",
         ),
         default="common_rest",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
     parser.add_argument("--head-learning-rate", type=float, default=3.0e-4)
+    parser.add_argument("--train-stem", action="store_true")
+    parser.add_argument("--spatial-learning-rate", type=float, default=3.0e-6)
+    parser.add_argument("--spatial-anchor-weight", type=float, default=0.0)
+    parser.add_argument("--spoc-auxiliary-weight", type=float, default=0.0)
+    parser.add_argument("--spoc-active-threshold", type=float, default=0.20)
+    parser.add_argument("--spatial-orthogonality-weight", type=float, default=0.0)
+    parser.add_argument("--wavelet-learning-rate", type=float, default=0.0)
+    parser.add_argument("--unfreeze-after", type=int, default=100)
     parser.add_argument(
         "--residual-dynamics",
         choices=("pointwise", "leaky_velocity"),
@@ -314,6 +355,12 @@ def main() -> None:
         type=int,
         nargs="+",
         default=(10, 25, 50, 100, 200),
+    )
+    parser.add_argument(
+        "--unfrozen-update-grid",
+        type=int,
+        nargs="+",
+        default=(20, 40, 80, 120, 200),
     )
     parser.add_argument("--correlation-loss-weight", type=float, default=0.0)
     parser.add_argument("--derivative-correlation-weight", type=float, default=0.0)
@@ -383,6 +430,15 @@ def main() -> None:
             args.movement_head_scope,
             args.csp_contrast_mode,
             args.initialization_only,
+            args.train_stem,
+            args.spatial_learning_rate,
+            args.spatial_anchor_weight,
+            args.wavelet_learning_rate,
+            args.unfreeze_after,
+            tuple(args.unfrozen_update_grid),
+            args.spoc_auxiliary_weight,
+            args.spoc_active_threshold,
+            args.spatial_orthogonality_weight,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

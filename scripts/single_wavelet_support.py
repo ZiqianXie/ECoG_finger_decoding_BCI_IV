@@ -173,23 +173,25 @@ def regularized_covariance(
     )
 
 
-def continuous_amplitude_spatial_bank(
+def continuous_amplitude_covariance_matrices(
     filtered_bins: np.ndarray,
     target: np.ndarray,
     training: np.ndarray,
     finger_index: int,
-    component_indices: tuple[int, ...],
     shrinkage: float = 0.05,
-) -> tuple[np.ndarray, dict[str, object]]:
-    """Fit SPoC-style rows whose band power covaries with finger amplitude.
+    minimum_target: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Return split-local reference and amplitude-weighted covariances.
 
     Every statistic, including target centering/scaling and the covariance
-    reference, is fitted only from ``training`` rows.  The generalized
-    eigensystem is therefore a continuous-target counterpart to the binary
-    movement/rest CSP bank without introducing another model branch.
+    reference, is fitted only from ``training`` rows. ``minimum_target`` can
+    restrict the objective to within-movement amplitude without using held-out
+    target values.
     """
     response = np.asarray(target[training, finger_index], dtype=np.float64)
     finite = np.isfinite(response)
+    if minimum_target is not None:
+        finite &= response > minimum_target
     rows = np.asarray(training, dtype=np.int64)[finite]
     response = response[finite]
     if rows.size < 4:
@@ -221,6 +223,35 @@ def continuous_amplitude_spatial_bank(
     amplitude_covariance = 0.5 * (
         amplitude_covariance + amplitude_covariance.T
     )
+    return reference, amplitude_covariance, {
+        "active_bins": int(rows.size),
+        "training_target_mean": response_mean,
+        "training_target_scale": response_scale,
+        "training_target_min": float(response.min()),
+        "training_target_max": float(response.max()),
+        "minimum_target": minimum_target,
+        "shrinkage": float(shrinkage),
+    }
+
+
+def continuous_amplitude_spatial_bank(
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    shrinkage: float = 0.05,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC-style rows whose band power covaries with finger amplitude."""
+    reference, amplitude_covariance, covariance_audit = (
+        continuous_amplitude_covariance_matrices(
+            filtered_bins,
+            target,
+            training,
+            finger_index,
+            shrinkage=shrinkage,
+        )
+    )
     eigenvalues, eigenvectors = linalg.eigh(
         amplitude_covariance,
         reference,
@@ -230,16 +261,44 @@ def continuous_amplitude_spatial_bank(
     weights = eigenvectors[:, selected].T
     weights /= np.linalg.norm(weights, axis=1, keepdims=True).clip(min=1.0e-12)
     return weights.astype(np.float32), {
-        "active_bins": int(rows.size),
+        **covariance_audit,
         "rest_bins": 0,
         "negative_class": "continuous_amplitude",
         "component_indices": list(component_indices),
         "eigenvalues": [float(eigenvalues[index]) for index in selected],
-        "training_target_mean": response_mean,
-        "training_target_scale": response_scale,
-        "training_target_min": float(response.min()),
-        "training_target_max": float(response.max()),
-        "shrinkage": float(shrinkage),
+    }
+
+
+def continuous_velocity_spatial_bank(
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    component_indices: tuple[int, ...],
+    shrinkage: float = 0.05,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC rows to target velocity using training-adjacent bins only."""
+    training = np.asarray(training, dtype=np.int64)
+    in_training = np.zeros(target.shape[0], dtype=bool)
+    in_training[training] = True
+    valid = training[(training > 0) & in_training[np.maximum(training - 1, 0)]]
+    velocity_target = np.full_like(target, np.nan, dtype=np.float64)
+    velocity_target[valid, finger_index] = (
+        target[valid, finger_index] - target[valid - 1, finger_index]
+    )
+    weights, audit = continuous_amplitude_spatial_bank(
+        filtered_bins,
+        velocity_target,
+        training,
+        finger_index,
+        component_indices,
+        shrinkage=shrinkage,
+    )
+    return weights, {
+        **audit,
+        "negative_class": "continuous_velocity",
+        "velocity_bins": int(valid.size),
+        "velocity_definition": "current minus previous target bin, both in training",
     }
 
 
@@ -264,10 +323,19 @@ def finger_csp_bank(
         "other_movement",
         "lower_target_movement",
         "continuous_amplitude",
+        "continuous_velocity",
     ):
         raise ValueError(f"unsupported CSP negative class {negative_class!r}")
     if negative_class == "continuous_amplitude":
         return continuous_amplitude_spatial_bank(
+            filtered_bins,
+            target,
+            training,
+            finger_index,
+            component_indices,
+        )
+    if negative_class == "continuous_velocity":
+        return continuous_velocity_spatial_bank(
             filtered_bins,
             target,
             training,

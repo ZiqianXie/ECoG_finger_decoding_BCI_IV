@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import numpy as np
 import torch
+from types import SimpleNamespace
 
-from cross_validate_single_wavelet import fit_csp_band_rows, resolve_seed_roles
+from cross_validate_single_wavelet import (
+    fit_csp_band_rows,
+    resolve_seed_roles,
+    spatial_anchor_penalty,
+    spatial_covariance_orthogonality_penalty,
+    spatial_spoc_penalty,
+)
 from ecog_decoding.models import WaveletPacketEnergy
 from single_wavelet_support import (
     OFFSET,
+    continuous_amplitude_covariance_matrices,
     csp_candidate_union,
     linear_gamma_leaf_signals,
     linear_lower_high_gamma_leaf_signals,
@@ -24,6 +32,37 @@ def synthetic_inputs():
     hhl[OFFSET + 20 :, :, 0] *= 3.0
     hhh[OFFSET + 20 :, :, 1] *= 4.0
     return target, np.arange(rows), hhl, hhh
+
+
+def test_spatial_anchor_penalty_is_zero_only_at_analytical_initializer() -> None:
+    spatial = torch.nn.Conv1d(3, 2, 1, bias=False)
+    model = SimpleNamespace(spatial=spatial)
+    anchor = spatial.weight.detach().clone()
+    assert float(spatial_anchor_penalty(model, anchor)) == 0.0
+    with torch.no_grad():
+        spatial.weight[0, 1, 0] += 0.25
+    assert torch.isclose(spatial_anchor_penalty(model, anchor), torch.tensor(0.0625))
+
+
+def test_spoc_and_covariance_orthogonality_penalties_target_appended_rows() -> None:
+    spatial = torch.nn.Conv1d(3, 5, 1, bias=False)
+    model = SimpleNamespace(spatial=spatial)
+    with torch.no_grad():
+        spatial.weight.zero_()
+        spatial.weight[-2, 0, 0] = 1.0
+        spatial.weight[-1, 2, 0] = 1.0
+    reference = torch.eye(3)
+    amplitude = torch.diag(torch.tensor([0.0, 0.0, 2.0]))
+    assert torch.isclose(
+        spatial_spoc_penalty(model, reference, amplitude, 1), torch.tensor(-2.0)
+    )
+    assert torch.isclose(
+        spatial_covariance_orthogonality_penalty(model, reference),
+        torch.tensor(0.0),
+    )
+    with torch.no_grad():
+        spatial.weight[-1].copy_(spatial.weight[-2])
+    assert spatial_covariance_orthogonality_penalty(model, reference) > 1.9
 
 
 def test_separate_gamma_mode_adds_one_row_per_leaf() -> None:
@@ -153,6 +192,17 @@ def test_continuous_amplitude_filter_is_split_safe_and_tracks_power() -> None:
     assert abs(weights[0, 0]) > 0.9
     assert abs(weights[0, 2]) < 0.2
 
+    reference, amplitude, covariance_audit = continuous_amplitude_covariance_matrices(
+        joint,
+        target,
+        np.arange(training_rows),
+        1,
+        minimum_target=0.20,
+    )
+    assert reference.shape == amplitude.shape == (3, 3)
+    assert covariance_audit["active_bins"] == 48
+    assert covariance_audit["training_target_max"] == 1.0
+
 
 def test_dual_rest_amplitude_retains_binary_and_continuous_rows() -> None:
     rng = np.random.default_rng(31)
@@ -180,6 +230,55 @@ def test_dual_rest_amplitude_retains_binary_and_continuous_rows() -> None:
     assert audit["contrasts"]["common_rest"]["rest_bins"] == 20
     assert audit["contrasts"]["continuous_amplitude"]["training_target_max"] == 1.0
     assert not np.allclose(weights[0], weights[1])
+
+
+def test_continuous_velocity_rows_use_only_adjacent_training_targets() -> None:
+    rng = np.random.default_rng(41)
+    rows = 80
+    training_rows = 60
+    target = np.zeros((rows, 5), dtype=np.float32)
+    target[:training_rows, 2] = np.tile(
+        np.concatenate((np.linspace(0, 1, 10), np.linspace(1, 0, 10))), 3
+    )
+    target[training_rows:, 2] = 100.0
+    joint = rng.normal(size=(OFFSET + rows, 10, 3)).astype(np.float32)
+    velocity = np.diff(target[:training_rows, 2], prepend=target[0, 2])
+    joint[OFFSET : OFFSET + training_rows, :, 0] *= (
+        1.0 + 12.0 * np.maximum(velocity, 0.0)
+    )[:, None]
+    joint[OFFSET : OFFSET + training_rows, :, 1] *= (
+        1.0 + 12.0 * np.maximum(-velocity, 0.0)
+    )[:, None]
+
+    first, audit = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=target,
+        training=np.arange(training_rows),
+        finger_index=2,
+        component_indices=(0, -1),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="continuous_velocity",
+    )
+    changed = target.copy()
+    changed[training_rows:, 2] = -1000.0
+    second, _ = fit_csp_band_rows(
+        joint_bins=joint,
+        hhl_bins=None,
+        hhh_bins=None,
+        target=changed,
+        training=np.arange(training_rows),
+        finger_index=2,
+        component_indices=(0, -1),
+        csp_band_mode="joint_hhl_hhh",
+        csp_contrast_mode="continuous_velocity",
+    )
+
+    assert first.shape == (2, 3)
+    assert audit["velocity_bins"] == training_rows - 1
+    assert np.allclose(np.abs(first), np.abs(second), atol=1.0e-6)
+    assert {int(np.argmax(np.abs(row))) for row in first} == {0, 1}
 
 
 def test_triple_rest_other_continuous_amplitude_adds_three_rows() -> None:

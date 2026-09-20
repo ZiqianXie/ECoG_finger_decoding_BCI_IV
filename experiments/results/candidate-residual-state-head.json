@@ -1855,7 +1855,36 @@
       "gain_over_fixed_reference": 0.044187438,
       "strict_pass": false
     },
-    "decision": "The two previously closest unresolved pairs remain closed after negative transfer screens. Continuous-amplitude covariance filtering creates a genuine S3-index representation gain, but recurrent tuning and all tested rank, contrast, and band refinements reduce it. Continue from pair-specific signal construction rather than generic head tuning."
+    "S3_index_CSP_anchored_training": {
+      "description": "The dual rest-plus-continuous-amplitude initializer is compared under frozen training, freely trainable spatial weights, explicit L2 anchoring to the split-local CSP/ICA initializer, and anchored active-SPoC plus covariance-orthogonality regularization. Wavelet taps remain fixed and the residual output preserves the analytical prediction at epoch zero.",
+      "released_test_touched": false,
+      "frozen_head_selected_pcc": 0.620876054,
+      "free_spatial_unfreeze10_pcc": 0.623303755,
+      "free_same_architecture_gain": 0.000004038,
+      "anchored_spatial_unfreeze10_pcc": 0.623302672,
+      "anchored_same_architecture_gain": 0.000002955,
+      "anchored_active_SPoc_orthogonality_pcc": 0.623303971,
+      "anchored_active_SPoc_same_architecture_gain": 0.000004254,
+      "fixed_reference_pcc": 0.579112281,
+      "best_gain_over_fixed_reference": 0.04419169,
+      "decision": "Reject as a material improvement. Starting stem updates at the inner-favored 10-update point removes the earlier degradation, but free, anchored, and active-SPoC-regularized tuning all remain numerically indistinguishable from the analytical initializer and far below the strict gain threshold."
+    },
+    "continuous_velocity_covariance_CSP_initialization_screen": {
+      "description": "Two split-local SPoC eigendirections maximize positive and negative covariance between joint high-gamma power and target velocity. Velocity is formed only when the current and preceding target bins both belong to the training split; the same spatial layer, depth-3 wavelet tree, and sparse initializer are retained.",
+      "released_test_touched": false,
+      "pairs": {
+        "S1_thumb": {"initialization_pcc": 0.567607937, "gain_over_fixed_reference": -0.003781356},
+        "S1_index": {"initialization_pcc": 0.721500896, "gain_over_fixed_reference": -0.004044172},
+        "S1_ring": {"initialization_pcc": 0.486788213, "gain_over_fixed_reference": -0.006704346},
+        "S2_thumb": {"initialization_pcc": 0.585930827, "gain_over_fixed_reference": 0.008422722},
+        "S2_index": {"initialization_pcc": 0.361961796, "gain_over_fixed_reference": 0.012541069},
+        "S2_ring": {"initialization_pcc": 0.435110822, "gain_over_fixed_reference": -0.010972401},
+        "S3_index": {"initialization_pcc": 0.572351308, "gain_over_fixed_reference": -0.006760973},
+        "S3_middle": {"initialization_pcc": 0.59620091, "gain_over_fixed_reference": 0.005845019}
+      },
+      "decision": "Reject before recurrent tuning. The largest gain is +0.0125 for S2 index; onset/offset covariance does not supply the missing representation-level improvement."
+    },
+    "decision": "The two previously closest unresolved pairs remain closed after negative transfer screens. Continuous-amplitude covariance filtering creates a genuine S3-index representation gain, but recurrent tuning, CSP anchoring, active-SPoC regularization, onset/offset velocity covariance, and all tested rank, contrast, and band refinements fail to add a material gain. Continue from pair-specific signal construction rather than generic head tuning."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
   "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Six of fifteen subject-finger models strictly exceed the requested +0.1 gain over their fixed pre-ablation split-local LARS references: S1 middle (+0.1067 with a depth-5 overcomplete tree and designed-band CSP), S1 little (+0.1017 with capacity-matched dual rest/other-movement CSP), S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), S3 thumb (+0.1034), and S3 ring (+0.1259 with lower-high-gamma CSP). S3 little is additionally accepted by the user as a project-triage pass at its measured +0.0931 gain, making the working progression count seven of fifteen without rewriting the strict numerical result. Candidate-specific lower initializers are never used to manufacture a strict pass. S3 ring improves every averaged morphology diagnostic against its fixed reference, but its candidate-specific self-gain is -0.0006, so the gain is attributed to the representation rather than recurrent tuning. S1 middle has a +0.0403 candidate-specific self-gain and is visually better than its stronger fixed reference, although its movement RMSE worsens modestly because large flexions remain underestimated. The S1-little model improves every recorded morphology diagnostic and sharply reduces high predictions during cleaned rest; the S2-little ensemble also improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S3 little's extended schedule and six-seed average are worse, little-finger-only decontamination is harmful, and both amplitude-sensitive CSP and doubled dual-CSP rank lower its initializer. S1 index is the next unresolved pair at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. The same depth-5/designed-band representation lowers S2-index PCC by 0.0148 relative to its fixed old model and is rejected without a full tuning sweep. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information for S1 ring but adds less than 0.001 tuned PCC there; increasing that dual representation to eight rows worsens stitched PCC. In contrast, the capacity-matched dual contrast closes the S1-little fold-specific gap. Lower-high-gamma CSP transfers raise S2-ring, S3-middle, and S3-index fixed references by only about +0.01 before tuning, so they are rejected. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."

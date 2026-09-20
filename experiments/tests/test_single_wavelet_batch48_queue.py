@@ -242,6 +242,39 @@ def test_command_can_lower_the_head_learning_rate(tmp_path) -> None:
     assert "--head-learning-rate 0.0001" in joined
 
 
+def test_command_can_anchor_spatial_stem_while_leaving_wavelets_fixed(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "index",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        frozen_update_grid=(25, 50, 100),
+        train_stem=True,
+        spatial_learning_rate=1.0e-6,
+        spatial_anchor_weight=0.01,
+        wavelet_learning_rate=0.0,
+        unfreeze_after=50,
+        unfrozen_update_grid=(10, 25, 50),
+        spoc_auxiliary_weight=0.02,
+        spoc_active_threshold=0.25,
+        spatial_orthogonality_weight=0.03,
+    )
+    joined = " ".join(command)
+    assert "--frozen-only" not in command
+    assert "--unfreeze-after 50" in joined
+    assert "--unfrozen-update-grid 10 25 50" in joined
+    assert "--spatial-learning-rate 1e-06" in joined
+    assert "--spatial-anchor-weight 0.01" in joined
+    assert "--wavelet-learning-rate 0.0" in joined
+    assert "--spoc-auxiliary-weight 0.02" in joined
+    assert "--spoc-active-threshold 0.25" in joined
+    assert "--spatial-orthogonality-weight 0.03" in joined
+
+
 def test_command_can_use_gpu_vectorized_leaky_residual_state(tmp_path) -> None:
     command = build_command(
         "python",

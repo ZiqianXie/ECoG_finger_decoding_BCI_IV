@@ -42,6 +42,7 @@ from single_wavelet_support import (
     OFFSET,
     SAMPLES_PER_BIN,
     SOURCE_RATE,
+    continuous_amplitude_covariance_matrices,
     csp_candidate_union,
     extract_energy,
     finger_csp_bank,
@@ -80,6 +81,7 @@ CSP_MODES = {
     "movement_1": (-1,),
     "movement_2": (-1, -2),
     "movement_4": (-1, -2, -3, -4),
+    "tails_1x1": (0, -1),
     "tails_2x2": (0, 1, -2, -1),
     "tails_4x4": (0, 1, 2, 3, -4, -3, -2, -1),
 }
@@ -97,6 +99,8 @@ CSP_CONTRAST_MODES = (
     "triple_rest_other_continuous_amplitude",
     "triple_rest_other_amplitude",
     "continuous_amplitude",
+    "continuous_velocity",
+    "dual_rest_velocity",
 )
 
 
@@ -481,6 +485,8 @@ def fit_csp_band_rows(
             negative_classes = ("common_rest", "other_movement")
         elif csp_contrast_mode == "dual_rest_amplitude":
             negative_classes = ("common_rest", "continuous_amplitude")
+        elif csp_contrast_mode == "dual_rest_velocity":
+            negative_classes = ("common_rest", "continuous_velocity")
         elif csp_contrast_mode == "triple_rest_other_continuous_amplitude":
             negative_classes = (
                 "common_rest",
@@ -1231,6 +1237,52 @@ def trajectory_mse_loss(
     return torch.sum(weights * squared_error) / torch.sum(weights)
 
 
+def spatial_anchor_penalty(
+    model: SingleWaveletDecoder, anchor: torch.Tensor
+) -> torch.Tensor:
+    """Penalize drift from the split-local analytical spatial initializer."""
+    if model.spatial.weight.shape != anchor.shape:
+        raise ValueError("spatial anchor shape does not match the model")
+    return (model.spatial.weight - anchor).square().sum()
+
+
+def spatial_spoc_penalty(
+    model: SingleWaveletDecoder,
+    reference_covariance: torch.Tensor,
+    amplitude_covariance: torch.Tensor,
+    row_count: int,
+) -> torch.Tensor:
+    """Maximize the split-local amplitude Rayleigh quotient of SPoC rows."""
+    if row_count <= 0 or row_count > model.spatial.out_channels:
+        raise ValueError("SPoC row count must select at least one spatial row")
+    weights = model.spatial.weight[-row_count:, :, 0]
+    numerator = torch.einsum(
+        "kc,cd,kd->k", weights, amplitude_covariance, weights
+    )
+    denominator = torch.einsum(
+        "kc,cd,kd->k", weights, reference_covariance, weights
+    ).clamp_min(1.0e-8)
+    return -(numerator / denominator).mean()
+
+
+def spatial_covariance_orthogonality_penalty(
+    model: SingleWaveletDecoder,
+    reference_covariance: torch.Tensor,
+) -> torch.Tensor:
+    """Discourage covariance-metric collapse among appended CSP/SPoC rows."""
+    csp_row_count = model.spatial.out_channels - model.spatial.in_channels
+    if csp_row_count <= 1:
+        return model.spatial.weight.sum() * 0.0
+    weights = model.spatial.weight[-csp_row_count:, :, 0]
+    gram = weights @ reference_covariance @ weights.T
+    scale = torch.sqrt(torch.diagonal(gram).clamp_min(1.0e-8))
+    correlation = gram / (scale[:, None] * scale[None, :])
+    identity = torch.eye(
+        csp_row_count, dtype=correlation.dtype, device=correlation.device
+    )
+    return (correlation - identity).square().sum()
+
+
 def split_local_raw_trajectory_blend(
     cleaned: torch.Tensor,
     raw: torch.Tensor,
@@ -1289,6 +1341,13 @@ def train_updates(
     raw_target: torch.Tensor | None = None,
     raw_movement_correlation_weight: float = 0.0,
     raw_movement_derivative_correlation_weight: float = 0.0,
+    spatial_anchor: torch.Tensor | None = None,
+    spatial_anchor_weight: float = 0.0,
+    spatial_reference_covariance: torch.Tensor | None = None,
+    spatial_amplitude_covariance: torch.Tensor | None = None,
+    spoc_row_count: int = 0,
+    spoc_auxiliary_weight: float = 0.0,
+    spatial_orthogonality_weight: float = 0.0,
 ) -> list[float]:
     offsets = torch.arange(steps, device=target.device)
     losses = []
@@ -1384,6 +1443,32 @@ def train_updates(
                         adjacent_moving,
                     )
                 )
+        if spatial_anchor_weight:
+            if spatial_anchor is None:
+                raise ValueError("spatial anchor is required for anchored fine-tuning")
+            loss = loss + spatial_anchor_weight * spatial_anchor_penalty(
+                model, spatial_anchor
+            )
+        if spoc_auxiliary_weight:
+            if (
+                spatial_reference_covariance is None
+                or spatial_amplitude_covariance is None
+            ):
+                raise ValueError("SPoC covariance matrices are required")
+            loss = loss + spoc_auxiliary_weight * spatial_spoc_penalty(
+                model,
+                spatial_reference_covariance,
+                spatial_amplitude_covariance,
+                spoc_row_count,
+            )
+        if spatial_orthogonality_weight:
+            if spatial_reference_covariance is None:
+                raise ValueError("reference covariance is required for orthogonality")
+            loss = loss + spatial_orthogonality_weight * (
+                spatial_covariance_orthogonality_penalty(
+                    model, spatial_reference_covariance
+                )
+            )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         optimizer_instance.step()
@@ -1521,6 +1606,29 @@ def raw_prediction(
     return prediction
 
 
+def split_local_spatial_objective(
+    *,
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training_rows: np.ndarray,
+    finger_index: int,
+    minimum_target: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Build fixed split-local matrices for differentiable SPoC regularization."""
+    reference, amplitude, _ = continuous_amplitude_covariance_matrices(
+        filtered_bins,
+        target,
+        training_rows,
+        finger_index,
+        minimum_target=minimum_target,
+    )
+    return (
+        torch.as_tensor(reference, dtype=torch.float32, device=device),
+        torch.as_tensor(amplitude, dtype=torch.float32, device=device),
+    )
+
+
 def monitor_inner_fold(
     *,
     model: SingleWaveletDecoder,
@@ -1534,9 +1642,26 @@ def monitor_inner_fold(
     args: argparse.Namespace,
     seed: int,
     finger_index: int = LITTLE,
+    spoc_filtered_bins: np.ndarray | None = None,
 ) -> dict[str, dict[str, float]]:
     raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
+    spatial_anchor = model.spatial.weight.detach().clone()
     training_rows = indices_from_intervals(training_groups)
+    spatial_reference_covariance = None
+    spatial_amplitude_covariance = None
+    if args.spoc_auxiliary_weight or args.spatial_orthogonality_weight:
+        if spoc_filtered_bins is None:
+            raise ValueError("SPoC-filtered bins are required for spatial objectives")
+        spatial_reference_covariance, spatial_amplitude_covariance = (
+            split_local_spatial_objective(
+                filtered_bins=spoc_filtered_bins,
+                target=target_np,
+                training_rows=training_rows,
+                finger_index=finger_index,
+                minimum_target=args.spoc_active_threshold,
+                device=target.device,
+            )
+        )
     training_index = torch.as_tensor(training_rows, device=target.device)
     trajectory_target = split_local_raw_trajectory_blend(
         target[:, finger_index],
@@ -1617,6 +1742,13 @@ def monitor_inner_fold(
             raw_movement_derivative_correlation_weight=(
                 args.raw_movement_derivative_correlation_weight
             ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
         completed = checkpoint
         prediction = cached_prediction(model, cached, validation_intervals, raw.size)
@@ -1686,6 +1818,13 @@ def monitor_inner_fold(
             raw_movement_derivative_correlation_weight=(
                 args.raw_movement_derivative_correlation_weight
             ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
         completed = checkpoint
         prediction = raw_prediction(model, padded_ecog, validation_intervals, raw.size)
@@ -1766,15 +1905,33 @@ def train_final_schedule(
     cached: torch.Tensor,
     padded_ecog: torch.Tensor,
     target: torch.Tensor,
+    target_np: np.ndarray,
     raw: np.ndarray,
     training_groups: list[list[int]],
     schedule: str,
     args: argparse.Namespace,
     seed: int,
     finger_index: int = LITTLE,
+    spoc_filtered_bins: np.ndarray | None = None,
 ) -> None:
     raw_target = torch.as_tensor(raw, dtype=target.dtype, device=target.device)
+    spatial_anchor = model.spatial.weight.detach().clone()
     training_rows = indices_from_intervals(training_groups)
+    spatial_reference_covariance = None
+    spatial_amplitude_covariance = None
+    if args.spoc_auxiliary_weight or args.spatial_orthogonality_weight:
+        if spoc_filtered_bins is None:
+            raise ValueError("SPoC-filtered bins are required for spatial objectives")
+        spatial_reference_covariance, spatial_amplitude_covariance = (
+            split_local_spatial_objective(
+                filtered_bins=spoc_filtered_bins,
+                target=target_np,
+                training_rows=training_rows,
+                finger_index=finger_index,
+                minimum_target=args.spoc_active_threshold,
+                device=target.device,
+            )
+        )
     training_index = torch.as_tensor(training_rows, device=target.device)
     trajectory_target = split_local_raw_trajectory_blend(
         target[:, finger_index],
@@ -1844,6 +2001,13 @@ def train_final_schedule(
             raw_movement_derivative_correlation_weight=(
                 args.raw_movement_derivative_correlation_weight
             ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
     if unfrozen_updates:
         sampler = make_sampler(args, training_groups, seed + 1000)
@@ -1895,6 +2059,13 @@ def train_final_schedule(
             raw_movement_derivative_correlation_weight=(
                 args.raw_movement_derivative_correlation_weight
             ),
+            spatial_anchor=spatial_anchor,
+            spatial_anchor_weight=args.spatial_anchor_weight,
+            spatial_reference_covariance=spatial_reference_covariance,
+            spatial_amplitude_covariance=spatial_amplitude_covariance,
+            spoc_row_count=len(CSP_MODES[args.csp_mode]),
+            spoc_auxiliary_weight=args.spoc_auxiliary_weight,
+            spatial_orthogonality_weight=args.spatial_orthogonality_weight,
         )
 
 
@@ -2168,6 +2339,33 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=24)
     parser.add_argument("--head-learning-rate", type=float, default=1.0e-4)
     parser.add_argument("--spatial-learning-rate", type=float, default=3.0e-6)
+    parser.add_argument(
+        "--spatial-anchor-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "L2 penalty on displacement from the split-local analytical CSP/ICA "
+            "initializer during end-to-end updates"
+        ),
+    )
+    parser.add_argument(
+        "--spoc-auxiliary-weight",
+        type=float,
+        default=0.0,
+        help="weight of the differentiable active-amplitude SPoC Rayleigh objective",
+    )
+    parser.add_argument(
+        "--spoc-active-threshold",
+        type=float,
+        default=0.20,
+        help="training-only target threshold for the within-movement SPoC objective",
+    )
+    parser.add_argument(
+        "--spatial-orthogonality-weight",
+        type=float,
+        default=0.0,
+        help="weight of covariance-metric decorrelation among appended CSP/SPoC rows",
+    )
     parser.add_argument("--wavelet-learning-rate", type=float, default=3.0e-6)
     parser.add_argument(
         "--interlevel-learning-rate",
@@ -2324,6 +2522,10 @@ def main() -> None:
         or args.derivative_correlation_weight < 0
         or args.raw_movement_correlation_weight < 0
         or args.raw_movement_derivative_correlation_weight < 0
+        or args.spatial_anchor_weight < 0
+        or args.spoc_auxiliary_weight < 0
+        or args.spatial_orthogonality_weight < 0
+        or args.spoc_active_threshold < 0
         or (
             args.movement_modulation_learning_rate is not None
             and args.movement_modulation_learning_rate <= 0
@@ -2360,6 +2562,14 @@ def main() -> None:
         raise ValueError("--movement-modulation requires --movement-loss-weight")
     if args.movement_modulation and args.movement_head_scope != "target":
         raise ValueError("--movement-modulation requires --movement-head-scope target")
+    if args.spoc_auxiliary_weight and args.csp_contrast_mode not in (
+        "continuous_amplitude",
+        "dual_rest_amplitude",
+        "triple_rest_other_continuous_amplitude",
+    ):
+        raise ValueError(
+            "--spoc-auxiliary-weight requires a continuous-amplitude CSP contrast"
+        )
     if args.frozen_only and (
         args.wavelet_interlevel_skip
         or args.wavelet_interlevel_normalization
@@ -2684,6 +2894,7 @@ def main() -> None:
                 args=args,
                 seed=sampler_seed + int(split["fold"]),
                 finger_index=finger_index,
+                spoc_filtered_bins=joint_bins,
             )
             inner_records.append(
                 {
@@ -2812,12 +3023,14 @@ def main() -> None:
                 cached=cached,
                 padded_ecog=padded_ecog,
                 target=target,
+                target_np=target_np,
                 raw=raw,
                 training_groups=[[int(start), int(stop)] for start, stop in groups],
                 schedule=selected_schedule,
                 args=args,
                 seed=sampler_seed,
                 finger_index=finger_index,
+                spoc_filtered_bins=joint_bins,
             )
             if selected_schedule.startswith("unfrozen"):
                 final_features = extract_all(model, padded_ecog, rows, args.feature_chunk)
@@ -3008,6 +3221,12 @@ def main() -> None:
             "residual_dynamics": args.residual_dynamics,
             "residual_decay": args.residual_decay,
             "raw_trajectory_blend": args.raw_trajectory_blend,
+            "spatial_anchor_weight": args.spatial_anchor_weight,
+            "active_spoc_auxiliary_weight": args.spoc_auxiliary_weight,
+            "active_spoc_threshold": args.spoc_active_threshold,
+            "spatial_covariance_orthogonality_weight": (
+                args.spatial_orthogonality_weight
+            ),
         },
         "learning_rates": {
             "head": args.head_learning_rate,
