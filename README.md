@@ -54,18 +54,26 @@ model has the same signal path:
    fine-tune the full differentiable path at a smaller stem learning rate. A
    Softplus output represents nonnegative flexion.
 
-For 14 pairs in the original baseline, LARS initializes an LSTM in a near-linear
-operating regime. Weights that should initially be near zero are randomized at
-about `1e-3`, preserving nonlinear capacity while starting from a stable linear
-decoder. S1 thumb, index, and little use the paper-equation LSTM implementation;
-the other non-residual pairs use the standard PyTorch LSTM.
+The matched baseline uses LARS in two closely related ways:
+
+| Baseline decoder | Prediction before tuning | What tuning changes | Pairs |
+|---|---|---|---:|
+| LARS-initialized LSTM | The LSTM weights are set so that the LSTM itself approximately reproduces the LARS prediction. | The LSTM, and when selected the spatial-wavelet frontend, can move away from that starting prediction. | 14 |
+| Fixed LARS plus residual LSTM | `prediction = fixed LARS prediction + LSTM correction`. The correction output starts at exactly zero, so the initial prediction is exactly LARS. | The LSTM learns only the additive correction; the LARS term remains fixed. | S3 little |
+
+“Paper-equation LSTM” and “standard PyTorch LSTM” name two versions of the
+first row, not two-model ensembles. The paper-equation cell follows the printed
+2018 recurrence, which omits the usual `tanh` on the candidate and exposed cell
+state. The standard cell uses PyTorch's conventional LSTM equations. In this
+matched baseline, S1 thumb, index, and little use the paper-equation cell; the
+other 11 LARS-initialized models use the standard cell. Each route still has one
+feature stream, one recurrent decoder, and one output.
 
 Every one of the 15 released routes has positive tuned-minus-initialized PCC on
-nested development folds. S3 little is the route whose temporal decoder is a
-zero-initialized LSTM residual on the fixed LARS logit: tuning raises its
-development OOF PCC from `0.631943` to `0.649982` (`+0.018039`). This is still
-one recurrent decoder on the same single-tree feature stream, not an added
-signal-processing branch or a separately trained model.
+nested development folds. For the S3-little residual form, tuning raises OOF
+PCC from `0.631943` to `0.649982` (`+0.018039`). The complete release contains
+other development-selected structures, which are listed separately in the
+[`detailed release table`](docs/canonical-model-release.md).
 
 ### Why interpolate the wavelet filters?
 
