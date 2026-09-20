@@ -54,14 +54,18 @@ model has the same signal path:
    fine-tune the full differentiable path at a smaller stem learning rate. A
    Softplus output represents nonnegative flexion.
 
-For 14 pairs in the original baseline, LARS initializes an LSTM in a near-linear operating regime.
-Weights that should initially be near zero are randomized at about `1e-3`,
-preserving nonlinear capacity while starting from a stable linear decoder. S1
-thumb, index, and little use the paper-equation LSTM implementation; the other
-non-residual pairs use the standard PyTorch LSTM. For S3 little only,
-development folds selected a zero-initialized LSTM residual on the fixed LARS
-logit. This is still one recurrent decoder on the same single-tree feature
-stream, not an added signal-processing branch or a separately trained model.
+For 14 pairs in the original baseline, LARS initializes an LSTM in a near-linear
+operating regime. Weights that should initially be near zero are randomized at
+about `1e-3`, preserving nonlinear capacity while starting from a stable linear
+decoder. S1 thumb, index, and little use the paper-equation LSTM implementation;
+the other non-residual pairs use the standard PyTorch LSTM.
+
+Every one of the 15 released routes has positive tuned-minus-initialized PCC on
+nested development folds. S3 little is the route whose temporal decoder is a
+zero-initialized LSTM residual on the fixed LARS logit: tuning raises its
+development OOF PCC from `0.631943` to `0.649982` (`+0.018039`). This is still
+one recurrent decoder on the same single-tree feature stream, not an added
+signal-processing branch or a separately trained model.
 
 ### Why interpolate the wavelet filters?
 
@@ -174,7 +178,10 @@ The reported metric is Pearson correlation coefficient (PCC) against the
 unmodified released test glove trajectory. These test scores are descriptive:
 model structure, hyperparameters, update schedule, and ensemble membership were
 fixed from development folds before final scoring. Paper values are rounded as
-published, so very small differences should not be overinterpreted.
+published, so very small differences should not be overinterpreted. The
+`Difference` column compares two released-test scores; it is not the tuning
+gain, which is measured against each route's own untuned initialization on
+nested development OOF predictions.
 
 | Subject | Finger | 2018 paper | 2026 release | Difference |
 |---|---|---:|---:|---:|
