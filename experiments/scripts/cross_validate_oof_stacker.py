@@ -142,12 +142,18 @@ def main() -> None:
         "--prepared-root", type=Path, default=Path("outputs/preprocessed_v2")
     )
     parser.add_argument("--top-features", type=int, default=32)
+    parser.add_argument("--top-feature-grid", type=int, nargs="+", default=None)
     parser.add_argument("--fixed-reference-pcc", type=float, required=True)
     parser.add_argument("--gain-threshold", type=float, default=0.095)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if args.top_features <= 0:
-        parser.error("top-features must be positive")
+    feature_grid = (
+        tuple(args.top_feature_grid)
+        if args.top_feature_grid is not None
+        else (args.top_features,)
+    )
+    if min(feature_grid) <= 0:
+        parser.error("top feature counts must be positive")
 
     finger_index = list(FINGER_NAMES).index(args.finger)
     rows = int(
@@ -195,11 +201,25 @@ def main() -> None:
             fold for index, fold in enumerate(fold_rows) if index != outer_fold
         ]
         training = np.concatenate(training_folds)
-        selected = select_columns(
-            features, raw, training, args.top_features
-        )
+        choices = []
+        for feature_count in feature_grid:
+            candidate_columns = select_columns(
+                features, raw, training, feature_count
+            )
+            candidate_features = features[:, candidate_columns]
+            candidate_alpha, candidate_curve = choose_alpha(
+                candidate_features, raw, training_folds
+            )
+            choices.append(
+                (
+                    max(candidate_curve.values()),
+                    candidate_columns,
+                    candidate_alpha,
+                    candidate_curve,
+                )
+            )
+        _, selected, alpha, curve = max(choices, key=lambda item: item[0])
         selected_features = features[:, selected]
-        alpha, curve = choose_alpha(selected_features, raw, training_folds)
         model = make_pipeline(StandardScaler(), Ridge(alpha=alpha))
         model.fit(selected_features[training], raw[training])
         estimate = np.maximum(model.predict(selected_features[validation]), 0.0)
@@ -207,6 +227,7 @@ def main() -> None:
         outer_records.append(
             {
                 "outer_fold": outer_fold,
+                "selected_feature_count": int(selected.size),
                 "selected_alpha": alpha,
                 "inner_meta_pcc_curve": curve,
                 "selected_candidates": [str(candidates[index][0]) for index in selected],
@@ -228,7 +249,7 @@ def main() -> None:
         "subject": args.subject,
         "finger": args.finger,
         "discovered_unique_oof_candidates": len(candidates),
-        "top_features": args.top_features,
+        "top_feature_grid": list(feature_grid),
         "outer_records": outer_records,
         "selected_oof_raw_pcc": pcc,
         "fixed_pre_ablation_reference_pcc": args.fixed_reference_pcc,

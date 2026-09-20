@@ -2122,7 +2122,8 @@
           "cross_validated_oof_meta_stack_pcc": 0.467062431,
           "equal_three_existing_seed_pcc": 0.494145185,
           "target_only_bandpower_gru_top64_pcc": 0.311680645,
-          "target_only_bandpower_gru_top128_pcc": 0.26312646
+          "target_only_bandpower_gru_top128_pcc": 0.26312646,
+          "target_only_bandpower_gru_small300_pcc": 0.393026086
         },
         "S3_middle": {
           "fixed_reference_pcc": 0.590355891,
@@ -2138,7 +2139,8 @@
           "fixed_equal_nine_seed_long_lstm_pcc": 0.631198014,
           "fixed_equal_nine_seed_gain": 0.040842123,
           "target_only_bandpower_gru_top64_pcc": 0.425886836,
-          "target_only_bandpower_gru_top128_pcc": 0.41758756
+          "target_only_bandpower_gru_top128_pcc": 0.41758756,
+          "target_only_bandpower_gru_small300_pcc": 0.496370574
         },
         "decision": "Reject the initializer stack, other-pair-ranked fixed ensemble, cross-validated OOF meta-stack, target-only bandpower GRU, and fixed seed ensembles. The best new S3-middle seed improves the single-model ceiling but remains 0.04946 PCC below the working target; no failed route is counted as a pass."
       }
