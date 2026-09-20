@@ -46,8 +46,6 @@ design anew in PyTorch and extends it in several ways.
 | Glove target | Convex lower-baseline estimate, rest thresholding, and hard removal of every nonmaximum finger | Split-local lower-envelope correction that preserves co-movement; S1 little adds development-selected soft attenuation of clearly dominant other-finger events |
 | Validation | 44% training, 22% validation, and 33% released test; 100 Adam epochs with the lowest validation MSE checkpoint retained | The complete 400 s training recording is the development set; three purged event folds select the structure and tuning schedule before descriptive scoring on the separate 200 s released test |
 | Temporal decoder | One custom 10-unit LSTM equation and a ReLU output for every pair | Development-selected paper-equation LSTM, standard PyTorch LSTM, residual LSTM, or ridge decoder; recurrent outputs use Softplus |
-| Final model | One CNN-LSTM family with LARS-based filter pruning | One selected structure per subject/finger pair, including expanded CSP banks, future context, or an overcomplete wavelet tree where supported by development folds |
-| Repeated fits | Ten LSTM fits were summarized by their mean and standard deviation | Multi-seed releases average independently refitted copies of one frozen structure |
 
 ## The common 2026 single-tree baseline
 
