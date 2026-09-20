@@ -30,26 +30,6 @@ The machine-readable source of truth is the
 [`audit`](docs/results/canonical-model-audit.json) and a compact
 [`results table`](docs/canonical-model-release.md).
 
-## Architecture overview
-
-```mermaid
-flowchart LR
-    A["1 kHz ECoG"] --> B["Notch filtering and split-local standardization"]
-    B --> C["FastICA and finger-specific CSP spatial filters"]
-    C --> D{"Wavelet frontend"}
-    D -->|14 routes| E["Depth-3 bior6.8 tree<br/>8 energy leaves"]
-    D -->|S1 middle| F["Overcomplete depths 3, 4, and 5<br/>designed-band CSP"]
-    E --> G["25 Hz temporal features<br/>history plus optional future or lead context"]
-    F --> G
-    G --> H{"Development-selected decoder"}
-    H -->|7 routes| I["LARS-initialized LSTM"]
-    H -->|6 routes| J["LARS direct path plus residual LSTM"]
-    H -->|2 routes| K["Ridge on all wavelet features"]
-    I --> L["Nonnegative finger-flexion trajectory"]
-    J --> L
-    K --> L
-```
-
 ## The original single-tree baseline
 
 The common baseline trains one model for each subject and finger. Every baseline
@@ -125,47 +105,45 @@ convolution, one wavelet tree, and one LSTM.
 
 ## What the trained single-wavelet models learned
 
-The interpretation below is deliberately narrower than the 15-route release.
-It audits the six frozen Subject 1 single-wavelet seeds for each finger (30
-checkpoints total), without retraining or selecting models. Those checkpoints
-match the released S1 thumb, index, and little structures; the middle and ring
-columns are matched historical single-wavelet references because their released
-structures are different.
+For a matched cross-subject interpretation, this audit uses six frozen
+single-wavelet seeds for every subject/finger pair: 90 checkpoints in total,
+with no retraining or model selection. This common reference family matches 8
+of the 15 selected release structures; the other 7 panels are historical
+same-family references, not attributions of the different selected structures.
 
 Spatial importance is based on covariance-transformed forward patterns,
 weighted by the recurrent decoder's structural use of each component, rather
 than treating a discriminative spatial-filter coefficient as source amplitude.
-All 61 retained S1 contacts were matched to exact registered `(x, y, z)`
-coordinates. The maps overlap substantially: only the thumb is nominally more
-compact than shuffled placements (`p=0.031`, uncorrected across five fingers),
-while the middle-finger map is the most dispersed. This does not support five
-clean, isolated finger hotspots.
+Every retained model input was matched to an exact registered `(x, y, z)`
+coordinate. A permutation null then reassigned the same weights across that
+subject's retained contacts.
 
-| Finger | Weighted pair distance | Spatial permutation p | Spectral centroid |
-|---|---:|---:|---:|
-| Thumb | 17.8 mm | 0.031 | 124 Hz |
-| Index | 19.5 mm | 0.330 | 126 Hz |
-| Middle | 21.5 mm | 0.472 | 101 Hz |
-| Ring | 19.4 mm | 0.310 | 129 Hz |
-| Little | 20.5 mm | 0.249 | 117 Hz |
+The subjects differ clearly. S1 has overlapping, comparatively distributed
+maps: only thumb is nominally compact (`p=0.0327`), and none of its five tests
+survive a 15-pair Bonferroni threshold. All five S2 maps (`p<=0.0016`) and all
+five S3 maps (`p<=0.0001`) are more compact than their coordinate-permutation
+nulls. This does not mean one electrode controls one finger: the footprints
+still overlap, and S3 ring distributes weight over about 42 effective channels
+inside its preferred region.
 
-![Subject 1 decoder-weighted forward patterns at registered physical electrode coordinates](docs/figures/s1-single-wavelet-physical-forward-patterns.png)
+![All 15 decoder-weighted forward patterns at registered physical electrode coordinates](docs/figures/all-subjects-single-wavelet-physical-forward-patterns.png)
 
-The five decoders emphasize different mixtures of the same wavelet paths, with
-most structural weight between 75 and 200 Hz. Across all 30 checkpoints, the
-largest path-centroid displacement from initialization is only `0.025 Hz`, and
-the largest relative kernel change is `0.164%`. The learned distinction is
-therefore mainly readout reweighting of nearly fixed passbands, not movement of
-the filters to new frequencies. Because each path is squared before pooling,
-the decoder does not preserve carrier-phase sign; these results do not support
-a phase-specific or causal oscillation claim.
+The decoders also emphasize different mixtures of the same eight wavelet paths.
+Spectral centroids span `100.7-128.8 Hz` for S1, `83.0-119.6 Hz` for S2, and
+`93.8-123.7 Hz` for S3. Across all 90 checkpoints, the largest path-centroid
+displacement from initialization is only `0.120 Hz`, and the largest relative
+kernel change is `0.324%`. The learned distinction is therefore mainly readout
+reweighting of nearly fixed passbands, not movement of the filters to new
+frequencies. Because each path is squared before pooling, the decoder does not
+preserve carrier-phase sign.
 
-![Subject 1 decoder structural use of the eight wavelet paths](docs/figures/s1-single-wavelet-spectral-path-importance.png)
+![Wavelet-path importance for every subject and finger](docs/figures/all-subjects-single-wavelet-spectral-path-importance.png)
 
-These are post-hoc model attributions, not causal neurophysiology. They show
-which spatial and spectral inputs the frozen decoders structurally relied on;
-they do not establish that stimulating a highlighted contact or frequency band
-would cause a finger movement.
+These are post-hoc model attributions, not causal neurophysiology. The complete
+protocol and reproducible scripts are in the
+[`experiment record`](experiments/docs/single-wavelet-mechanistic-interpretation.md),
+with all 15 compact numerical summaries in
+[`JSON`](experiments/results/single-wavelet-mechanisms-all-subjects.json).
 
 ## Target and validation
 

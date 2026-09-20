@@ -1,0 +1,372 @@
+{
+  "analysis": "frozen six-seed single-wavelet reference family",
+  "scope": "15 subject-finger pairs; 90 checkpoints; no retraining or model selection",
+  "spatial_method": "covariance-transformed forward patterns weighted by downstream recurrent-decoder use",
+  "localization_null": "permutation of the same channel weights over exact registered 3-D coordinates",
+  "pairs": {
+    "S1_thumb": {
+      "route": {
+        "csp_mode": "movement_2",
+        "recurrent_cell": "paper_equations"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.7331660262469151,
+      "top_channels": [
+        43,
+        1,
+        17,
+        39,
+        57
+      ],
+      "effective_channel_count": 12.407624024343422,
+      "top_5_channel_mass": 0.4814468472674351,
+      "weighted_pair_distance_mm": 17.79201513494796,
+      "permutation_localization_z_mm": -1.7568567100098667,
+      "permutation_one_sided_p_local_mm": 0.03274836258187091,
+      "spectral_centroid_hz": 124.26174450049099,
+      "mean_pairwise_seed_map_pcc": 0.9997434548852246,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S1_index": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "paper_equations"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.7586461529855796,
+      "top_channels": [
+        1,
+        43,
+        39,
+        7,
+        17
+      ],
+      "effective_channel_count": 11.003465750559723,
+      "top_5_channel_mass": 0.46393167735697033,
+      "weighted_pair_distance_mm": 19.47107447080581,
+      "permutation_localization_z_mm": -0.4957547170089424,
+      "permutation_one_sided_p_local_mm": 0.33423328833558325,
+      "spectral_centroid_hz": 125.78468598289106,
+      "mean_pairwise_seed_map_pcc": 0.999714978766245,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S1_middle": {
+      "route": {
+        "csp_mode": "tails_2x2",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.2646724626844773,
+      "top_channels": [
+        17,
+        1,
+        39,
+        15,
+        43
+      ],
+      "effective_channel_count": 31.93980075451513,
+      "top_5_channel_mass": 0.3002675879104434,
+      "weighted_pair_distance_mm": 21.463491650783755,
+      "permutation_localization_z_mm": -0.08369496483706414,
+      "permutation_one_sided_p_local_mm": 0.4680265986700665,
+      "spectral_centroid_hz": 100.72689371582885,
+      "mean_pairwise_seed_map_pcc": 0.998302265577284,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S1_ring": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.6159832835164203,
+      "top_channels": [
+        39,
+        17,
+        4,
+        27,
+        50
+      ],
+      "effective_channel_count": 11.309000591115156,
+      "top_5_channel_mass": 0.45959680266032105,
+      "weighted_pair_distance_mm": 19.43948498219671,
+      "permutation_localization_z_mm": -0.5635745038516936,
+      "permutation_one_sided_p_local_mm": 0.30668466576671166,
+      "spectral_centroid_hz": 128.80965477062574,
+      "mean_pairwise_seed_map_pcc": 0.9994520850099702,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S1_little": {
+      "route": {
+        "csp_mode": "tails_4x4",
+        "recurrent_cell": "paper_equations"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.45416236981363545,
+      "top_channels": [
+        17,
+        39,
+        1,
+        15,
+        5
+      ],
+      "effective_channel_count": 22.376157016645656,
+      "top_5_channel_mass": 0.3551189187853606,
+      "weighted_pair_distance_mm": 20.491714909711696,
+      "permutation_localization_z_mm": -0.7031904213591051,
+      "permutation_one_sided_p_local_mm": 0.2496875156242188,
+      "spectral_centroid_hz": 117.14549620094162,
+      "mean_pairwise_seed_map_pcc": 0.9996511335938947,
+      "maximum_path_centroid_shift_from_initial_hz": 0.024829317062298628,
+      "maximum_relative_wavelet_kernel_change": 0.0016430335817858577
+    },
+    "S2_thumb": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.585565861321783,
+      "top_channels": [
+        24,
+        8,
+        3,
+        18,
+        22
+      ],
+      "effective_channel_count": 10.219251804311385,
+      "top_5_channel_mass": 0.6107578108923051,
+      "weighted_pair_distance_mm": 13.485675617620132,
+      "permutation_localization_z_mm": -2.7281984928293985,
+      "permutation_one_sided_p_local_mm": 0.0015999200039998,
+      "spectral_centroid_hz": 97.03321788407125,
+      "mean_pairwise_seed_map_pcc": 0.9998843866970984,
+      "maximum_path_centroid_shift_from_initial_hz": 0.018368230572207267,
+      "maximum_relative_wavelet_kernel_change": 0.0007668714388273656
+    },
+    "S2_index": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.37722113522044154,
+      "top_channels": [
+        8,
+        24,
+        3,
+        18,
+        22
+      ],
+      "effective_channel_count": 10.611037012795016,
+      "top_5_channel_mass": 0.6135089830541125,
+      "weighted_pair_distance_mm": 12.101078726776201,
+      "permutation_localization_z_mm": -3.594660690838923,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 119.565113270427,
+      "mean_pairwise_seed_map_pcc": 0.9997056946330573,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S2_middle": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.20969119259759947,
+      "top_channels": [
+        12,
+        3,
+        8,
+        48,
+        22
+      ],
+      "effective_channel_count": 7.7038079424996,
+      "top_5_channel_mass": 0.7379371414052347,
+      "weighted_pair_distance_mm": 10.049923403185028,
+      "permutation_localization_z_mm": -3.5781479145681367,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 112.94660938599705,
+      "mean_pairwise_seed_map_pcc": 0.9999698010299347,
+      "maximum_path_centroid_shift_from_initial_hz": 0.09539390782967594,
+      "maximum_relative_wavelet_kernel_change": 0.003009338863193989
+    },
+    "S2_ring": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.5045309476226205,
+      "top_channels": [
+        15,
+        22,
+        3,
+        12,
+        8
+      ],
+      "effective_channel_count": 10.513407612353605,
+      "top_5_channel_mass": 0.6129572521999571,
+      "weighted_pair_distance_mm": 11.815619718510215,
+      "permutation_localization_z_mm": -3.7907716350256337,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 100.78424302984635,
+      "mean_pairwise_seed_map_pcc": 0.9995971007068228,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S2_little": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.39315647974224666,
+      "top_channels": [
+        3,
+        22,
+        12,
+        8,
+        15
+      ],
+      "effective_channel_count": 11.861086099804231,
+      "top_5_channel_mass": 0.5882450232237476,
+      "weighted_pair_distance_mm": 13.323421821210424,
+      "permutation_localization_z_mm": -3.1925994853164834,
+      "permutation_one_sided_p_local_mm": 0.00039998000099995,
+      "spectral_centroid_hz": 83.04879742633759,
+      "mean_pairwise_seed_map_pcc": 0.9999507710975891,
+      "maximum_path_centroid_shift_from_initial_hz": 0.12010616034626942,
+      "maximum_relative_wavelet_kernel_change": 0.0032353955321013927
+    },
+    "S3_thumb": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.6628737593087755,
+      "top_channels": [
+        9,
+        57,
+        36,
+        18,
+        54
+      ],
+      "effective_channel_count": 17.762521305942016,
+      "top_5_channel_mass": 0.3911045648973943,
+      "weighted_pair_distance_mm": 16.379300917800293,
+      "permutation_localization_z_mm": -3.14337715324447,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 121.87409348630679,
+      "mean_pairwise_seed_map_pcc": 0.9998823221548285,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S3_index": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.5201641476876746,
+      "top_channels": [
+        54,
+        55,
+        41,
+        27,
+        58
+      ],
+      "effective_channel_count": 22.077145158792657,
+      "top_5_channel_mass": 0.35932427313024,
+      "weighted_pair_distance_mm": 16.25632265065702,
+      "permutation_localization_z_mm": -3.9635469676126602,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 93.84657061200244,
+      "mean_pairwise_seed_map_pcc": 0.9990447500326688,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S3_middle": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.6189392065908713,
+      "top_channels": [
+        54,
+        41,
+        56,
+        27,
+        46
+      ],
+      "effective_channel_count": 18.7485671279186,
+      "top_5_channel_mass": 0.3438923071252911,
+      "weighted_pair_distance_mm": 16.134972188024065,
+      "permutation_localization_z_mm": -3.720379346246116,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 103.07996870764663,
+      "mean_pairwise_seed_map_pcc": 0.99967194732652,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S3_ring": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.5573412547105403,
+      "top_channels": [
+        54,
+        41,
+        27,
+        42,
+        4
+      ],
+      "effective_channel_count": 42.16268147308226,
+      "top_5_channel_mass": 0.214539787987688,
+      "weighted_pair_distance_mm": 18.527927507116935,
+      "permutation_localization_z_mm": -3.7349031747625787,
+      "permutation_one_sided_p_local_mm": 9.99950002499875e-05,
+      "spectral_centroid_hz": 97.75714727784063,
+      "mean_pairwise_seed_map_pcc": 0.9985970042120227,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    },
+    "S3_little": {
+      "route": {
+        "csp_mode": "movement_1",
+        "recurrent_cell": "standard"
+      },
+      "seed_count": 6,
+      "released_test_pcc_descriptive": 0.6077133604530481,
+      "top_channels": [
+        41,
+        46,
+        54,
+        27,
+        21
+      ],
+      "effective_channel_count": 14.765712614502569,
+      "top_5_channel_mass": 0.46300307236830085,
+      "weighted_pair_distance_mm": 14.392690434793622,
+      "permutation_localization_z_mm": -4.165474788062772,
+      "permutation_one_sided_p_local_mm": 4.999750012499375e-05,
+      "spectral_centroid_hz": 123.70737118405349,
+      "mean_pairwise_seed_map_pcc": 0.9997504130806618,
+      "maximum_path_centroid_shift_from_initial_hz": 0.0,
+      "maximum_relative_wavelet_kernel_change": 0.0
+    }
+  },
+  "overall": {
+    "maximum_path_centroid_shift_from_initial_hz": 0.12010616034626942,
+    "maximum_relative_wavelet_kernel_change": 0.0032353955321013927
+  }
+}
