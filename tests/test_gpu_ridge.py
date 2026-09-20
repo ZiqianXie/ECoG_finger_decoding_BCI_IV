@@ -54,6 +54,27 @@ def test_gpu_ridge_cv_selects_a_deterministic_predictive_model() -> None:
     assert np.array_equal(first.coef_, second.coef_)
 
 
+def test_gpu_ridge_cv_can_select_by_validation_pcc() -> None:
+    features, target = regression_problem()
+    indices = np.arange(features.shape[0])
+    splits = [
+        (indices[40:], indices[:40]),
+        (np.concatenate((indices[:40], indices[80:])), indices[40:80]),
+        (indices[:80], indices[80:]),
+    ]
+    result = fit_torch_ridge_cv(
+        features,
+        target,
+        splits,
+        alphas=np.logspace(-2, 3, 6).astype(np.float32),
+        device=torch.device("cpu"),
+        selection_metric="pcc",
+    )
+    assert result.selection_metric_ == "pcc"
+    assert result.mean_validation_pcc_.shape == result.alphas_.shape
+    assert result.alpha_ == result.alphas_[np.argmax(result.mean_validation_pcc_)]
+
+
 def test_finite_intervals_excludes_undefined_target_rows() -> None:
     target = np.arange(11, dtype=np.float32)
     target[[2, 8]] = np.nan

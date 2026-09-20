@@ -16,6 +16,8 @@ class TorchRidgeCVResult:
     alpha_: float
     alphas_: np.ndarray
     mean_validation_mse_: np.ndarray
+    mean_validation_pcc_: np.ndarray
+    selection_metric_: str
 
     def predict(self, features: np.ndarray) -> np.ndarray:
         return np.asarray(features) @ self.coef_ + self.intercept_
@@ -60,6 +62,7 @@ def fit_torch_ridge_cv(
     *,
     alphas: np.ndarray,
     device: torch.device,
+    selection_metric: str = "mse",
 ) -> TorchRidgeCVResult:
     """Select a ridge penalty inside supplied folds and refit on all rows."""
     x = np.asarray(features, dtype=np.float32)
@@ -69,7 +72,10 @@ def fit_torch_ridge_cv(
         raise ValueError("features must be 2D and target must match its rows")
     if penalties.ndim != 1 or penalties.size == 0 or np.any(penalties <= 0):
         raise ValueError("alphas must be a nonempty positive one-dimensional array")
+    if selection_metric not in ("mse", "pcc"):
+        raise ValueError("selection_metric must be 'mse' or 'pcc'")
     fold_losses = []
+    fold_pccs = []
     for training, validation in splits:
         coefficients, intercepts = ridge_path_eigendecomposition(
             x[training], y[training], penalties, device=device
@@ -78,8 +84,27 @@ def fit_torch_ridge_cv(
         fold_losses.append(
             np.mean((prediction - y[validation, None]) ** 2, axis=0)
         )
+        centered_prediction = prediction - prediction.mean(axis=0, keepdims=True)
+        centered_target = y[validation] - y[validation].mean()
+        denominator = np.sqrt(
+            np.sum(centered_prediction**2, axis=0)
+            * np.sum(centered_target**2)
+        )
+        fold_pccs.append(
+            np.divide(
+                centered_prediction.T @ centered_target,
+                denominator,
+                out=np.full(penalties.shape, -np.inf, dtype=np.float32),
+                where=denominator > 0,
+            )
+        )
     mean_mse = np.mean(np.stack(fold_losses), axis=0)
-    selected = int(np.argmin(mean_mse))
+    mean_pcc = np.mean(np.stack(fold_pccs), axis=0)
+    selected = (
+        int(np.argmin(mean_mse))
+        if selection_metric == "mse"
+        else int(np.argmax(mean_pcc))
+    )
     coefficients, intercepts = ridge_path_eigendecomposition(
         x, y, penalties, device=device
     )
@@ -89,4 +114,6 @@ def fit_torch_ridge_cv(
         alpha_=float(penalties[selected]),
         alphas_=penalties,
         mean_validation_mse_=mean_mse.astype(np.float32),
+        mean_validation_pcc_=mean_pcc.astype(np.float32),
+        selection_metric_=selection_metric,
     )

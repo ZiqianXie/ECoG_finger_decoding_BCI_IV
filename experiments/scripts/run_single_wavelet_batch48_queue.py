@@ -69,6 +69,7 @@ def build_command(
     recurrent_cell: str = "residual_lstm",
     residual_input: str = "current_candidate",
     residual_input_width: int = 64,
+    hidden_size: int = 64,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
     raw_movement_correlation_weight: float = 0.0,
@@ -186,7 +187,7 @@ def build_command(
         "--csp-band-cache-root",
         str(csp_band_cache_root),
         "--hidden-size",
-        "64",
+        str(hidden_size),
         "--head-initialization",
         "lars_linear_regime",
         "--lars-candidate-scale",
@@ -387,6 +388,7 @@ def main() -> None:
         default="current_candidate",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
+    parser.add_argument("--hidden-size", type=int, default=64)
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
     parser.add_argument("--head-learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--train-stem", action="store_true")
@@ -498,6 +500,7 @@ def main() -> None:
             args.recurrent_cell,
             args.residual_input,
             args.residual_input_width,
+            args.hidden_size,
             args.correlation_loss_weight,
             args.derivative_correlation_weight,
             args.raw_movement_correlation_weight,

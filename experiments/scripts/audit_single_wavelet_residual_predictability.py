@@ -110,6 +110,7 @@ def select_ridge(
     *,
     backend: str,
     device: torch.device,
+    selection_metric: str,
 ) -> tuple[object, float, dict[str, float]]:
     training, groups = grouped_rows(training_intervals)
     splitter = GroupKFold(n_splits=min(5, len(training_intervals)))
@@ -121,15 +122,21 @@ def select_ridge(
             splits,
             alphas=np.asarray(ALPHAS, dtype=np.float32),
             device=device,
+            selection_metric=selection_metric,
+        )
+        scores = (
+            model.mean_validation_mse_
+            if selection_metric == "mse"
+            else model.mean_validation_pcc_
         )
         means = {
-            str(float(alpha)): float(loss)
-            for alpha, loss in zip(model.alphas_, model.mean_validation_mse_)
+            str(float(alpha)): float(score)
+            for alpha, score in zip(model.alphas_, scores)
         }
         return model, model.alpha_, means
     if backend != "sklearn":
         raise ValueError(f"unsupported ridge backend {backend!r}")
-    losses = {alpha: [] for alpha in ALPHAS}
+    scores = {alpha: [] for alpha in ALPHAS}
     for train_local, validation_local in splits:
         train_rows = training[train_local]
         validation_rows = training[validation_local]
@@ -137,11 +144,17 @@ def select_ridge(
             model = make_pipeline(StandardScaler(), Ridge(alpha=alpha))
             model.fit(features[train_rows], target[train_rows])
             estimate = model.predict(features[validation_rows])
-            losses[alpha].append(
-                float(np.mean((estimate - target[validation_rows]) ** 2))
-            )
-    means = {alpha: float(np.mean(values)) for alpha, values in losses.items()}
-    selected = min(means, key=means.get)
+            if selection_metric == "mse":
+                score = float(np.mean((estimate - target[validation_rows]) ** 2))
+            else:
+                score = pearson(estimate, target[validation_rows])
+            scores[alpha].append(score)
+    means = {alpha: float(np.mean(values)) for alpha, values in scores.items()}
+    selected = (
+        min(means, key=means.get)
+        if selection_metric == "mse"
+        else max(means, key=means.get)
+    )
     model = make_pipeline(StandardScaler(), Ridge(alpha=selected))
     model.fit(features[training], target[training])
     return model, selected, {str(alpha): loss for alpha, loss in means.items()}
@@ -175,6 +188,9 @@ def main() -> None:
     parser.add_argument("--softplus-beta", type=float, default=10.0)
     parser.add_argument(
         "--ridge-backend", choices=("sklearn", "torch"), default="torch"
+    )
+    parser.add_argument(
+        "--ridge-selection-metric", choices=("mse", "pcc"), default="mse"
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument(
@@ -251,6 +267,7 @@ def main() -> None:
                 training_intervals,
                 backend=args.ridge_backend,
                 device=device,
+                selection_metric=args.ridge_selection_metric,
             )
             predictions["ridge_all_lags"] = np.maximum(
                 ridge_all.predict(standardized), 0.0
@@ -258,7 +275,7 @@ def main() -> None:
             probe_audit.update(
                 {
                     "ridge_all_alpha": ridge_all_alpha,
-                    "ridge_all_inner_mse": ridge_all_curve,
+                    "ridge_all_inner_selection_curve": ridge_all_curve,
                 }
             )
         if "ridge_all_lags_raw" in args.probes:
@@ -268,6 +285,7 @@ def main() -> None:
                 training_intervals,
                 backend=args.ridge_backend,
                 device=device,
+                selection_metric=args.ridge_selection_metric,
             )
             predictions["ridge_all_lags_raw"] = np.maximum(
                 ridge_all_raw.predict(standardized), 0.0
@@ -275,7 +293,7 @@ def main() -> None:
             probe_audit.update(
                 {
                     "ridge_all_raw_alpha": ridge_all_raw_alpha,
-                    "ridge_all_raw_inner_mse": ridge_all_raw_curve,
+                    "ridge_all_raw_inner_selection_curve": ridge_all_raw_curve,
                 }
             )
         if "ridge_current_temporal" in args.probes:
@@ -285,6 +303,7 @@ def main() -> None:
                 training_intervals,
                 backend=args.ridge_backend,
                 device=device,
+                selection_metric=args.ridge_selection_metric,
             )
             predictions["ridge_current_temporal"] = np.maximum(
                 base + ridge_current.predict(temporal), 0.0
@@ -292,7 +311,7 @@ def main() -> None:
             probe_audit.update(
                 {
                     "ridge_current_alpha": ridge_current_alpha,
-                    "ridge_current_inner_mse": ridge_current_curve,
+                    "ridge_current_inner_selection_curve": ridge_current_curve,
                 }
             )
         if "ridge_current_temporal_raw" in args.probes:
@@ -303,6 +322,7 @@ def main() -> None:
                     training_intervals,
                     backend=args.ridge_backend,
                     device=device,
+                    selection_metric=args.ridge_selection_metric,
                 )
             )
             predictions["ridge_current_temporal_raw"] = np.maximum(
@@ -311,7 +331,7 @@ def main() -> None:
             probe_audit.update(
                 {
                     "ridge_current_raw_alpha": ridge_current_raw_alpha,
-                    "ridge_current_raw_inner_mse": ridge_current_raw_curve,
+                    "ridge_current_raw_inner_selection_curve": ridge_current_raw_curve,
                 }
             )
         if "hist_current_temporal" in args.probes:
@@ -371,6 +391,7 @@ def main() -> None:
         "subject": args.subject,
         "finger": args.finger,
         "ridge_backend": args.ridge_backend,
+        "ridge_selection_metric": args.ridge_selection_metric,
         "probes": list(args.probes),
         "outer_records": outer_records,
         "stitched_raw_pcc": {
