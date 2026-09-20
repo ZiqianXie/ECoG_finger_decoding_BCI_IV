@@ -19,18 +19,23 @@ developed with substantial help from OpenAI Codex using GPT-5.6 Sol for code,
 experiment orchestration, diagnostics, and documentation. I remain responsible
 for the scientific decisions and interpretation.
 
-The released implementation deliberately uses one understandable signal path
-for all 15 subject/finger pairs. It keeps the original 1 kHz signal,
-initializes one trainable wavelet tree to spend its eight outputs below 200 Hz,
-and uses neither an auxiliary low-frequency branch nor a mixture of separately
-trained models. The number of CSP initialization rows and the LSTM equation
-implementation are selected per subject/finger from development folds; they do
-not create additional decoding branches.
+The canonical release now records one development-selected model structure for
+each of the 15 subject/finger pairs. Heterogeneous model soups are forbidden.
+Where averaging is useful, every member has exactly the same structure and
+differs only by random seed. Every route must also show strictly positive
+nested development out-of-fold (OOF) PCC gain over that structure's own
+untuned initialization; the released test labels are never used for selection.
+The machine-readable source of truth is
+[`configs/canonical_models.yaml`](configs/canonical_models.yaml), with the
+complete audit in
+[`docs/results/canonical-model-audit.json`](docs/results/canonical-model-audit.json)
+and a compact results table in
+[`docs/canonical-model-release.md`](docs/canonical-model-release.md).
 
-## The model
+## The original single-tree baseline
 
-One model is trained for each subject and each of the five fingers. Every model
-has the same signal path:
+The common baseline trains one model for each subject and finger. Every baseline
+model has the same signal path:
 
 1. Remove the documented bad channel(s), notch 60, 120, and 180 Hz line noise,
    and standardize ECoG with statistics fitted on the training split.
@@ -51,7 +56,7 @@ has the same signal path:
    fine-tune the full differentiable path at a smaller stem learning rate. A
    Softplus output represents nonnegative flexion.
 
-For 14 pairs, LARS initializes an LSTM in a near-linear operating regime.
+For 14 pairs in the original baseline, LARS initializes an LSTM in a near-linear operating regime.
 Weights that should initially be near zero are randomized at about `1e-3`,
 preserving nonlinear capacity while starting from a stable linear decoder. S1
 thumb, index, and little use the paper-equation LSTM implementation; the other
@@ -118,16 +123,18 @@ interval. Target baselines, normalization, FastICA, CSP, and LARS are refitted
 inside every fold.
 
 The complete 400,000-sample competition training file is the development set.
-After cross-fold selection, six independent seeds are refitted on all development
-samples. Results below are their mean PCC ± standard deviation (SD); SD uses
-the six runs as the complete reported set (`ddof=0`). The separate 200,000-sample
-released test file is used only for the final score.
+After cross-fold selection, each canonical route is refitted on all development
+samples. A route may be one model or an equal-weight ensemble of independently
+refitted seeds with the same structure. The separate 200,000-sample released
+test file is used only for the final descriptive score.
 
-## Results: no test peek during selection
+## Historical single-tree baseline results
 
-The reported metric is Pearson correlation coefficient (PCC) against the
-unmodified released test glove trajectory, matching the competition convention.
-`Macro-5` is the unweighted mean over five independently decoded fingers.
+The table below preserves the original single-tree release benchmark. It is not
+the current canonical routing table; see the
+[`canonical release`](docs/canonical-model-release.md) for the final 15 routes.
+The metric is Pearson correlation coefficient (PCC) against the unmodified
+released test glove trajectory. `Macro-5` is the unweighted mean over fingers.
 
 | Subject | 2018 paper | 2026 single-tree refits (mean ± SD) |
 |---|---:|---:|
@@ -288,15 +295,20 @@ python scripts/summarize_single_wavelet_ensemble.py \
   --route-map configs/final_single_wavelet_routes.yaml \
   --output-root outputs/final_single_wavelet_routes
 
+PYTHONPATH=experiments/scripts:scripts:src \
+  python experiments/scripts/audit_canonical_models.py \
+  --manifest configs/canonical_models.yaml \
+  --require-release-pass \
+  --output docs/results/canonical-model-audit.json
+
 python -m pytest -q
 ```
 
-The common commands above produce the one-CSP/standard-LSTM candidates and the
-OOF-selected S3-little residual refit. All development-selected per-pair routes,
-including the four S1 overrides (thumb, index, middle, and little), are specified in
-[`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml);
-the corresponding configuration and validation evidence are documented in the
-[`project report`](docs/project-report.md#final-s1-development-selected-routes).
+The training commands above preserve the original single-tree baseline. The
+current development-selected per-pair routes are specified in
+[`configs/canonical_models.yaml`](configs/canonical_models.yaml). The older
+[`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml)
+is retained as historical provenance and is not the canonical registry.
 
 The code caches reconstructed wavelet leaves in `/dev/shm` and uses
 `torch.compile(mode="reduce-overhead")` for repeated training calls. On the H100

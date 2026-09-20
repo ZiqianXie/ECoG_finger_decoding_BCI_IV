@@ -28,9 +28,15 @@ def write_manifest(tmp_path: Path) -> Path:
     artifact = tmp_path / "artifact"
     artifact.mkdir()
     models = {}
+    artifact_pairs = {}
     for subject in (1, 2, 3):
         for finger in FINGERS:
             pair = f"S{subject}_{finger}"
+            artifact_pairs[pair] = {
+                "included_seed_count": 2,
+                "ensemble_pcc": 0.35,
+                "members": [{"seed": 0}, {"seed": 1}],
+            }
             models[pair] = {
                 "structure_id": "one_structure",
                 "artifact": {
@@ -51,6 +57,9 @@ def write_manifest(tmp_path: Path) -> Path:
                     },
                 },
             }
+    (artifact / "aggregate_summary.json").write_text(
+        json.dumps({"pairs": artifact_pairs})
+    )
     manifest = tmp_path / "canonical.yaml"
     manifest.write_text(yaml.safe_dump({"version": 1, "models": models}))
     return manifest

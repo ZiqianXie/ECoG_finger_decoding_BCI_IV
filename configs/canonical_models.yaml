@@ -45,10 +45,10 @@ models:
   S1_middle:
     structure_id: overcomplete_depth5_designed_csp_residual_lstm
     artifact:
-      kind: same_structure_seed_ensemble
+      kind: single_model
       root: outputs/canonical_refit_s1_middle_depth5_lstm_v1
-      status: pending
-      members: [2026, 2027, 2028, 2029, 2030, 2031]
+      status: complete
+      members: [2026]
       member_structure_ids: [overcomplete_depth5_designed_csp_residual_lstm]
     development_evidence:
       initialized:
@@ -63,7 +63,7 @@ models:
     artifact:
       kind: single_model
       root: outputs/canonical_refit_s1_ring_future16_ridge_v1
-      status: pending
+      status: complete
       members: [ridge]
       member_structure_ids: [future16_fullbank_powercal_ridge]
     development_evidence:
@@ -95,7 +95,7 @@ models:
     artifact:
       kind: same_structure_seed_ensemble
       root: outputs/canonical_refit_s2_thumb_future16_lstm_v1
-      status: pending
+      status: complete
       members: [2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035]
       member_structure_ids: [future16_synergy_selected_residual_lstm]
     development_evidence:
@@ -143,7 +143,7 @@ models:
     artifact:
       kind: single_model
       root: outputs/canonical_refit_s2_ring_future16_raw_ridge_v1
-      status: pending
+      status: complete
       members: [ridge]
       member_structure_ids: [future16_fullbank_raw_ridge]
     development_evidence:
@@ -173,10 +173,10 @@ models:
   S3_thumb:
     structure_id: current_bin_residual_lstm_batch48
     artifact:
-      kind: same_structure_seed_ensemble
+      kind: single_model
       root: outputs/canonical_refit_s3_thumb_current_bin_lstm_v1
-      status: pending
-      members: [2026, 2027, 2028, 2029, 2030, 2031]
+      status: complete
+      members: [2026]
       member_structure_ids: [current_bin_residual_lstm_batch48]
     development_evidence:
       initialized:
@@ -189,10 +189,10 @@ models:
   S3_index:
     structure_id: synergy_spoc_allfinger_continuous_residual_lstm
     artifact:
-      kind: same_structure_seed_ensemble
+      kind: single_model
       root: outputs/canonical_refit_s3_index_synergy_lstm_v1
-      status: pending
-      members: [2026, 2027, 2028, 2029, 2030, 2031]
+      status: complete
+      members: [2026]
       member_structure_ids: [synergy_spoc_allfinger_continuous_residual_lstm]
     development_evidence:
       initialized:
@@ -207,7 +207,7 @@ models:
     artifact:
       kind: same_structure_seed_ensemble
       root: outputs/canonical_refit_s3_middle_lead4_lstm_v1
-      status: pending
+      status: complete
       members: [2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034]
       member_structure_ids: [lead4_hidden128_selected_residual_lstm]
     development_evidence:

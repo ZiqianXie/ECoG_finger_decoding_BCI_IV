@@ -44,6 +44,95 @@ def released_test_used(summary: dict[str, Any]) -> bool:
     return False
 
 
+def validate_artifact(
+    pair: str,
+    structure_id: str,
+    artifact: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate the on-disk release and extract its descriptive test PCC."""
+    root = Path(str(artifact["root"]))
+    summary_path = root / "summary.json"
+    if not summary_path.exists():
+        summary_path = root / "aggregate_summary.json"
+    result: dict[str, Any] = {
+        "artifact_root_exists": root.exists(),
+        "artifact_summary": str(summary_path),
+        "artifact_summary_exists": summary_path.exists(),
+        "artifact_summary_valid": False,
+        "released_test_pcc_descriptive_only": None,
+        "full_development_refit_gain_min": None,
+        "artifact_validation_error": None,
+    }
+    if not root.exists() or not summary_path.exists():
+        return result
+
+    try:
+        summary = json.loads(summary_path.read_text())
+        members = list(artifact.get("members", []))
+        if "pairs" in summary:
+            pair_summary = summary["pairs"][pair]
+            summary_members = list(pair_summary["members"])
+            summary_seeds = [member["seed"] for member in summary_members]
+            if summary_seeds != members:
+                raise ValueError(
+                    f"manifest members {members} != artifact members {summary_seeds}"
+                )
+            if int(pair_summary["included_seed_count"]) != len(members):
+                raise ValueError("included seed count does not match manifest")
+            pcc = pair_summary.get(
+                "ensemble_pcc", pair_summary.get("mean_prediction_pcc")
+            )
+        else:
+            subject_text, finger = pair.split("_", 1)
+            if int(summary["subject"]) != int(subject_text[1:]):
+                raise ValueError("artifact subject does not match manifest pair")
+            if str(summary["finger"]) != finger:
+                raise ValueError("artifact finger does not match manifest pair")
+            if str(summary["structure_id"]) != structure_id:
+                raise ValueError("artifact structure_id does not match manifest")
+            if bool(summary.get("heterogeneous_model_soup", False)):
+                raise ValueError("artifact reports a heterogeneous model soup")
+            if "member_count" in summary:
+                if int(summary["member_count"]) != len(members):
+                    raise ValueError("artifact member count does not match manifest")
+                summary_seeds = list(summary.get("member_seeds", []))
+                if summary_seeds and summary_seeds != members:
+                    raise ValueError("artifact member seeds do not match manifest")
+                member_paths = [Path(path) for path in summary.get("member_paths", [])]
+                if len(member_paths) != len(members) or not all(
+                    (path / "summary.json").exists() for path in member_paths
+                ):
+                    raise ValueError("one or more aggregate member artifacts are missing")
+                full_refit_gains = []
+                for path in member_paths:
+                    member_summary = json.loads((path / "summary.json").read_text())
+                    full_refit_gains.append(
+                        float(member_summary["development_refit_pcc"])
+                        - float(member_summary["development_initialization_pcc"])
+                    )
+                if min(full_refit_gains) <= 0.0:
+                    raise ValueError("one or more full-development refits lost PCC")
+                result["full_development_refit_gain_min"] = min(full_refit_gains)
+                pcc = summary["released_test_ensemble_pcc_descriptive_only"]
+            else:
+                if len(members) != 1 or not (root / "ridge_model.npz").exists():
+                    raise ValueError("single ridge artifact is incomplete")
+                full_refit_gain = float(summary["development_refit_pcc"]) - float(
+                    summary["development_initialization_pcc"]
+                )
+                if full_refit_gain <= 0.0:
+                    raise ValueError("full-development ridge refit lost PCC")
+                result["full_development_refit_gain_min"] = full_refit_gain
+                pcc = summary["released_test_raw_pcc_descriptive_only"]
+        if released_test_used(summary):
+            raise ValueError("artifact reports released test use for selection")
+        result["released_test_pcc_descriptive_only"] = float(pcc)
+        result["artifact_summary_valid"] = True
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        result["artifact_validation_error"] = str(error)
+    return result
+
+
 def audit_manifest(manifest_path: Path) -> dict[str, Any]:
     manifest = yaml.safe_load(manifest_path.read_text())
     models = manifest["models"]
@@ -80,8 +169,12 @@ def audit_manifest(manifest_path: Path) -> dict[str, Any]:
             or released_test_used(selected_summary)
         )
         artifact_root = Path(str(artifact["root"]))
+        artifact_validation = validate_artifact(
+            pair, structure_id, artifact
+        )
         artifact_complete = (
-            artifact.get("status") == "complete" and artifact_root.exists()
+            artifact.get("status") == "complete"
+            and artifact_validation["artifact_summary_valid"]
         )
         pair_reports[pair] = {
             "structure_id": structure_id,
@@ -96,6 +189,7 @@ def audit_manifest(manifest_path: Path) -> dict[str, Any]:
             "artifact_root": str(artifact_root),
             "artifact_status": artifact.get("status"),
             "artifact_complete": artifact_complete,
+            **artifact_validation,
             "development_pass": no_model_soup and tuning_pass and test_selection_clean,
             "release_pass": (
                 no_model_soup
