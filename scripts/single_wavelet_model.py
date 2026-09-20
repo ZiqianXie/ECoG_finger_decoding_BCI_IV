@@ -290,10 +290,14 @@ class SingleWaveletDecoder(nn.Module):
         causal_residual = residual_input in ("causal_candidate", "selected_causal")
         if (
             residual_input != "selected"
-            and recurrent_cell not in ("residual_lstm", "residual_gru")
+            and recurrent_cell not in (
+                "residual_lstm",
+                "residual_gru",
+                "residual_bilstm",
+            )
         ):
             raise ValueError(
-                "candidate residual input requires residual_lstm or residual_gru"
+                "candidate residual input requires a residual recurrent decoder"
             )
         self.residual_input = residual_input
         if residual_dynamics not in ("pointwise", "leaky_velocity"):
@@ -301,6 +305,7 @@ class SingleWaveletDecoder(nn.Module):
         if residual_dynamics != "pointwise" and recurrent_cell not in (
             "residual_lstm",
             "residual_gru",
+            "residual_bilstm",
         ):
             raise ValueError("leaky residual dynamics require a residual decoder")
         if not 0.0 <= residual_decay <= 1.0:
@@ -330,6 +335,7 @@ class SingleWaveletDecoder(nn.Module):
         if residual_include_direct and recurrent_cell not in (
             "residual_lstm",
             "residual_gru",
+            "residual_bilstm",
         ):
             raise ValueError(
                 "residual_include_direct requires a residual recurrent cell"
@@ -500,7 +506,12 @@ class SingleWaveletDecoder(nn.Module):
         if self.residual_include_direct:
             recurrent_feature_count += 1
         self.direct = nn.Linear(feature_count, 1)
-        self.residual_decoder = recurrent_cell in ("residual_lstm", "residual_gru")
+        self.residual_decoder = recurrent_cell in (
+            "residual_lstm",
+            "residual_gru",
+            "residual_bilstm",
+        )
+        recurrent_output_size = hidden_size
         if recurrent_cell == "standard":
             self.lstm = nn.LSTM(feature_count, hidden_size, batch_first=True)
         elif recurrent_cell == "paper_equations":
@@ -509,19 +520,29 @@ class SingleWaveletDecoder(nn.Module):
             self.lstm = nn.LSTM(recurrent_feature_count, hidden_size, batch_first=True)
         elif recurrent_cell == "residual_gru":
             self.lstm = nn.GRU(recurrent_feature_count, hidden_size, batch_first=True)
+        elif recurrent_cell == "residual_bilstm":
+            self.lstm = nn.LSTM(
+                recurrent_feature_count,
+                hidden_size,
+                batch_first=True,
+                bidirectional=True,
+            )
+            recurrent_output_size = 2 * hidden_size
         else:
             raise ValueError(f"unsupported recurrent cell {recurrent_cell!r}")
         self.recurrent_cell = recurrent_cell
-        self.output = nn.Linear(hidden_size, 1)
+        self.output = nn.Linear(recurrent_output_size, 1)
         if movement_head_outputs <= 0:
             raise ValueError("movement head output count must be positive")
         self.movement_head_outputs = int(movement_head_outputs)
         self.movement_output = (
-            nn.Linear(hidden_size, self.movement_head_outputs)
+            nn.Linear(recurrent_output_size, self.movement_head_outputs)
             if movement_head
             else None
         )
-        self.velocity_output = nn.Linear(hidden_size, 1) if velocity_head else None
+        self.velocity_output = (
+            nn.Linear(recurrent_output_size, 1) if velocity_head else None
+        )
         if movement_modulation and self.movement_output is None:
             raise ValueError("movement modulation requires a movement output head")
         if movement_modulation and self.movement_head_outputs != 1:

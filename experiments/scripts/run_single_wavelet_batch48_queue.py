@@ -66,6 +66,8 @@ def build_command(
     ica_cache_root: Path,
     csp_band_mode: str = "joint_hhl_hhh",
     csp_band_cache_root: Path = Path("/dev/shm/ecog_csp_band_cache"),
+    recurrent_cell: str = "residual_lstm",
+    residual_input: str = "current_candidate",
     residual_input_width: int = 64,
     correlation_loss_weight: float = 0.0,
     derivative_correlation_weight: float = 0.0,
@@ -80,9 +82,14 @@ def build_command(
     residual_dynamics: str = "pointwise",
     residual_decay: float = 0.95,
     raw_trajectory_blend: float = 0.0,
+    initialization_raw_target_blend: float = 0.0,
     warmup_steps: int = 0,
+    movement_loss_weight: float = 0.5,
     movement_head_scope: str = "target",
+    movement_head_objective: str = "binary_state",
     csp_contrast_mode: str = "common_rest",
+    amplitude_target_lead_bins: int = 0,
+    future_context_bins: int = 0,
     initialization_only: bool = False,
     train_stem: bool = False,
     spatial_learning_rate: float = 3.0e-6,
@@ -95,6 +102,11 @@ def build_command(
     spatial_orthogonality_weight: float = 0.0,
     tap_resample_up: int = 5,
     tap_resample_down: int = 2,
+    auxiliary_residual_readout_l2: float | None = None,
+    model_seed: int = 2026,
+    split_seed: int | None = None,
+    sampler_seed: int | None = None,
+    reuse_inner_metrics_root: Path | None = None,
 ) -> list[str]:
     output = output_root / f"sub{subject}" / finger / f"outer{outer_fold}"
     initialization = initialization_root / f"sub{subject}" / finger
@@ -165,6 +177,10 @@ def build_command(
         csp_mode,
         "--csp-contrast-mode",
         csp_contrast_mode,
+        "--amplitude-target-lead-bins",
+        str(amplitude_target_lead_bins),
+        "--future-context-bins",
+        str(future_context_bins),
         "--csp-band-mode",
         csp_band_mode,
         "--csp-band-cache-root",
@@ -182,15 +198,18 @@ def build_command(
         "--lars-forget-gate-bias",
         "-5.0",
         "--recurrent-cell",
-        "residual_lstm",
+        recurrent_cell,
         "--residual-input",
-        "current_candidate",
+        residual_input,
         "--output-activation",
         "softplus",
         "--residual-history-bins",
         "1",
-        "--residual-input-width",
-        str(residual_input_width),
+        *(
+            ("--residual-input-width", str(residual_input_width))
+            if residual_input in ("current_candidate", "causal_candidate", "selected_causal")
+            else ()
+        ),
         "--residual-include-direct",
         "--softplus-beta",
         "10.0",
@@ -223,9 +242,19 @@ def build_command(
         "--weight-decay",
         "0.0001",
         "--movement-loss-weight",
-        "0.5",
+        str(movement_loss_weight),
         "--movement-head-scope",
         movement_head_scope,
+        "--movement-head-objective",
+        movement_head_objective,
+        *(
+            (
+                "--auxiliary-residual-readout-l2",
+                str(auxiliary_residual_readout_l2),
+            )
+            if auxiliary_residual_readout_l2 is not None
+            else ()
+        ),
         "--movement-trajectory-weight",
         "1.0",
         "--velocity-loss-weight",
@@ -238,6 +267,8 @@ def build_command(
         str(residual_decay),
         "--raw-trajectory-blend",
         str(raw_trajectory_blend),
+        "--initialization-raw-target-blend",
+        str(initialization_raw_target_blend),
         "--correlation-loss-weight",
         str(correlation_loss_weight),
         "--derivative-correlation-weight",
@@ -247,13 +278,29 @@ def build_command(
         "--raw-movement-derivative-correlation-weight",
         str(raw_movement_derivative_correlation_weight),
         "--seed",
-        "2026",
+        str(model_seed),
         "--feature-chunk",
         "256",
         "--compile",
         "--device",
         "cuda",
     ]
+    if split_seed is not None:
+        command.extend(("--split-seed", str(split_seed)))
+    if sampler_seed is not None:
+        command.extend(("--sampler-seed", str(sampler_seed)))
+    if reuse_inner_metrics_root is not None:
+        command.extend(
+            (
+                "--reuse-inner-metrics-from",
+                str(
+                    reuse_inner_metrics_root
+                    / f"sub{subject}"
+                    / finger
+                    / f"outer{outer_fold}"
+                ),
+            )
+        )
     if initialization_only:
         command.append("--initialization-only")
     if train_stem:
@@ -319,8 +366,25 @@ def main() -> None:
             "continuous_amplitude",
             "continuous_velocity",
             "dual_rest_velocity",
+            "all_finger_amplitude",
+            "target_rest_all_finger_amplitude",
+            "target_rest_all_finger_amplitude_synergy",
+            "target_rest_all_finger_amplitude_synergy_conditional",
+            "all_finger_rest_amplitude",
         ),
         default="common_rest",
+    )
+    parser.add_argument("--amplitude-target-lead-bins", type=int, default=0)
+    parser.add_argument("--future-context-bins", type=int, default=0)
+    parser.add_argument(
+        "--recurrent-cell",
+        choices=("residual_lstm", "residual_gru", "residual_bilstm"),
+        default="residual_lstm",
+    )
+    parser.add_argument(
+        "--residual-input",
+        choices=("selected", "candidate", "current_candidate", "causal_candidate", "selected_causal"),
+        default="current_candidate",
     )
     parser.add_argument("--residual-input-width", type=int, default=64)
     parser.add_argument("--residual-output-init-std", type=float, default=0.0)
@@ -342,12 +406,20 @@ def main() -> None:
     )
     parser.add_argument("--residual-decay", type=float, default=0.95)
     parser.add_argument("--raw-trajectory-blend", type=float, default=0.0)
+    parser.add_argument("--initialization-raw-target-blend", type=float, default=0.0)
     parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--movement-loss-weight", type=float, default=0.5)
     parser.add_argument(
         "--movement-head-scope",
         choices=("target", "all_fingers"),
         default="target",
     )
+    parser.add_argument(
+        "--movement-head-objective",
+        choices=("binary_state", "continuous_trajectory"),
+        default="binary_state",
+    )
+    parser.add_argument("--auxiliary-residual-readout-l2", type=float, default=None)
     parser.add_argument(
         "--wavelet-frontend",
         choices=(
@@ -386,6 +458,10 @@ def main() -> None:
         help="fit and score only outer sparse initializers; skip all LSTM work",
     )
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--model-seed", type=int, default=2026)
+    parser.add_argument("--split-seed", type=int, default=None)
+    parser.add_argument("--sampler-seed", type=int, default=None)
+    parser.add_argument("--reuse-inner-metrics-root", type=Path, default=None)
     parser.add_argument(
         "--script", type=Path, default=Path("scripts/cross_validate_single_wavelet.py")
     )
@@ -419,6 +495,8 @@ def main() -> None:
             args.ica_cache_root,
             args.csp_band_mode,
             args.csp_band_cache_root,
+            args.recurrent_cell,
+            args.residual_input,
             args.residual_input_width,
             args.correlation_loss_weight,
             args.derivative_correlation_weight,
@@ -433,9 +511,14 @@ def main() -> None:
             args.residual_dynamics,
             args.residual_decay,
             args.raw_trajectory_blend,
+            args.initialization_raw_target_blend,
             args.warmup_steps,
+            args.movement_loss_weight,
             args.movement_head_scope,
+            args.movement_head_objective,
             args.csp_contrast_mode,
+            args.amplitude_target_lead_bins,
+            args.future_context_bins,
             args.initialization_only,
             args.train_stem,
             args.spatial_learning_rate,
@@ -448,6 +531,11 @@ def main() -> None:
             args.spatial_orthogonality_weight,
             args.tap_resample_up,
             args.tap_resample_down,
+            args.auxiliary_residual_readout_l2,
+            args.model_seed,
+            args.split_seed,
+            args.sampler_seed,
+            args.reuse_inner_metrics_root,
         )
         print(f"start {label}", flush=True)
         subprocess.run(command, check=True)

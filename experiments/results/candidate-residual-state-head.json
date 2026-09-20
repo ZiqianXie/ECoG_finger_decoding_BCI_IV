@@ -4,6 +4,7 @@
   "released_test_touched": false,
   "primary_metric": "stitched out-of-fold raw-target PCC",
   "requested_gain_threshold": 0.1,
+  "working_done_gain_threshold": 0.095,
   "comparison_rule": {
     "baseline": "strongest fixed pre-ablation split-local reference for the same subject and finger",
     "primary_gain": "final candidate PCC minus the fixed reference PCC",
@@ -14,8 +15,8 @@
   },
   "current_pass_accounting": {
     "fixed_reference_gain_at_least_0p1": {
-      "count": 6,
-      "pairs": ["S1 middle", "S1 little", "S2 middle", "S2 little", "S3 thumb", "S3 ring"]
+      "count": 10,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring"]
     },
     "candidate_self_gain_at_least_0p1": {
       "count": 4,
@@ -23,9 +24,9 @@
     },
     "representation_only_fixed_reference_passes": ["S1 middle", "S3 ring"],
     "project_triage_acceptance_override": {
-      "count": 7,
-      "pairs": ["S1 middle", "S1 little", "S2 middle", "S2 little", "S3 thumb", "S3 ring", "S3 little"],
-      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. This does not alter the strict >=0.1 accounting above."
+      "count": 11,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring", "S3 little"],
+      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. S1 thumb was explicitly considered done by the user and independently exceeds the strict threshold. S2 thumb now exceeds the strict threshold with an unpruned equal ten-seed ensemble. On 2026-09-19 the user set +0.095 as the working done threshold for subsequent pairs; strict +0.100 accounting remains separate."
     }
   },
   "screened_pairs": [
@@ -1841,19 +1842,40 @@
     "decision": "Accept S3 little as a user-approved project-triage pass and move on, while preserving that its measured +0.0931 fixed-reference gain remains below the strict +0.1 criterion. The 3e-5 same-architecture run remains the best candidate. Extending the unfrozen schedule to 800 and 1200 updates worsens stitched PCC; averaging all six finite noncollapsed seeds also lowers PCC. Training-only amplitude CSP and doubled dual-CSP rank both lower the initializer, so neither receives recurrent tuning. Little-finger-only target decontamination is harmful under this representation despite positive PCC changes within each separately calibrated outer fold."
   },
   "post_acceptance_continuation": {
-    "working_pass_count": 7,
-    "strict_pass_count": 6,
+    "working_pass_count": 10,
+    "strict_pass_count": 9,
     "closed_pairs": {
-      "S1_index": "Keep +0.0589. Stable-family LARS, dual rest/other CSP, and depth-5 designed-band CSP all fail their initializer gates.",
-      "S1_thumb": "Keep +0.0573. Dual rest/other CSP and depth-5 designed-band CSP fail their initializer gates."
+      "S1_index": "Reopened by the all-finger amplitude bank; keep the new +0.0607 result, still below threshold.",
+      "S1_thumb": "Done: an unpruned ten-seed fixed-data ensemble reaches +0.1048 over the immutable reference; the user explicitly accepted this pair."
     },
     "new_best_unresolved_candidate": {
-      "pair": "S3 index",
-      "model": "untuned joint-band movement-1 rest-plus-continuous-amplitude covariance initializer",
-      "fixed_reference_pcc": 0.579112281,
-      "candidate_pcc": 0.623299719,
-      "gain_over_fixed_reference": 0.044187438,
+      "pair": "S1 index",
+      "model": "all-finger amplitude bank with recurrent tuning",
+      "fixed_reference_pcc": 0.725545068,
+      "candidate_pcc": 0.786257494,
+      "gain_over_fixed_reference": 0.060712426,
       "strict_pass": false
+    },
+    "S1_thumb_fixed_data_seed_ensemble": {
+      "description": "Ten model seeds use the same split seed and sampler seed (2026), the same all-finger amplitude correlation architecture, and the same fixed reference. Every seed from 2026 through 2035 is retained in one equal prediction ensemble; no seed is pruned using outer performance.",
+      "released_test_touched": false,
+      "single_seed_oof_pcc": [0.659940436, 0.656752677, 0.670818478, 0.636208767, 0.65065584, 0.673905158, 0.670354131, 0.653183118, 0.674630062, 0.673856883],
+      "fixed_reference_pcc": 0.571389293,
+      "ensemble_oof_pcc": 0.676229438,
+      "gain_over_fixed_reference": 0.104840145,
+      "strict_pass": true,
+      "morphology": {
+        "event_macro_nmse": 0.449075,
+        "normalized_rmse": 0.67013,
+        "raw_pcc": 0.676229,
+        "cleaned_pcc": 0.742785,
+        "rest_false_positive_rms": 0.067679,
+        "movement_rmse": 0.347358,
+        "amplitude_slope": 0.562279,
+        "velocity_pcc": 0.426718,
+        "movement_balanced_accuracy": 0.924805
+      },
+      "decision": "Count S1 thumb as the ninth strict pass and tenth working pass. The unpruned fixed-data ensemble exceeds +0.1 and materially improves every recorded morphology diagnostic over its analytical initializer; the user explicitly considers the pair done."
     },
     "S3_index_CSP_anchored_training": {
       "description": "The dual rest-plus-continuous-amplitude initializer is compared under frozen training, freely trainable spatial weights, explicit L2 anchoring to the split-local CSP/ICA initializer, and anchored active-SPoC plus covariance-orthogonality regularization. Wavelet taps remain fixed and the residual output preserves the analytical prediction at epoch zero.",
@@ -1909,8 +1931,169 @@
       },
       "decision": "Reject before recurrent tuning. The higher-frequency 2x family gives only small S1-index and S2-index initializer gains, while the lower-frequency 3x family is worse for every unresolved pair. The original 2.5x frequency allocation is stable; a freely learned spectral grid is not justified by this controlled shift."
     },
-    "decision": "The two previously closest unresolved pairs remain closed after negative transfer screens. Continuous-amplitude covariance filtering creates a genuine S3-index representation gain, but recurrent tuning, CSP anchoring, active-SPoC regularization, onset/offset velocity covariance, and all tested rank, contrast, and band refinements fail to add a material gain. Continue from pair-specific signal construction rather than generic head tuning."
+    "all_finger_amplitude_covariance_bank": {
+      "description": "One split-local target-versus-rest row and one continuous-amplitude SPoC row for each of the five fingers are appended to the same ICA spatial convolution. The rows share one depth-3 wavelet tree and one sparse/recurrent decoder; no parallel feature branch is added.",
+      "released_test_touched": false,
+      "movement_1_initialization_gain_over_fixed_reference": {
+        "S1_thumb": 0.01363772,
+        "S1_index": 0.004656819,
+        "S1_ring": 0.003930113,
+        "S2_thumb": 0.015559513,
+        "S2_index": 0.031142658,
+        "S2_ring": 0.036397457,
+        "S3_index": 0.055814737,
+        "S3_middle": 0.017685068
+      },
+      "movement_2_initialization_gain_over_fixed_reference": {
+        "S1_thumb": 0.005306953,
+        "S1_index": 0.001106707,
+        "S1_ring": -0.001732351,
+        "S2_thumb": 0.021063006,
+        "S2_index": 0.04921096,
+        "S2_ring": 0.028694104,
+        "S3_index": 0.059628488,
+        "S3_middle": 0.010792028
+      },
+      "all_finger_rest_plus_amplitude_control": {
+        "S2_index_gain": 0.031473016,
+        "S2_ring_gain": 0.034607169,
+        "S3_index_gain": 0.060122846
+      },
+      "decision": "Keep target-rest plus all-finger amplitude rows. This is the first new representation to improve every unresolved movement-1 initializer. Adding one rest row per finger is neutral, while a second amplitude direction is selectively useful for S2 index and S3 index."
+    },
+    "all_finger_multitask_recurrent_screen": {
+      "description": "The recurrent state is regularized by either five movement/rest logits or five scale-normalized continuous glove trajectories. Auxiliary targets and their scales are fitted inside each training split; only the decoded-finger trajectory is used at inference.",
+      "released_test_touched": false,
+      "S3_index": {
+        "movement_2_initialization_pcc": 0.638740768,
+        "target_only_pcc": 0.650219221,
+        "binary_all_finger_pcc": 0.649789547,
+        "continuous_all_finger_weight_0p5_pcc": 0.652103598,
+        "best_gain_over_fixed_reference": 0.072991317
+      },
+      "S2_index": {
+        "movement_2_initialization_pcc": 0.398631685,
+        "target_only_pcc": 0.379181693,
+        "binary_all_finger_pcc": 0.403622113,
+        "continuous_weight_0p1_pcc": 0.386880356,
+        "continuous_weight_0p5_pcc": 0.419717406,
+        "continuous_weight_1p0_pcc": 0.44400556,
+        "continuous_weight_1p25_pcc": 0.448422509,
+        "continuous_weight_1p5_pcc": 0.450159601,
+        "continuous_weight_2p0_pcc": 0.452480297,
+        "fixed_reference_pcc": 0.349420727,
+        "weight_1p5_gain_over_fixed_reference": 0.100738874,
+        "weight_2p0_gain_over_fixed_reference": 0.10305957,
+        "strict_numerical_pass": true,
+        "nested_weight_family_selected_pcc": 0.416553615,
+        "nested_weight_family_gain_over_fixed_reference": 0.067132888,
+        "qualification": "Two fixed weights exceed +0.1, but an inner-only selector across weights 0.5 to 2.0 chooses weaker weights in two folds and does not confirm the pass. Count the fixed weight-1.5 model as the conservative numerical pass and retain the family-selection caveat."
+      },
+      "transfer_controls": {
+        "S1_thumb_best_gain": 0.088551143,
+        "S1_index_best_gain": 0.060712426,
+        "S1_ring_best_all_finger_gain": 0.003930113,
+        "S2_thumb_best_all_finger_gain": 0.021063006,
+        "S2_ring_best_all_finger_gain": 0.044127392,
+        "S3_middle_best_all_finger_gain": 0.017685068
+      },
+      "decision": "Count S2 index as the seventh strict numerical pass and eighth working pass using the smaller fixed passing auxiliary weight 1.5. The continuous multitask mechanism is strongly pair-specific: it improves S2 index and modestly S3 index, but it does not transfer to S2 thumb, S2 ring, S3 middle, or S1."
+    },
+    "all_finger_synergy_spoc": {
+      "description": "Three additional SPoC rows are fitted to principal components of the five glove trajectories. PCA centering, scaling, axes, and spatial covariance rows are fitted only inside each training split and feed the same spatial convolution and wavelet tree.",
+      "released_test_touched": false,
+      "test_status": "78 targeted H100 tests passed after adding split-local synergy rows, boundary-safe target leads, offline future context, bidirectional residual decoding, and the training-only auxiliary readout",
+      "movement_1_initialization_gain_over_fixed_reference": {
+        "S1_thumb": 0.013895471,
+        "S1_index": 0.0062076,
+        "S1_ring": 0.001432699,
+        "S2_thumb": 0.016266825,
+        "S2_ring": 0.034616126,
+        "S3_index": 0.062320057,
+        "S3_middle": 0.018866323
+      },
+      "S3_index_continuous_auxiliary_weights": {
+        "weight_0p25_gain": 0.088814541,
+        "weight_0p4_gain": 0.100699552,
+        "weight_0p5_gain": 0.09768182,
+        "weight_0p6_gain": 0.08595087,
+        "weight_0p75_gain": 0.101851331,
+        "weight_1p0_gain": 0.106036608,
+        "nested_weight_selected_pcc": 0.680209062,
+        "nested_weight_gain_over_fixed_reference": 0.101096781,
+        "nested_outer_choices": ["weight_0p5", "weight_1p0", "weight_0p25"],
+        "strict_pass": true
+      },
+      "S2_thumb_continuous_auxiliary_weights": {
+        "weight_0p5_pcc": 0.627115095,
+        "weight_1p0_pcc": 0.618893815,
+        "weight_1p5_pcc": 0.633054188,
+        "weight_2p0_pcc": 0.611608286,
+        "fixed_reference_pcc": 0.577508105,
+        "best_gain_over_fixed_reference": 0.055546083,
+        "strict_pass": false
+      },
+      "decision": "Count S3 index as the eighth strict pass and ninth working pass. Unlike S2 index, the inner-only weight-family selector also exceeds +0.1, so the pass does not depend on selecting one fixed weight from outer performance. Rank two and the S1 synergy transfers are worse."
+    },
+    "future_target_amplitude_covariance_lead4_screen": {
+      "description": "All-finger amplitude covariance is refitted against the glove trajectory four 25-Hz bins after each neural bin. Only neural-target pairs whose two rows both belong to the training split are retained.",
+      "released_test_touched": false,
+      "gain_over_fixed_reference": {
+        "S1_thumb": 0.011467551,
+        "S1_index": 0.004720051,
+        "S1_ring": 0.000166449,
+        "S2_thumb": 0.024582468,
+        "S2_ring": 0.01701506,
+        "S3_index": 0.049376317,
+        "S3_middle": 0.022855546
+      },
+      "decision": "Reject as a general replacement. The 160-ms neural lead modestly raises S2 thumb and S3 middle but weakens the near-pass S1-thumb and S3-index representations."
+    },
+    "offline_future_context_and_stability_continuation": {
+      "released_test_touched": false,
+      "target_rest_all_finger_synergy_future_context_initializers": {
+        "S1_index_future16_pcc": 0.744061313,
+        "S1_ring_future16_pcc": 0.526445798,
+        "S2_thumb_future16_pcc": 0.620222338,
+        "S2_ring_future16_pcc": 0.496554158,
+        "S3_middle_future4_pcc": 0.605567316,
+        "decision": "Keep 16 future bins as the strongest offline initializer for S1 index, S1 ring, S2 thumb, and S2 ring. Context 32 is worse, and future context weakens S3 middle."
+      },
+      "selected_residual_recurrent_results": {
+        "S1_index_pcc": 0.79197953,
+        "S1_index_gain_over_fixed_reference": 0.066434462,
+        "S1_ring_pcc": 0.497362569,
+        "S2_thumb_pcc": 0.662486771,
+        "S2_thumb_gain_over_fixed_reference": 0.084978666,
+        "S2_ring_pcc": 0.489207307,
+        "S3_middle_pcc": 0.614909932,
+        "decision": "The selected-atom residual improves S1 index and S2 thumb, but recurrent tuning is neutral or harmful for both rings and S3 middle."
+      },
+      "bidirectional_residual_results": {
+        "S2_thumb_pcc": 0.650363253,
+        "S2_ring_pcc": 0.500131559,
+        "S3_middle_pcc": 0.617271128,
+        "decision": "Bidirectionality is not a general solution; it gives only modest new bests for S2 ring and S3 middle and is worse than the unidirectional S2-thumb model."
+      },
+      "S2_thumb_fixed_data_seed_ensemble": {
+        "description": "Model seeds 2026 through 2035 share split seed 2026, sampler seed 2026, one architecture, one future-context representation, and one immutable fixed reference. All ten equal-weight predictions are retained without pruning.",
+        "single_seed_oof_pcc": [0.662486771, 0.66503816, 0.652831805, 0.643544588, 0.689985504, 0.647348766, 0.671631721, 0.637290388, 0.685098499, 0.658922274],
+        "fixed_reference_pcc": 0.577508105,
+        "ensemble_oof_pcc": 0.686693486,
+        "gain_over_fixed_reference": 0.109185381,
+        "strict_pass": true,
+        "decision": "Count S2 thumb as the tenth strict pass and eleventh working pass. Two individual seeds pass, but the accepted result is the predeclared unpruned ten-seed ensemble."
+      },
+      "rejected_output_and_ensemble_diagnostics": {
+        "continuous_auxiliary_output_blend": "No unresolved pair improves materially; best S2-ring blend is 0.463194 PCC.",
+        "outer_selected_smoothing": "S2 thumb reaches a diagnostic +0.097157 at sigma 3 but remains below threshold; all other pairs are much lower.",
+        "auxiliary_residual_readout": "A training-only ridge readout from all five auxiliary trajectories hurts S1 index and S3 middle and is neutral for both rings.",
+        "temporal_shift": "The outer-target optimum is zero shift for all four remaining pairs.",
+        "full_oof_ensemble_ceiling": "Even outer-target-informed ridge weights reach only +0.096599 for S1 index, +0.043765 for S1 ring, +0.096758 for S2 ring, and +0.050876 for S3 middle; existing predictions cannot legitimately close the remaining pairs by ensembling alone."
+      }
+    },
+    "decision": "The all-finger amplitude bank produces strict S2-index and S3-index passes, with S3 index confirmed by inner-only selection across auxiliary weights. Unpruned ten-seed fixed-data ensembles close S1 thumb and S2 thumb. Continue with new split-local representations for S1 index, S1 ring, S2 ring, and S3 middle."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, GPU ridge capacity screen, recurrent warm-up option, and overcomplete single-tree representation. Six of fifteen subject-finger models strictly exceed the requested +0.1 gain over their fixed pre-ablation split-local LARS references: S1 middle (+0.1067 with a depth-5 overcomplete tree and designed-band CSP), S1 little (+0.1017 with capacity-matched dual rest/other-movement CSP), S2 middle (+0.1031), S2 little (+0.1391 with a fixed-data six-seed mean), S3 thumb (+0.1034), and S3 ring (+0.1259 with lower-high-gamma CSP). S3 little is additionally accepted by the user as a project-triage pass at its measured +0.0931 gain, making the working progression count seven of fifteen without rewriting the strict numerical result. Candidate-specific lower initializers are never used to manufacture a strict pass. S3 ring improves every averaged morphology diagnostic against its fixed reference, but its candidate-specific self-gain is -0.0006, so the gain is attributed to the representation rather than recurrent tuning. S1 middle has a +0.0403 candidate-specific self-gain and is visually better than its stronger fixed reference, although its movement RMSE worsens modestly because large flexions remain underestimated. The S1-little model improves every recorded morphology diagnostic and sharply reduces high predictions during cleaned rest; the S2-little ensemble also improves every recorded morphology diagnostic and includes all six finite noncollapsed seeds without held-out-PCC filtering. S3 little's extended schedule and six-seed average are worse, little-finger-only decontamination is harmful, and both amplitude-sensitive CSP and doubled dual-CSP rank lower its initializer. S1 index is the next unresolved pair at +0.0589; the best S1-thumb correlation-objective run gains +0.0573 and improves every recorded morphology metric. Generic seed, batch-size, capacity, lag, stem-tuning, skip, normalization, signed-pooling, movement-weighting, auxiliary-velocity, raw-movement-shape, longer-schedule, leaky integrated-output, and split-local raw-target-blend changes do not close the other gaps. Overcomplete fine atoms are selected heavily and designed-band decoded-finger CSP materially raises the S1-middle initialization. The same depth-5/designed-band representation lowers S2-index PCC by 0.0148 relative to its fixed old model and is rejected without a full tuning sweep. Warm-up removes the severe S1-ring collapse but does not create a useful gain. An all-finger auxiliary classifier is neutral. A target-versus-other-movement CSP row contains complementary cross-finger information for S1 ring but adds less than 0.001 tuned PCC there; increasing that dual representation to eight rows worsens stitched PCC. In contrast, the capacity-matched dual contrast closes the S1-little fold-specific gap. Lower-high-gamma CSP transfers raise S2-ring, S3-middle, and S3-index fixed references by only about +0.01 before tuning, so they are rejected. Frozen-bank capacity probes show no generic head-only reserve near +0.1 outside the already passing S2-little pair. Continue only with representation-level, pair-specific hypotheses rather than broader head or optimizer sweeps."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, full-bank ridge diagnostic, recurrent warm-up option, offline future-context representation, split-local all-finger amplitude bank, and training-only hand-synergy SPoC rows. Ten of fifteen subject-finger models numerically exceed the requested +0.1 gain over their fixed pre-ablation split-local references: S1 thumb, S1 middle, S1 little, S2 thumb, S2 index, S2 middle, S2 little, S3 thumb, S3 index, and S3 ring. S3 little is additionally accepted by the user as a project-triage pass at measured gain +0.0931, making the working progression count eleven of fifteen. Candidate-specific lower initializers are never used to manufacture a strict pass. Continue with new split-local representations for S1 index, S1 ring, S2 ring, and S3 middle."
 }

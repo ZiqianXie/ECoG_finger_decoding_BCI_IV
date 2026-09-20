@@ -180,8 +180,20 @@ def main() -> None:
     parser.add_argument(
         "--probes",
         nargs="+",
-        choices=("ridge_all_lags", "ridge_current_temporal", "hist_current_temporal"),
-        default=("ridge_all_lags", "ridge_current_temporal", "hist_current_temporal"),
+        choices=(
+            "ridge_all_lags",
+            "ridge_all_lags_raw",
+            "ridge_current_temporal",
+            "ridge_current_temporal_raw",
+            "hist_current_temporal",
+        ),
+        default=(
+            "ridge_all_lags",
+            "ridge_all_lags_raw",
+            "ridge_current_temporal",
+            "ridge_current_temporal_raw",
+            "hist_current_temporal",
+        ),
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -228,6 +240,7 @@ def main() -> None:
         current = standardized[:, current_positions]
         temporal = temporal_summary(current, all_intervals, base)
         residual = target - base
+        raw_residual = raw - base
 
         predictions = {"lars": base}
         probe_audit: dict[str, object] = {}
@@ -248,6 +261,23 @@ def main() -> None:
                     "ridge_all_inner_mse": ridge_all_curve,
                 }
             )
+        if "ridge_all_lags_raw" in args.probes:
+            ridge_all_raw, ridge_all_raw_alpha, ridge_all_raw_curve = select_ridge(
+                standardized,
+                raw,
+                training_intervals,
+                backend=args.ridge_backend,
+                device=device,
+            )
+            predictions["ridge_all_lags_raw"] = np.maximum(
+                ridge_all_raw.predict(standardized), 0.0
+            )
+            probe_audit.update(
+                {
+                    "ridge_all_raw_alpha": ridge_all_raw_alpha,
+                    "ridge_all_raw_inner_mse": ridge_all_raw_curve,
+                }
+            )
         if "ridge_current_temporal" in args.probes:
             ridge_current, ridge_current_alpha, ridge_current_curve = select_ridge(
                 temporal,
@@ -263,6 +293,25 @@ def main() -> None:
                 {
                     "ridge_current_alpha": ridge_current_alpha,
                     "ridge_current_inner_mse": ridge_current_curve,
+                }
+            )
+        if "ridge_current_temporal_raw" in args.probes:
+            ridge_current_raw, ridge_current_raw_alpha, ridge_current_raw_curve = (
+                select_ridge(
+                    temporal,
+                    raw_residual,
+                    training_intervals,
+                    backend=args.ridge_backend,
+                    device=device,
+                )
+            )
+            predictions["ridge_current_temporal_raw"] = np.maximum(
+                base + ridge_current_raw.predict(temporal), 0.0
+            )
+            probe_audit.update(
+                {
+                    "ridge_current_raw_alpha": ridge_current_raw_alpha,
+                    "ridge_current_raw_inner_mse": ridge_current_raw_curve,
                 }
             )
         if "hist_current_temporal" in args.probes:

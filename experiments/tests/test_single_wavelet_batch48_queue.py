@@ -70,6 +70,74 @@ def test_command_keeps_single_branch_residual_configuration(tmp_path) -> None:
     assert "--frozen-update-grid 10 25 50 100 200" in joined
     assert "--wavelet-interlevel-skip" not in command
     assert "--wavelet-interlevel-normalization" not in command
+    assert "--future-context-bins 0" in joined
+    assert "--initialization-raw-target-blend 0.0" in joined
+
+
+def test_command_can_add_offline_future_context(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "thumb",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        future_context_bins=4,
+    )
+    assert "--future-context-bins 4" in " ".join(command)
+
+
+def test_command_can_feed_selected_noncausal_atoms_to_residual_decoder(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        residual_input="selected",
+        future_context_bins=16,
+    )
+    joined = " ".join(command)
+    assert "--residual-input selected" in joined
+    assert "--future-context-bins 16" in joined
+    assert "--residual-input-width" not in command
+
+
+def test_command_can_request_bidirectional_residual_lstm(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        3,
+        "middle",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        recurrent_cell="residual_bilstm",
+    )
+    assert "--recurrent-cell residual_bilstm" in " ".join(command)
+
+
+def test_command_can_reuse_one_outer_folds_inner_metrics(tmp_path) -> None:
+    source = tmp_path / "source"
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "thumb",
+        1,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        reuse_inner_metrics_root=source,
+    )
+    index = command.index("--reuse-inner-metrics-from")
+    assert command[index + 1] == str(source / "sub2" / "thumb" / "outer1")
 
 
 def test_command_can_request_two_csp_components_per_band(tmp_path) -> None:
@@ -357,6 +425,66 @@ def test_command_can_train_all_finger_movement_context(tmp_path) -> None:
         movement_head_scope="all_fingers",
     )
     assert "--movement-head-scope all_fingers" in " ".join(command)
+
+
+def test_command_can_use_continuous_all_finger_auxiliary_target(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        movement_loss_weight=0.1,
+        movement_head_scope="all_fingers",
+        movement_head_objective="continuous_trajectory",
+        amplitude_target_lead_bins=4,
+    )
+    joined = " ".join(command)
+    assert "--movement-head-scope all_fingers" in joined
+    assert "--movement-head-objective continuous_trajectory" in joined
+    assert "--movement-loss-weight 0.1" in joined
+    assert "--amplitude-target-lead-bins 4" in joined
+
+
+def test_command_can_fit_training_only_auxiliary_residual_readout(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        2,
+        "ring",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        movement_loss_weight=1.5,
+        movement_head_scope="all_fingers",
+        movement_head_objective="continuous_trajectory",
+        auxiliary_residual_readout_l2=0.1,
+    )
+    assert "--auxiliary-residual-readout-l2 0.1" in " ".join(command)
+
+
+def test_command_can_vary_only_model_seed_on_fixed_data(tmp_path) -> None:
+    command = build_command(
+        "python",
+        tmp_path / "cross_validate.py",
+        1,
+        "thumb",
+        0,
+        tmp_path / "output",
+        tmp_path / "initialization",
+        tmp_path / "ica",
+        model_seed=2027,
+        split_seed=2026,
+        sampler_seed=2026,
+    )
+    joined = " ".join(command)
+    assert "--seed 2027" in joined
+    assert "--split-seed 2026" in joined
+    assert "--sampler-seed 2026" in joined
 
 
 def test_command_can_initialize_csp_against_other_finger_movement(tmp_path) -> None:

@@ -101,6 +101,11 @@ CSP_CONTRAST_MODES = (
     "continuous_amplitude",
     "continuous_velocity",
     "dual_rest_velocity",
+    "all_finger_amplitude",
+    "target_rest_all_finger_amplitude",
+    "target_rest_all_finger_amplitude_synergy",
+    "target_rest_all_finger_amplitude_synergy_conditional",
+    "all_finger_rest_amplitude",
 )
 
 
@@ -460,6 +465,164 @@ def grouped_lars_subfolds(
     return result
 
 
+def all_finger_synergy_spatial_bank(
+    *,
+    filtered_bins: np.ndarray,
+    target: np.ndarray,
+    training: np.ndarray,
+    component_indices: tuple[int, ...],
+    synergy_count: int = 3,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit SPoC rows to training-only principal hand-trajectory synergies."""
+    training = np.asarray(training, dtype=np.int64)
+    training_target = np.asarray(target[training], dtype=np.float64)
+    finite_training = np.isfinite(training_target).all(axis=1)
+    if finite_training.sum() < 4:
+        raise RuntimeError("too few finite training bins for finger synergies")
+    fitted = training_target[finite_training]
+    center = fitted.mean(axis=0)
+    scale = fitted.std(axis=0)
+    scale = np.where(scale > np.finfo(np.float64).eps, scale, 1.0)
+    standardized = (fitted - center) / scale
+    _, singular_values, axes = np.linalg.svd(standardized, full_matrices=False)
+    count = min(int(synergy_count), axes.shape[0])
+    axes = axes[:count]
+    singular_values = singular_values[:count]
+    for row in axes:
+        pivot = int(np.argmax(np.abs(row)))
+        if row[pivot] < 0:
+            row *= -1.0
+
+    latent_target = np.full((target.shape[0], count), np.nan, dtype=np.float64)
+    finite = np.isfinite(target).all(axis=1)
+    latent_target[finite] = ((target[finite] - center) / scale) @ axes.T
+    fits = [
+        finger_csp_bank(
+            filtered_bins,
+            latent_target,
+            training,
+            synergy,
+            component_indices,
+            negative_class="continuous_amplitude",
+        )
+        for synergy in range(count)
+    ]
+    weights = np.concatenate([fit[0] for fit in fits], axis=0)
+    return weights, {
+        "training_rows": int(finite_training.sum()),
+        "target_center": center.tolist(),
+        "target_scale": scale.tolist(),
+        "synergy_loadings": axes.tolist(),
+        "singular_values": singular_values.tolist(),
+        "synergies": {
+            f"pc{index + 1}": fit[1] for index, fit in enumerate(fits)
+        },
+    }
+
+
+def conditional_finger_residual_target(
+    *,
+    target: np.ndarray,
+    training: np.ndarray,
+    finger_index: int,
+    ridge: float = 1.0e-3,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Residualize one finger against the other four using training rows only."""
+    target = np.asarray(target, dtype=np.float64)
+    training = np.asarray(training, dtype=np.int64)
+    if target.ndim != 2 or not 0 <= finger_index < target.shape[1]:
+        raise ValueError("finger index is outside the target matrix")
+    other_indices = tuple(
+        index for index in range(target.shape[1]) if index != finger_index
+    )
+    fitted_target = target[training]
+    finite_training = np.isfinite(fitted_target).all(axis=1)
+    if finite_training.sum() < len(other_indices) + 2:
+        raise RuntimeError("too few finite training bins for conditional finger target")
+
+    fitted_target = fitted_target[finite_training]
+    predictors = fitted_target[:, other_indices]
+    response = fitted_target[:, finger_index]
+    predictor_center = predictors.mean(axis=0)
+    predictor_scale = predictors.std(axis=0)
+    predictor_scale = np.where(
+        predictor_scale > np.finfo(np.float64).eps, predictor_scale, 1.0
+    )
+    response_center = float(response.mean())
+    standardized = (predictors - predictor_center) / predictor_scale
+    penalty = float(ridge) * standardized.shape[0]
+    coefficients = np.linalg.solve(
+        standardized.T @ standardized
+        + penalty * np.eye(standardized.shape[1], dtype=np.float64),
+        standardized.T @ (response - response_center),
+    )
+
+    residual = np.full(target.shape[0], np.nan, dtype=np.float64)
+    finite = np.isfinite(target).all(axis=1)
+    residual[finite] = (
+        target[finite, finger_index]
+        - response_center
+        - ((target[finite][:, other_indices] - predictor_center) / predictor_scale)
+        @ coefficients
+    )
+    fitted_residual = residual[training][finite_training]
+    return residual, {
+        "training_rows": int(finite_training.sum()),
+        "finger_index": int(finger_index),
+        "other_finger_indices": list(other_indices),
+        "predictor_center": predictor_center.tolist(),
+        "predictor_scale": predictor_scale.tolist(),
+        "response_center": response_center,
+        "ridge": float(ridge),
+        "coefficients": coefficients.tolist(),
+        "training_residual_std": float(fitted_residual.std()),
+    }
+
+
+def lead_aligned_training_target(
+    target: np.ndarray,
+    training: np.ndarray,
+    lead_bins: int,
+) -> tuple[np.ndarray, int]:
+    """Align neural row t with target t+lead without crossing training gaps."""
+    if lead_bins < 0:
+        raise ValueError("amplitude target lead must be nonnegative")
+    if lead_bins == 0:
+        return target, int(np.asarray(training).size)
+    training = np.asarray(training, dtype=np.int64)
+    in_training = np.zeros(target.shape[0], dtype=bool)
+    in_training[training] = True
+    future = training + lead_bins
+    valid = (future < target.shape[0])
+    valid &= in_training[np.minimum(future, target.shape[0] - 1)]
+    current = training[valid]
+    aligned = np.full_like(target, np.nan, dtype=np.float64)
+    aligned[current] = target[current + lead_bins]
+    return aligned, int(current.size)
+
+
+def lagged_with_future_context(
+    values: np.ndarray,
+    history: int,
+    future_context_bins: int,
+) -> np.ndarray:
+    """Return history windows extended by optional offline future context."""
+    if future_context_bins < 0:
+        raise ValueError("future context must be nonnegative")
+    if future_context_bins == 0:
+        return lagged(values, history)
+    padded = np.pad(
+        np.asarray(values),
+        ((0, future_context_bins), (0, 0)),
+        mode="edge",
+    )
+    width = history + future_context_bins
+    windows = np.lib.stride_tricks.sliding_window_view(padded, width, axis=0)
+    return np.ascontiguousarray(
+        windows.transpose(0, 2, 1).reshape(windows.shape[0], -1)
+    )
+
+
 def fit_csp_band_rows(
     *,
     joint_bins: np.ndarray,
@@ -473,6 +636,7 @@ def fit_csp_band_rows(
     lower_high_gamma_bins: np.ndarray | None = None,
     designed_band_bins: np.ndarray | None = None,
     csp_contrast_mode: str = "common_rest",
+    amplitude_target_lead_bins: int = 0,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Fit joint or leaf-specific gamma CSP rows for one spatial layer."""
     if csp_band_mode not in CSP_BAND_MODES:
@@ -481,6 +645,108 @@ def fit_csp_band_rows(
         raise ValueError(f"unsupported CSP contrast mode {csp_contrast_mode!r}")
 
     def fit_band(values: np.ndarray) -> tuple[np.ndarray, dict[str, object]]:
+        if csp_contrast_mode in (
+            "all_finger_amplitude",
+            "target_rest_all_finger_amplitude",
+            "target_rest_all_finger_amplitude_synergy",
+            "target_rest_all_finger_amplitude_synergy_conditional",
+            "all_finger_rest_amplitude",
+        ):
+            amplitude_target, aligned_count = lead_aligned_training_target(
+                target, training, amplitude_target_lead_bins
+            )
+            named_fits: list[tuple[str, tuple[np.ndarray, dict[str, object]]]] = []
+            if csp_contrast_mode in (
+                "target_rest_all_finger_amplitude",
+                "target_rest_all_finger_amplitude_synergy",
+                "target_rest_all_finger_amplitude_synergy_conditional",
+            ):
+                named_fits.append(
+                    (
+                        "target_common_rest",
+                        finger_csp_bank(
+                            values,
+                            target,
+                            training,
+                            finger_index,
+                            component_indices,
+                            negative_class="common_rest",
+                        ),
+                    )
+                )
+            elif csp_contrast_mode == "all_finger_rest_amplitude":
+                named_fits.extend(
+                    (
+                        f"{FINGER_NAMES[bank_finger]}_common_rest",
+                        finger_csp_bank(
+                            values,
+                            target,
+                            training,
+                            bank_finger,
+                            component_indices,
+                            negative_class="common_rest",
+                        ),
+                    )
+                    for bank_finger in range(target.shape[1])
+                )
+            named_fits.extend(
+                (
+                    f"{FINGER_NAMES[bank_finger]}_continuous_amplitude",
+                    finger_csp_bank(
+                        values,
+                        amplitude_target,
+                        training,
+                        bank_finger,
+                        component_indices,
+                        negative_class="continuous_amplitude",
+                    ),
+                )
+                for bank_finger in range(target.shape[1])
+            )
+            if csp_contrast_mode in (
+                "target_rest_all_finger_amplitude_synergy",
+                "target_rest_all_finger_amplitude_synergy_conditional",
+            ):
+                synergy_weights, synergy_audit = all_finger_synergy_spatial_bank(
+                    filtered_bins=values,
+                    target=amplitude_target,
+                    training=training,
+                    component_indices=component_indices,
+                )
+                named_fits.append(
+                    (
+                        "all_finger_trajectory_synergies",
+                        (synergy_weights, synergy_audit),
+                    )
+                )
+            if csp_contrast_mode == "target_rest_all_finger_amplitude_synergy_conditional":
+                conditional_target, conditional_audit = conditional_finger_residual_target(
+                    target=amplitude_target,
+                    training=training,
+                    finger_index=finger_index,
+                )
+                conditional_fit = finger_csp_bank(
+                    values,
+                    conditional_target[:, None],
+                    training,
+                    0,
+                    component_indices,
+                    negative_class="continuous_amplitude",
+                )
+                conditional_audit.update(conditional_fit[1])
+                named_fits.append(
+                    (
+                        "target_conditional_amplitude",
+                        (conditional_fit[0], conditional_audit),
+                    )
+                )
+            weights = np.concatenate([fit[0] for _, fit in named_fits], axis=0)
+            return weights, {
+                "contrast_mode": csp_contrast_mode,
+                "amplitude_target_lead_bins": int(amplitude_target_lead_bins),
+                "lead_aligned_training_bins": aligned_count,
+                "contrasts": {name: fit[1] for name, fit in named_fits},
+            }
         if csp_contrast_mode == "dual_rest_other":
             negative_classes = ("common_rest", "other_movement")
         elif csp_contrast_mode == "dual_rest_amplitude":
@@ -586,12 +852,14 @@ def fit_initialization(
     csp_mode: str = "movement_1",
     csp_band_mode: str = "joint_hhl_hhh",
     csp_contrast_mode: str = "common_rest",
+    amplitude_target_lead_bins: int = 0,
     hhl_bins: np.ndarray | None = None,
     hhh_bins: np.ndarray | None = None,
     lower_high_gamma_bins: np.ndarray | None = None,
     designed_band_bins: np.ndarray | None = None,
     ica_weights: np.ndarray | None = None,
     samples_per_bin: int = SAMPLES_PER_BIN,
+    future_context_bins: int = 0,
     include_candidate_pool: bool = False,
     lasso_backend: str = "sklearn_lars",
 ) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, object]]:
@@ -624,6 +892,7 @@ def fit_initialization(
         component_indices=CSP_MODES[csp_mode],
         csp_band_mode=csp_band_mode,
         csp_contrast_mode=csp_contrast_mode,
+        amplitude_target_lead_bins=amplitude_target_lead_bins,
     )
     normalized_rows = []
     csp_stds = []
@@ -648,7 +917,9 @@ def fit_initialization(
         )
         streams.append(joint_energy.reshape(joint_energy.shape[0], -1))
     stream = np.concatenate(streams, axis=1)
-    features = lagged(np.asarray(stream, dtype=np.float32), HISTORY)
+    features = lagged_with_future_context(
+        np.asarray(stream, dtype=np.float32), HISTORY, future_context_bins
+    )
     csp_per_bin_positions = None
     if csp_band_mode == "designed_seven" and joint_weights.shape[0]:
         leaf_count = int(ica_energy.shape[2])
@@ -682,6 +953,7 @@ def fit_initialization(
         finger_index,
         csp_per_bin_positions,
     )
+    candidate_audit["future_context_bins"] = int(future_context_bins)
     scaler = StandardScaler()
     train_x = scaler.fit_transform(features[training][:, candidates]).astype(
         np.float64, copy=False
@@ -1313,6 +1585,45 @@ def split_local_raw_trajectory_blend(
     return torch.lerp(cleaned, aligned_raw, blend)
 
 
+def split_local_initialization_target_blend(
+    cleaned: np.ndarray,
+    raw: np.ndarray,
+    training_rows: np.ndarray,
+    blend: float,
+) -> tuple[np.ndarray, list[dict[str, float]]]:
+    """Blend each cleaned finger with training-affine raw shape for initialization."""
+    cleaned = np.asarray(cleaned, dtype=np.float64)
+    raw = np.asarray(raw, dtype=np.float64)
+    training_rows = np.asarray(training_rows, dtype=np.int64)
+    if cleaned.shape != raw.shape or cleaned.ndim != 2:
+        raise ValueError("cleaned and raw initialization targets must be matching matrices")
+    if not 0.0 <= blend <= 1.0:
+        raise ValueError("initialization raw target blend must be between zero and one")
+    if blend == 0.0:
+        return cleaned.astype(np.float32), []
+    result = cleaned.copy()
+    audit = []
+    for finger in range(cleaned.shape[1]):
+        training_raw = raw[training_rows, finger]
+        training_cleaned = cleaned[training_rows, finger]
+        finite = np.isfinite(training_raw) & np.isfinite(training_cleaned)
+        centered_raw = training_raw[finite] - training_raw[finite].mean()
+        centered_cleaned = (
+            training_cleaned[finite] - training_cleaned[finite].mean()
+        )
+        slope = float(
+            centered_raw @ centered_cleaned
+            / max(centered_raw @ centered_raw, 1.0e-8)
+        )
+        intercept = float(
+            training_cleaned[finite].mean() - slope * training_raw[finite].mean()
+        )
+        aligned = slope * raw[:, finger] + intercept
+        result[:, finger] = (1.0 - blend) * cleaned[:, finger] + blend * aligned
+        audit.append({"slope": slope, "intercept": intercept})
+    return result.astype(np.float32), audit
+
+
 def train_updates(
     *,
     model: SingleWaveletDecoder,
@@ -1334,6 +1645,8 @@ def train_updates(
     movement_threshold: float = 0.10,
     movement_positive_weight: torch.Tensor | None = None,
     movement_targets: torch.Tensor | None = None,
+    movement_head_objective: str = "binary_state",
+    movement_target_scale: torch.Tensor | None = None,
     velocity_loss_weight: float = 0.0,
     velocity_scale: torch.Tensor | None = None,
     correlation_loss_weight: float = 0.0,
@@ -1398,12 +1711,27 @@ def train_updates(
             movement_trajectory_weight,
         )
         if movement_loss_weight:
-            movement_target = (movement_observed >= movement_threshold).to(result.dtype)
-            loss = loss + movement_loss_weight * F.binary_cross_entropy_with_logits(
-                movement_logit,
-                movement_target,
-                pos_weight=movement_positive_weight,
-            )
+            if movement_head_objective == "binary_state":
+                movement_target = (movement_observed >= movement_threshold).to(
+                    result.dtype
+                )
+                loss = loss + movement_loss_weight * F.binary_cross_entropy_with_logits(
+                    movement_logit,
+                    movement_target,
+                    pos_weight=movement_positive_weight,
+                )
+            elif movement_head_objective == "continuous_trajectory":
+                if movement_target_scale is None:
+                    raise ValueError(
+                        "movement target scale is required for continuous auxiliary loss"
+                    )
+                loss = loss + movement_loss_weight * (
+                    (movement_logit - movement_observed) / movement_target_scale
+                ).square().mean()
+            else:
+                raise ValueError(
+                    f"unsupported movement head objective {movement_head_objective!r}"
+                )
         if velocity_loss_weight:
             if velocity_scale is None:
                 raise ValueError("velocity scale is required for auxiliary velocity loss")
@@ -1496,6 +1824,20 @@ def movement_positive_weight(
     return (negative / positive).to(target.dtype)
 
 
+def movement_target_scale(
+    target: torch.Tensor,
+    rows: np.ndarray,
+    finger_index: int | None,
+) -> torch.Tensor:
+    """Scale a target-finger or five-finger continuous auxiliary loss."""
+    scoped = target.index_select(
+        0, torch.as_tensor(rows, dtype=torch.long, device=target.device)
+    )
+    if finger_index is not None:
+        scoped = scoped[:, finger_index]
+    return scoped.std(dim=0).clamp_min(0.1)
+
+
 def grouped_velocity_scale(
     target: torch.Tensor,
     groups: list[list[int]],
@@ -1583,6 +1925,80 @@ def cached_prediction(
     rows: int,
 ) -> np.ndarray:
     return predict_intervals(model, cached, intervals, rows)
+
+
+@torch.inference_mode()
+def auxiliary_predictions(
+    model: SingleWaveletDecoder,
+    cached: torch.Tensor,
+    intervals: list[list[int]],
+    rows: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Predict the primary trajectory and continuous auxiliary trajectories."""
+    if model.movement_output is None:
+        raise ValueError("auxiliary predictions require a movement head")
+    model.eval()
+    primary = np.full(rows, np.nan, dtype=np.float32)
+    auxiliary = np.full(
+        (rows, model.movement_head_outputs), np.nan, dtype=np.float32
+    )
+    for start, stop in intervals:
+        result = model.decode_features_with_auxiliary(cached[start:stop][None])
+        primary[start:stop] = result[0][0].float().cpu().numpy()
+        auxiliary[start:stop] = result[1][0].float().cpu().numpy()
+    return primary, auxiliary
+
+
+def auxiliary_residual_readout(
+    primary: np.ndarray,
+    auxiliary: np.ndarray,
+    raw_target: np.ndarray,
+    training_intervals: list[list[int]],
+    prediction_intervals: list[list[int]],
+    l2: float,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fit a small training-only ridge correction to the primary trajectory."""
+    if l2 <= 0:
+        raise ValueError("auxiliary residual readout L2 must be positive")
+    training = indices_from_intervals(training_intervals)
+    prediction_rows = indices_from_intervals(prediction_intervals)
+    train_auxiliary = np.asarray(auxiliary[training], dtype=np.float64)
+    train_primary = np.asarray(primary[training], dtype=np.float64)
+    train_target = np.asarray(raw_target[training], dtype=np.float64)
+    finite = (
+        np.isfinite(train_primary)
+        & np.isfinite(train_target)
+        & np.isfinite(train_auxiliary).all(axis=1)
+    )
+    if finite.sum() <= train_auxiliary.shape[1] + 1:
+        raise ValueError("too few finite training rows for auxiliary readout")
+    train_auxiliary = train_auxiliary[finite]
+    residual = train_target[finite] - train_primary[finite]
+    mean = train_auxiliary.mean(axis=0)
+    scale = train_auxiliary.std(axis=0)
+    scale[scale < 1.0e-6] = 1.0
+    design = (train_auxiliary - mean) / scale
+    residual_mean = float(residual.mean())
+    centered_residual = residual - residual_mean
+    penalty = float(l2) * design.shape[0]
+    coefficient = np.linalg.solve(
+        design.T @ design + penalty * np.eye(design.shape[1]),
+        design.T @ centered_residual,
+    )
+    corrected = np.asarray(primary, dtype=np.float32).copy()
+    prediction_design = (auxiliary[prediction_rows] - mean) / scale
+    corrected[prediction_rows] += (
+        residual_mean + prediction_design @ coefficient
+    ).astype(np.float32)
+    audit = {
+        "l2_per_training_row": float(l2),
+        "training_rows": int(finite.sum()),
+        "residual_intercept": residual_mean,
+        "auxiliary_mean": mean.tolist(),
+        "auxiliary_scale": scale.tolist(),
+        "coefficients": coefficient.tolist(),
+    }
+    return corrected, audit
 
 
 @torch.inference_mode()
@@ -1678,6 +2094,11 @@ def monitor_inner_fold(
         None if args.movement_head_scope == "all_fingers" else finger_index,
         args.movement_threshold,
     )
+    auxiliary_target_scale = movement_target_scale(
+        target,
+        training_rows,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
+    )
     velocity_scale = grouped_velocity_scale(
         target[:, finger_index], training_groups
     )
@@ -1733,6 +2154,8 @@ def monitor_inner_fold(
             movement_targets=(
                 target if args.movement_head_scope == "all_fingers" else None
             ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1809,6 +2232,8 @@ def monitor_inner_fold(
             movement_targets=(
                 target if args.movement_head_scope == "all_fingers" else None
             ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -1946,6 +2371,11 @@ def train_final_schedule(
         None if args.movement_head_scope == "all_fingers" else finger_index,
         args.movement_threshold,
     )
+    auxiliary_target_scale = movement_target_scale(
+        target,
+        training_rows,
+        None if args.movement_head_scope == "all_fingers" else finger_index,
+    )
     velocity_scale = grouped_velocity_scale(
         target[:, finger_index], training_groups
     )
@@ -1992,6 +2422,8 @@ def train_final_schedule(
             movement_targets=(
                 target if args.movement_head_scope == "all_fingers" else None
             ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -2050,6 +2482,8 @@ def train_final_schedule(
             movement_targets=(
                 target if args.movement_head_scope == "all_fingers" else None
             ),
+            movement_head_objective=args.movement_head_objective,
+            movement_target_scale=auxiliary_target_scale,
             velocity_loss_weight=args.velocity_loss_weight,
             velocity_scale=velocity_scale,
             correlation_loss_weight=args.correlation_loss_weight,
@@ -2225,6 +2659,21 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--amplitude-target-lead-bins",
+        type=int,
+        default=0,
+        help=(
+            "fit all-finger amplitude covariance at neural bin t against target "
+            "bin t+lead, retaining only pairs fully inside the training split"
+        ),
+    )
+    parser.add_argument(
+        "--future-context-bins",
+        type=int,
+        default=0,
+        help="offline neural bins after the decoded time included in sparse features",
+    )
+    parser.add_argument(
         "--csp-band-cache-root",
         type=Path,
         default=Path("/dev/shm/ecog_csp_band_cache"),
@@ -2249,7 +2698,13 @@ def main() -> None:
     parser.add_argument("--lars-forget-gate-bias", type=float, default=-5.0)
     parser.add_argument(
         "--recurrent-cell",
-        choices=("standard", "paper_equations", "residual_lstm", "residual_gru"),
+        choices=(
+            "standard",
+            "paper_equations",
+            "residual_lstm",
+            "residual_gru",
+            "residual_bilstm",
+        ),
         default="standard",
         help=(
             "LARS-initialized standard/paper LSTM, or a zero-initialized "
@@ -2415,6 +2870,24 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--movement-head-objective",
+        choices=("binary_state", "continuous_trajectory"),
+        default="binary_state",
+        help=(
+            "train the auxiliary movement head with balanced state BCE or "
+            "scale-normalized continuous glove trajectories"
+        ),
+    )
+    parser.add_argument(
+        "--auxiliary-residual-readout-l2",
+        type=float,
+        default=None,
+        help=(
+            "fit an outer-training ridge correction from the continuous all-finger "
+            "auxiliary trajectories; the value is the L2 penalty per training row"
+        ),
+    )
+    parser.add_argument(
         "--movement-trajectory-weight",
         type=float,
         default=1.0,
@@ -2427,6 +2900,15 @@ def main() -> None:
         help=(
             "blend the cleaned training target with an affine-aligned raw glove "
             "trace; the affine map is fitted only on each split's training rows"
+        ),
+    )
+    parser.add_argument(
+        "--initialization-raw-target-blend",
+        type=float,
+        default=0.0,
+        help=(
+            "blend the split-local sparse-initialization target with a "
+            "training-affine raw glove trajectory"
         ),
     )
     parser.add_argument(
@@ -2515,6 +2997,7 @@ def main() -> None:
         or args.movement_trajectory_weight <= 0
         or args.warmup_steps < 0
         or not 0.0 <= args.raw_trajectory_blend <= 1.0
+        or not 0.0 <= args.initialization_raw_target_blend <= 1.0
         or args.velocity_loss_weight < 0
         or args.residual_output_init_std < 0
         or not 0.0 <= args.residual_decay <= 1.0
@@ -2531,6 +3014,10 @@ def main() -> None:
             and args.movement_modulation_learning_rate <= 0
         )
         or args.signed_pooling_learning_rate <= 0
+        or (
+            args.auxiliary_residual_readout_l2 is not None
+            and args.auxiliary_residual_readout_l2 <= 0
+        )
     ):
         raise ValueError("auxiliary loss weights must be nonnegative")
     if args.residual_input in (
@@ -2538,7 +3025,11 @@ def main() -> None:
         "current_candidate",
         "causal_candidate",
         "selected_causal",
-    ) and args.recurrent_cell not in ("residual_lstm", "residual_gru"):
+    ) and args.recurrent_cell not in (
+        "residual_lstm",
+        "residual_gru",
+        "residual_bilstm",
+    ):
         raise ValueError(
             "candidate residual inputs require --recurrent-cell residual_lstm or residual_gru"
         )
@@ -2550,6 +3041,22 @@ def main() -> None:
         )
     if args.residual_input_width is not None and args.residual_input_width <= 0:
         raise ValueError("--residual-input-width must be positive")
+    if args.amplitude_target_lead_bins < 0:
+        raise ValueError("--amplitude-target-lead-bins must be nonnegative")
+    if args.future_context_bins < 0:
+        raise ValueError("--future-context-bins must be nonnegative")
+    if args.future_context_bins and not args.frozen_only:
+        raise ValueError("future context currently requires --frozen-only cached features")
+    if args.amplitude_target_lead_bins and args.csp_contrast_mode not in (
+        "all_finger_amplitude",
+        "target_rest_all_finger_amplitude",
+        "target_rest_all_finger_amplitude_synergy",
+        "target_rest_all_finger_amplitude_synergy_conditional",
+        "all_finger_rest_amplitude",
+    ):
+        raise ValueError(
+            "--amplitude-target-lead-bins requires an all-finger amplitude contrast"
+        )
     if (
         args.residual_input
         not in ("current_candidate", "causal_candidate", "selected_causal")
@@ -2562,6 +3069,19 @@ def main() -> None:
         raise ValueError("--movement-modulation requires --movement-loss-weight")
     if args.movement_modulation and args.movement_head_scope != "target":
         raise ValueError("--movement-modulation requires --movement-head-scope target")
+    if args.auxiliary_residual_readout_l2 is not None and (
+        args.movement_loss_weight <= 0
+        or args.movement_head_scope != "all_fingers"
+        or args.movement_head_objective != "continuous_trajectory"
+    ):
+        raise ValueError(
+            "--auxiliary-residual-readout-l2 requires a continuous all-finger "
+            "auxiliary head"
+        )
+    if args.initialization_only and args.auxiliary_residual_readout_l2 is not None:
+        raise ValueError(
+            "--auxiliary-residual-readout-l2 is unavailable with --initialization-only"
+        )
     if args.spoc_auxiliary_weight and args.csp_contrast_mode not in (
         "continuous_amplitude",
         "dual_rest_amplitude",
@@ -2835,10 +3355,18 @@ def main() -> None:
                     little_event_ratio_low=args.little_event_ratio_low,
                     little_event_ratio_high=args.little_event_ratio_high,
                 )
+                initialization_target, target_blend_audit = (
+                    split_local_initialization_target_blend(
+                        target_np,
+                        raw_matrix,
+                        indices_from_intervals(requested_split["training_intervals"]),
+                        args.initialization_raw_target_blend,
+                    )
+                )
                 initialization, spatial, audit = fit_initialization(
                     ecog=ecog,
                     joint_bins=joint_bins,
-                    target=target_np,
+                    target=initialization_target,
                     training_intervals=requested_split["training_intervals"],
                     training_groups=requested_split["training_groups"],
                     frontend=frontend,
@@ -2849,6 +3377,7 @@ def main() -> None:
                     csp_mode=args.csp_mode,
                     csp_band_mode=args.csp_band_mode,
                     csp_contrast_mode=args.csp_contrast_mode,
+                    amplitude_target_lead_bins=args.amplitude_target_lead_bins,
                     hhl_bins=hhl_bins,
                     hhh_bins=hhh_bins,
                     lower_high_gamma_bins=lower_high_gamma_bins,
@@ -2862,6 +3391,7 @@ def main() -> None:
                         ecog.shape[1],
                     ),
                     samples_per_bin=args.samples_per_bin,
+                    future_context_bins=args.future_context_bins,
                     lasso_backend=args.lasso_backend,
                     include_candidate_pool=args.residual_input
                     in (
@@ -2871,6 +3401,10 @@ def main() -> None:
                         "selected_causal",
                     ),
                 )
+                audit["initialization_raw_target_blend"] = float(
+                    args.initialization_raw_target_blend
+                )
+                audit["initialization_raw_target_affine"] = target_blend_audit
                 return initialization, spatial, target_np, requested_split, audit
 
             initialization, spatial, target_np, split = load_or_create_initialization(
@@ -2955,10 +3489,18 @@ def main() -> None:
         }
 
         def create_outer_initialization():
+            initialization_target, target_blend_audit = (
+                split_local_initialization_target_blend(
+                    outer_target,
+                    raw_matrix,
+                    indices_from_intervals(outer_training_intervals),
+                    args.initialization_raw_target_blend,
+                )
+            )
             initialization, spatial, audit = fit_initialization(
                 ecog=ecog,
                 joint_bins=joint_bins,
-                target=outer_target,
+                target=initialization_target,
                 training_intervals=outer_training_intervals,
                 training_groups=[[int(start), int(stop)] for start, stop in groups],
                 frontend=frontend,
@@ -2969,6 +3511,7 @@ def main() -> None:
                 csp_mode=args.csp_mode,
                 csp_band_mode=args.csp_band_mode,
                 csp_contrast_mode=args.csp_contrast_mode,
+                amplitude_target_lead_bins=args.amplitude_target_lead_bins,
                 hhl_bins=hhl_bins,
                 hhh_bins=hhh_bins,
                 lower_high_gamma_bins=lower_high_gamma_bins,
@@ -2982,6 +3525,7 @@ def main() -> None:
                     ecog.shape[1],
                 ),
                 samples_per_bin=args.samples_per_bin,
+                future_context_bins=args.future_context_bins,
                 lasso_backend=args.lasso_backend,
                 include_candidate_pool=args.residual_input
                 in (
@@ -2991,6 +3535,10 @@ def main() -> None:
                     "selected_causal",
                 ),
             )
+            audit["initialization_raw_target_blend"] = float(
+                args.initialization_raw_target_blend
+            )
+            audit["initialization_raw_target_affine"] = target_blend_audit
             return (
                 initialization,
                 spatial,
@@ -3003,6 +3551,7 @@ def main() -> None:
             outer_cache, create_outer_initialization
         )
         target_np = outer_target.astype(np.float32)
+        auxiliary_readout_audit = None
         if args.initialization_only:
             model = None
             initialized = direct_initialization_prediction(
@@ -3039,6 +3588,21 @@ def main() -> None:
             prediction = predict_intervals(
                 model, final_features, outer_validation_intervals, rows
             )
+            if args.auxiliary_residual_readout_l2 is not None:
+                primary_prediction, auxiliary_prediction = auxiliary_predictions(
+                    model,
+                    final_features,
+                    outer_training_intervals + outer_validation_intervals,
+                    rows,
+                )
+                prediction, auxiliary_readout_audit = auxiliary_residual_readout(
+                    primary_prediction,
+                    auxiliary_prediction,
+                    raw,
+                    outer_training_intervals,
+                    outer_validation_intervals,
+                    args.auxiliary_residual_readout_l2,
+                )
         validation = indices_from_intervals(outer_validation_intervals)
         initialized_oof[validation] = initialized[validation]
         tuned_oof[validation] = prediction[validation]
@@ -3065,6 +3629,7 @@ def main() -> None:
             "fold_assignment_objective": assignment_objective,
             "selected_schedule": selected_schedule,
             "selection_summary": selection_summary,
+            "auxiliary_residual_readout": auxiliary_readout_audit,
             "inner_records": inner_records,
             "initialized_outer_metrics": initialized_metrics,
             "selected_outer_metrics": selected_metrics,
@@ -3187,7 +3752,8 @@ def main() -> None:
                 f"fixed split-local LARS direct path plus zero-initialized "
                 f"{args.recurrent_cell} nonlinear residual; recurrent input="
                 f"{args.residual_input}"
-                if args.recurrent_cell in ("residual_lstm", "residual_gru")
+                if args.recurrent_cell
+                in ("residual_lstm", "residual_gru", "residual_bilstm")
                 else f"LARS-initialized {args.recurrent_cell} nonlinear gated LSTM"
             )
         ),
@@ -3195,7 +3761,21 @@ def main() -> None:
         "training_objective": {
             "trajectory": "normalized mean squared error",
             "movement_trajectory_weight": args.movement_trajectory_weight,
-            "movement_state_bce_weight": args.movement_loss_weight,
+            "movement_auxiliary_weight": args.movement_loss_weight,
+            "movement_head_objective": args.movement_head_objective,
+            "movement_state_bce_weight": (
+                args.movement_loss_weight
+                if args.movement_head_objective == "binary_state"
+                else 0.0
+            ),
+            "continuous_movement_trajectory_weight": (
+                args.movement_loss_weight
+                if args.movement_head_objective == "continuous_trajectory"
+                else 0.0
+            ),
+            "auxiliary_residual_readout_l2_per_training_row": (
+                args.auxiliary_residual_readout_l2
+            ),
             "movement_state_trajectory_modulation": args.movement_modulation,
             "auxiliary_velocity_mse_weight": args.velocity_loss_weight,
             "within_sequence_correlation_weight": args.correlation_loss_weight,
@@ -3210,7 +3790,19 @@ def main() -> None:
             ),
             "model_outputs": ["trajectory"]
             + (
-                ["target_finger_movement_logit"]
+                [
+                    (
+                        "all_finger_continuous_trajectories"
+                        if args.movement_head_scope == "all_fingers"
+                        else "target_finger_continuous_trajectory"
+                    )
+                    if args.movement_head_objective == "continuous_trajectory"
+                    else (
+                        "all_finger_movement_logits"
+                        if args.movement_head_scope == "all_fingers"
+                        else "target_finger_movement_logit"
+                    )
+                ]
                 if args.movement_loss_weight
                 else []
             )
