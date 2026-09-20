@@ -13,10 +13,34 @@
     "architecture_change_policy": "Changing the representation or architecture never resets the fixed reference. Such a run may establish an overall model gain against the old reference, but it is not a same-architecture tuning gain.",
     "prohibited_shortcut": "A weaker candidate-specific initialization never replaces the fixed reference and cannot manufacture a pass."
   },
+  "active_model_selection_policy": {
+    "selection_unit": "one complete model branch per subject-finger pair",
+    "heterogeneous_prediction_blends_allowed": false,
+    "same_branch_seed_replicates": "May be used to characterize stochastic stability, but mixing distinct spatial, temporal, or decoder families cannot establish a pass.",
+    "historical_ensemble_artifacts": "Retained only as diagnostic evidence; they are excluded from active pass accounting.",
+    "released_test_touched": false
+  },
+  "tuning_failure_audit": {
+    "scope": "the original common-model 15-pair screen; later pair-specific branches are evaluated separately",
+    "definition": "tuned stitched OOF PCC less than or equal to the identical branch's initialization PCC",
+    "did_not_improve_count": 9,
+    "pairs": {
+      "S1_middle": -0.058919815,
+      "S1_ring": -0.106540122,
+      "S1_little": -0.016443158,
+      "S2_thumb": -0.013514174,
+      "S2_index": -0.001774804,
+      "S2_ring": -0.01648368,
+      "S3_index": -0.009675714,
+      "S3_middle": -0.022454883,
+      "S3_little": -0.036835188
+    },
+    "selection_rule": "Never retain a tuned checkpoint that is worse than its own initialization. Pair-specific branches may replace these failed common-model attempts only when their own split-safe OOF evidence is positive."
+  },
   "current_pass_accounting": {
     "fixed_reference_gain_at_least_0p1": {
-      "count": 11,
-      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 ring", "S2 little", "S3 thumb", "S3 index", "S3 ring"]
+      "count": 10,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring"]
     },
     "candidate_self_gain_at_least_0p1": {
       "count": 4,
@@ -24,9 +48,32 @@
     },
     "representation_only_fixed_reference_passes": ["S1 middle", "S3 ring"],
     "project_triage_acceptance_override": {
-      "count": 13,
-      "pairs": ["S1 thumb", "S1 index", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 ring", "S2 little", "S3 thumb", "S3 index", "S3 ring", "S3 little"],
-      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. S1 thumb was explicitly considered done by the user and independently exceeds the strict threshold. S2 thumb now exceeds the strict threshold with an unpruned equal ten-seed ensemble. On 2026-09-19 the user set +0.095 as the working done threshold for subsequent pairs; strict +0.100 accounting remains separate. S2 ring reaches strict +0.100662 with a fixed equal three-family ensemble. S1 index reaches working +0.096287 with a fixed equal six-family ensemble."
+      "count": 11,
+      "pairs": ["S1 thumb", "S1 middle", "S1 little", "S2 thumb", "S2 index", "S2 middle", "S2 little", "S3 thumb", "S3 index", "S3 ring", "S3 little"],
+      "note": "S3 little was accepted by the user for progression on 2026-09-19 at measured gain +0.093052718. S1 thumb was explicitly considered done by the user and independently exceeds the strict threshold. S2 thumb exceeds the strict threshold within one fixed model family. On 2026-09-19 the user set +0.095 as the working done threshold for subsequent pairs; strict +0.100 accounting remains separate. On 2026-09-20 heterogeneous model-soup blends were disallowed. S1 index and S2 ring therefore returned to the unresolved set because their best standalone branches gain only +0.078700 and +0.077011 over their immutable references."
+    },
+    "heterogeneous_soups_removed_from_active_accounting": {
+      "pairs": ["S1 index", "S2 ring"],
+      "S1_index_best_single_branch": {
+        "branch": "future-16 all-finger-synergy nonlinear temporal decoder",
+        "candidate_initialization_pcc": 0.744061312,
+        "selected_oof_pcc": 0.804245171,
+        "same_branch_gain": 0.060183859,
+        "fixed_reference_pcc": 0.725545068,
+        "gain_over_fixed_reference": 0.078700103,
+        "working_threshold_pass": false,
+        "output": "outputs/fullbank_hist_probe_future16_s1index_v1/hist_candidate"
+      },
+      "S2_ring_best_single_branch": {
+        "branch": "future-16 full-bank raw-target ridge",
+        "candidate_initialization_pcc": 0.496554157,
+        "selected_oof_pcc": 0.523094409,
+        "same_branch_gain": 0.026540252,
+        "fixed_reference_pcc": 0.446083223,
+        "gain_over_fixed_reference": 0.077011186,
+        "working_threshold_pass": false,
+        "output": "outputs/fullbank_ridge_probe_future16_s2ring_v3/ridge_all_lags_raw_candidate"
+      }
     }
   },
   "screened_pairs": [
@@ -2093,6 +2140,8 @@
       },
       "S2_ring_fixed_equal_three_family": {
         "description": "A fixed equal-weight blend of the split-safe full-bank raw ridge, bidirectional residual LSTM, and nonlinear temporal residual. Each family contributes exactly one third; no coefficient is fitted to outer targets.",
+        "active_selection": false,
+        "exclusion_reason": "Heterogeneous model soup is disallowed by the active single-branch policy.",
         "fixed_reference_pcc": 0.446083223,
         "ensemble_oof_pcc": 0.546745019,
         "gain_over_fixed_reference": 0.100661796,
@@ -2101,6 +2150,8 @@
       },
       "S1_index_fixed_equal_six_family": {
         "description": "A fixed equal-weight blend of the unpruned ten-seed residual ensemble, training-selected power-calibrated initializer, nonlinear temporal residual, long-grid LSTM, long-grid bidirectional LSTM, and all-finger state decoder. Each family contributes exactly one sixth; no coefficient is fitted to outer targets.",
+        "active_selection": false,
+        "exclusion_reason": "Heterogeneous model soup is disallowed by the active single-branch policy.",
         "fixed_reference_pcc": 0.725545068,
         "ensemble_oof_pcc": 0.821832499,
         "gain_over_fixed_reference": 0.096287431,
@@ -2147,8 +2198,8 @@
         "decision": "Reject the initializer stack, other-pair-ranked fixed ensemble, cross-validated OOF meta-stack, target-only bandpower GRU, fixed seed ensembles, and signed low-frequency-potential ridge. The best new S3-middle seed improves the single-model ceiling but remains 0.04946 PCC below the working target; no failed route is counted as a pass."
       }
     },
-    "decision": "The all-finger amplitude bank produces strict S2-index and S3-index passes, with S3 index confirmed by inner-only selection across auxiliary weights. Unpruned ten-seed fixed-data ensembles close S1 thumb and S2 thumb. Fixed equal-family ensembles close S2 ring strictly and S1 index at the user-approved +0.095 working threshold. Continue with new split-local representations for S1 ring and S3 middle."
+    "decision": "The all-finger amplitude bank produces strict S2-index and S3-index passes, with S3 index confirmed by inner-only selection across auxiliary weights. Same-family fixed-data replicas support S1 thumb and S2 thumb. Heterogeneous equal-family blends are no longer eligible: S1 index reverts to its 0.804245 nonlinear-temporal branch (+0.078700 over fixed reference), and S2 ring reverts to its 0.523094 raw-ridge branch (+0.077011). Continue single-branch development for S1 index, S1 ring, S2 ring, and S3 middle."
   },
   "visual_diagnostic": "The residual LSTM consistently improves movement-state detection and event amplitude over its split-local LARS initialization. The S3-thumb OOF trace shows that its remaining limitation is tracking the event envelope better than individual flexion-extension cycles. The S1-little dual-contrast trace suppresses the LARS rest floor and captures major bursts while retaining a smaller number of isolated resting false positives.",
-  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, full-bank ridge and nonlinear probes, training-only power calibration, recurrent warm-up option, offline future-context representation, split-local all-finger amplitude bank, and training-only hand-synergy SPoC rows. Eleven of fifteen subject-finger models numerically exceed the original +0.1 gain threshold: S1 thumb, S1 middle, S1 little, S2 thumb, S2 index, S2 middle, S2 ring, S2 little, S3 thumb, S3 index, and S3 ring. S1 index exceeds the user-approved +0.095 working threshold, while S3 little remains a user-approved project-triage exception at +0.0931, making the working progression count thirteen of fifteen. Candidate-specific lower initializers are never used to manufacture a pass. Continue with new split-local representations for S1 ring and S3 middle."
+  "decision": "Keep the auxiliary state head, efficient fixed-width recurrent inputs, concurrency-safe initialization cache, GPU FISTA experiment backend, full-bank ridge and nonlinear probes, training-only power calibration, recurrent warm-up option, offline future-context representation, split-local all-finger amplitude bank, and training-only hand-synergy SPoC rows. Under the active one-branch-per-pair policy, ten of fifteen subject-finger models numerically exceed the original +0.1 gain threshold: S1 thumb, S1 middle, S1 little, S2 thumb, S2 index, S2 middle, S2 little, S3 thumb, S3 index, and S3 ring. S3 little remains a user-approved project-triage exception at +0.0931, making the working progression count eleven of fifteen. The heterogeneous S1-index and S2-ring blends remain recorded only as diagnostics; their best standalone branches gain +0.078700 and +0.077011, respectively, and are unresolved. Candidate-specific lower initializers are never used to manufacture a pass. Continue single-branch development for S1 index, S1 ring, S2 ring, and S3 middle."
 }
