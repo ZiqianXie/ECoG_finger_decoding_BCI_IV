@@ -12,19 +12,19 @@ code was lost when my laptop hard drive failed during a move. I began this
 repository in 2026 because those requests deserved a better answer than “the
 code is gone.”
 
-This is a late reimplementation, not a recovered copy of the old Theano/Keras
-project. I rebuilt the method from the paper, the public BCI Competition IV
-data, and my recollection of the original experiments. The reconstruction was
-developed with substantial help from OpenAI Codex using GPT-5.6 Sol for code,
-experiment orchestration, diagnostics, and documentation. I remain responsible
-for the scientific decisions and interpretation.
+This repository is a 2026 reimplementation built from the paper, the public
+BCI Competition IV data, and my recollection of the original experiments; the
+lost Theano/Keras source was unavailable. OpenAI Codex using GPT-5.6 Sol
+substantially assisted with code, experiment orchestration, diagnostics, and
+documentation. I remain responsible for the scientific decisions and
+interpretation.
 
-The release records one development-selected model structure for
-each of the 15 subject/finger pairs. Heterogeneous model soups are forbidden.
-Where averaging is useful, every member has exactly the same structure and
-differs only by random seed. Every route must also show strictly positive
-nested cross-fold validation PCC gain over that structure's own untuned
-initialization; the released test labels are never used for selection.
+The release records one development-selected model structure for each of the
+15 subject/finger pairs. A route is either one model or an equal-weight average
+of random-seed refits with the same structure. Every route shows strictly
+positive nested cross-fold validation PCC gain over its own untuned
+initialization. Model selection uses development data; released-test labels are
+reserved for final descriptive scoring.
 The machine-readable source of truth is the
 [`model registry`](configs/canonical_models.yaml), with the complete
 [`audit`](docs/results/canonical-model-audit.json) and a compact
@@ -61,13 +61,13 @@ The matched baseline uses LARS in two closely related ways:
 | LARS-initialized LSTM | The LSTM weights are set so that the LSTM itself approximately reproduces the LARS prediction. | The LSTM, and when selected the spatial-wavelet frontend, can move away from that starting prediction. | 14 |
 | Fixed LARS plus residual LSTM | `prediction = fixed LARS prediction + LSTM correction`. The correction output starts at exactly zero, so the initial prediction is exactly LARS. | The LSTM learns only the additive correction; the LARS term remains fixed. | S3 little |
 
-“Paper-equation LSTM” and “standard PyTorch LSTM” name two versions of the
-first row, not two-model ensembles. The paper-equation cell follows the printed
-2018 recurrence, which omits the usual `tanh` on the candidate and exposed cell
-state. The standard cell uses PyTorch's conventional LSTM equations. In this
-matched baseline, S1 thumb, index, and little use the paper-equation cell; the
-other 11 LARS-initialized models use the standard cell. Each route still has one
-feature stream, one recurrent decoder, and one output.
+The LARS-initialized models use one of two LSTM cell definitions. The
+paper-equation cell follows the printed 2018 recurrence and omits the usual
+`tanh` on the candidate and exposed cell state. The standard cell uses
+PyTorch's conventional LSTM equations. In this matched baseline, S1 thumb,
+index, and little use the paper-equation cell; the other 11 LARS-initialized
+models use the standard cell. Both definitions operate on one feature stream
+and produce one trajectory output.
 
 Every one of the 15 released routes has positive tuned-minus-initialized PCC on
 nested development folds. For the S3-little residual form, tuning raises OOF
@@ -108,20 +108,21 @@ each covariance tail; and S1 little retains four from each tail. These choices
 were made from purged development folds.
 
 Every selected CSP vector is applied to the same notched broadband ECoG as the
-ICA rows. The enlarged banks are still rows of one spatial convolution feeding
-one temporal tree—not second branches or seven conventional bandpass inputs.
+ICA rows. The complete bank forms the rows of one spatial convolution feeding
+one temporal tree.
 
-LARS sees the eight wavelet energies from every retained spatial row and keeps
-only the useful histories. Thus the complete decoder remains one spatial
-convolution, one wavelet tree, and one LSTM.
+LARS selects histories from the eight wavelet energies of every retained
+spatial row. The baseline decoder therefore contains one spatial convolution,
+one wavelet tree, and one LSTM.
 
 ## What the trained single-wavelet models learned
 
 For a matched cross-subject interpretation, this audit uses six frozen
 single-wavelet seeds for every subject/finger pair: 90 checkpoints in total,
 with no retraining or model selection. This common reference family matches 8
-of the 15 selected release structures; the other 7 panels are historical
-same-family references, not attributions of the different selected structures.
+of the 15 selected release structures. The other 7 panels are historical
+same-family references and characterize that reference family rather than the
+different selected structures.
 
 Spatial importance is based on covariance-transformed forward patterns,
 weighted by the recurrent decoder's structural use of each component, rather
@@ -134,9 +135,9 @@ The subjects differ clearly. S1 has overlapping, comparatively distributed
 maps: only thumb is nominally compact (`p=0.0327`), and none of its five tests
 survive a 15-pair Bonferroni threshold. All five S2 maps (`p<=0.0016`) and all
 five S3 maps (`p<=0.0001`) are more compact than their coordinate-permutation
-nulls. This does not mean one electrode controls one finger: the footprints
-still overlap, and S3 ring distributes weight over about 42 effective channels
-inside its preferred region.
+nulls. These statistics describe regional concentration rather than
+single-electrode control: the footprints overlap, and S3 ring distributes
+weight over about 42 effective channels inside its preferred region.
 
 ![All 15 decoder-weighted forward patterns at registered physical electrode coordinates](docs/figures/all-subjects-single-wavelet-physical-forward-patterns.png)
 
@@ -146,12 +147,13 @@ Spectral centroids span `100.7-128.8 Hz` for S1, `83.0-119.6 Hz` for S2, and
 displacement from initialization is only `0.120 Hz`, and the largest relative
 kernel change is `0.324%`. The learned distinction is therefore mainly readout
 reweighting of nearly fixed passbands, not movement of the filters to new
-frequencies. Because each path is squared before pooling, the decoder does not
-preserve carrier-phase sign.
+frequencies. Squaring each path before pooling removes carrier-phase sign, so
+the analysis measures band-energy use.
 
 ![Wavelet-path importance for every subject and finger](docs/figures/all-subjects-single-wavelet-spectral-path-importance.png)
 
-These are post-hoc model attributions, not causal neurophysiology. The complete
+These post-hoc model attributions describe the inputs used by the frozen
+decoders; causal neurophysiology would require an intervention. The complete
 protocol and reproducible scripts are in the
 [`experiment record`](experiments/docs/single-wavelet-mechanistic-interpretation.md),
 with all 15 compact numerical summaries in
@@ -180,16 +182,16 @@ samples. A route may be one model or an equal-weight ensemble of independently
 refitted seeds with the same structure. The separate 200,000-sample released
 test file is used only for the final descriptive score.
 
-## Results: no test peek during selection
+## Released-test results
 
 The reported metric is Pearson correlation coefficient (PCC) against the
 unmodified released test glove trajectory. These test scores are descriptive:
 model structure, hyperparameters, update schedule, and ensemble membership were
 fixed from development folds before final scoring. Paper values are rounded as
 published, so very small differences should not be overinterpreted. The
-`Difference` column compares two released-test scores; it is not the tuning
-gain, which is measured against each route's own untuned initialization on
-nested development OOF predictions.
+`Difference` column compares released-test scores. Tuning gain is reported
+separately from nested development OOF predictions relative to each route's
+own untuned initialization.
 
 | Subject | Finger | 2018 paper | 2026 release | Difference |
 |---|---|---:|---:|---:|
@@ -226,8 +228,8 @@ whole-file score against the unmodified released-test target.
 
 ![Example S1 thumb released-test trajectory and model prediction](docs/figures/s1-thumb-example-test-trajectory.png)
 
-The [experimental archive](experiments/README.md) remains historical evidence;
-its alternative models are not silently substituted into the release table.
+The [experimental archive](experiments/README.md) preserves the alternative
+models and diagnostics that preceded the selected release.
 
 ## Reproduce the release
 
@@ -334,11 +336,11 @@ PYTHONPATH=experiments/scripts:scripts:src \
 python -m pytest -q
 ```
 
-The training commands above preserve the original single-tree baseline. The
-current development-selected per-pair routes are specified in the
-[`model registry`](configs/canonical_models.yaml). The older
+The training commands above reproduce the original single-tree baseline. The
+development-selected per-pair routes are specified in the
+[`model registry`](configs/canonical_models.yaml). The earlier
 [`configs/final_single_wavelet_routes.yaml`](configs/final_single_wavelet_routes.yaml)
-is retained as historical provenance and is not the current registry.
+records the historical homogeneous single-tree release.
 
 The code caches reconstructed wavelet leaves in `/dev/shm` and uses
 `torch.compile(mode="reduce-overhead")` for repeated training calls. On the H100

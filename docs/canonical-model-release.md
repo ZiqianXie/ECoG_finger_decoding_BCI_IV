@@ -1,12 +1,12 @@
 # Model release
 
 This release freezes one model structure for every BCI Competition IV
-subject/finger pair. It has two non-negotiable selection rules:
+subject/finger pair. Selection follows two rules:
 
 1. the selected model must have strictly higher nested development OOF PCC than
    its own untuned initialization; and
-2. a release may be one model or an equal-weight ensemble of identical
-   structures, but never a heterogeneous model soup.
+2. a route is either one model or an equal-weight ensemble of random-seed
+   refits with the same structure.
 
 The released test labels were not used to choose a family, hyperparameter,
 update schedule, seed, or ensemble member. Released-test PCC below is therefore
@@ -36,9 +36,8 @@ authoritative route registry is
 | S3 little | `single_wavelet_residual_lstm_movement1` | 6 same-structure seeds | 0.631943 | 0.649982 | +0.018039 | 0.617019 |
 
 All 15 routes pass the positive-tuning rule. The smallest gain is +0.000559
-(S2 index); the largest is +0.103400 (S3 thumb). Single-member routes are not
-ensembles. Multi-member routes average only random-seed refits of one frozen
-structure.
+(S2 index); the largest is +0.103400 (S3 thumb). The `Release` column identifies
+single models and same-structure random-seed ensembles.
 
 ## Descriptive comparison with the 2018 paper
 
@@ -53,7 +52,7 @@ comparison is descriptive rather than an exact reanalysis.
 
 All three subject-level Macro-5 scores exceed the rounded paper values. Seven
 of the 15 individual finger scores exceed their rounded paper counterparts.
-This comparison did not participate in model selection.
+Model selection used nested development OOF predictions.
 
 ## Reproducing the release audit
 
@@ -70,7 +69,6 @@ python experiments/scripts/audit_canonical_models.py \
 
 The audit verifies the complete 15-pair set, a strictly positive development
 OOF gain, released-test isolation, artifact existence, member counts, member
-seeds, structure identity where recorded, and absence of heterogeneous model
-soups. Checkpoints and cached feature arrays remain in ignored `outputs/`
-directories because they are large generated artifacts; the registry, refit
-programs, and exact audit are versioned.
+seeds, and same-structure membership. Checkpoints and cached feature arrays
+remain in ignored `outputs/` directories because they are large generated
+artifacts; the registry, refit programs, and exact audit are versioned.

@@ -11,16 +11,15 @@ This repository is a late reimplementation of my 2018 ECoG finger-decoding
 work. The original Theano/Keras source was lost when my laptop hard drive failed
 during a move. I reconstructed the method from the paper, the public BCI
 Competition IV Data Set 4 recordings, and my recollection of the original
-experiments. It is not the lost code and should not be described as a bitwise
-reproduction.
+experiments. The unavailable original source precludes a bitwise reproduction.
 
 OpenAI Codex using GPT-5.6 Sol substantially assisted with implementation,
 remote experiment orchestration, quantitative checks, visual diagnosis, and
 documentation. I remain responsible for the scientific choices and
 interpretation.
 
-The canonical 2026 release uses one development-selected structure for each of
-3 subjects and 5 fingers. The common single-wavelet baseline path is:
+The 2026 release uses one development-selected structure for each of 3 subjects
+and 5 fingers. The common single-wavelet baseline path is:
 
 ```text
 notched 1 kHz ECoG
@@ -33,17 +32,16 @@ notched 1 kHz ECoG
 ```
 
 The final registry also includes development-selected residual-LSTM,
-future-context ridge, synergy-CSP, and overcomplete-wavelet variants. It does
-not permit heterogeneous model soups. A route is either one model or an
-equal-weight ensemble of independently refitted seeds with exactly the same
-structure. Every canonical route has strictly positive nested development OOF
-PCC gain over its own untuned initialization, and no released-test label is
-used for selection. See
+future-context ridge, synergy-CSP, and overcomplete-wavelet variants. A route
+is either one model or an equal-weight ensemble of independently refitted seeds
+with the same structure. Every route has strictly positive nested development
+OOF PCC gain over its own untuned initialization. Model selection uses
+development data, with released-test labels reserved for final scoring. See
 [`configs/canonical_models.yaml`](../configs/canonical_models.yaml) and the
-[`canonical release table`](canonical-model-release.md).
+[`release table`](canonical-model-release.md).
 
-The canonical released-test Macro-5 Pearson correlations are **0.577624 for
-S1, 0.422758 for S2, and 0.634211 for S3**. The rounded values reported in the
+The released-test Macro-5 Pearson correlations are **0.577624 for S1, 0.422758
+for S2, and 0.634211 for S3**. The rounded values reported in the
 2018 paper were 0.556, 0.408, and 0.582. All three subjects therefore exceed
 the paper's rounded aggregate results, although eight individual finger
 trajectories remain at or below their rounded historical counterparts.
@@ -172,17 +170,16 @@ candidate input follows the LARS coefficients. Connections that should be zero
 in the ideal construction receive small random weights with magnitude about
 `1e-3`. The prediction itself passes through the LSTM and a Softplus output.
 
-S3 little uses the same single spatial-wavelet feature stream but a different
-OOF-selected initialization: the LARS logit is kept fixed and a standard LSTM
-learns an additive residual before the shared Softplus. Its output projection is
-initialized to exactly zero, so update zero is exactly the LARS prediction.
-This remains one recurrent decoder, not a second signal-processing branch or a
-stack of independently trained predictors.
+S3 little uses the same single spatial-wavelet feature stream with the predictor
+`fixed LARS logit + LSTM residual`. The LSTM output projection begins at zero,
+making the initial predictor exactly equal to LARS; tuning learns the additive
+correction before the shared Softplus.
 
-S1 thumb, index, and little use an explicit implementation of the equations
-described in the paper; the remaining non-residual pairs use the standard
-PyTorch LSTM. All implementations are one-layer nonlinear gated recurrent
-models with one input sequence and one output.
+The 14 LARS-initialized models use one of two cell definitions. S1 thumb,
+index, and little follow the recurrence printed in the paper, which omits the
+usual `tanh` on the candidate and exposed cell state. The other 11 use the
+standard PyTorch LSTM equations. Both definitions are one-layer recurrent
+models with one input sequence and one trajectory output.
 
 Training has up to two stages:
 
@@ -215,8 +212,8 @@ passed this development-only screen.
 
 The public labels had been inspected during the broader 2026 reconstruction,
 and the original 2018 exploratory workflow may also have received repeated
-test feedback. “No test peek” here has a precise, narrower meaning: no released
-test score selected the configuration or seed membership reported below.
+test feedback. In the final run summarized here, configuration and seed
+membership were selected entirely from development predictions.
 
 ## Matched 400 Hz and 1 kHz development comparison
 
@@ -238,8 +235,8 @@ search also permits the initialized nonlinear LSTM with zero optimizer updates.
 
 ## Historical single-tree S1 development-selected routes
 
-This section records the earlier homogeneous single-tree release. It is kept
-for provenance; the later canonical registry supersedes it.
+This section records the earlier homogeneous single-tree release. The later
+per-pair registry supersedes it.
 
 The remaining S1 gap was addressed without adding temporal branches. A
 split-local CSP-bank ablation first varied only the rows of the existing
@@ -292,8 +289,8 @@ one-eight-leaf-tree, one-LSTM signal path.
 
 ## Historical single-tree released-test result
 
-These values describe the superseded homogeneous single-tree release, not the
-current canonical per-pair routes.
+These values describe the superseded homogeneous single-tree release. The
+current per-pair routes are reported in the release table.
 
 Pearson correlation coefficient (PCC) is computed against the unmodified
 released glove trace, matching the competition convention. `Macro-5` is the
@@ -436,7 +433,7 @@ are versioned with the code.
 - S1/S2 middle and S2/S3 little still show important morphology or rest-state
   errors despite useful PCC.
 
-The main contribution of this release is therefore not a claim that every old
-number has been recovered. It is a reproducible, single-path reconstruction
-whose model provenance, validation boundary, frequency initialization, exact
-scores, and visible failures agree with one another.
+The main contribution is a reproducible reconstruction with aligned model
+provenance, validation boundaries, frequency initialization, exact scores, and
+visible failure analysis. Differences from the unavailable historical
+implementation remain documented limitations.
