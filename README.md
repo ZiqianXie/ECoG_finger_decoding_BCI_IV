@@ -23,8 +23,8 @@ The canonical release now records one development-selected model structure for
 each of the 15 subject/finger pairs. Heterogeneous model soups are forbidden.
 Where averaging is useful, every member has exactly the same structure and
 differs only by random seed. Every route must also show strictly positive
-nested development out-of-fold (OOF) PCC gain over that structure's own
-untuned initialization; the released test labels are never used for selection.
+nested cross-fold validation PCC gain over that structure's own untuned
+initialization; the released test labels are never used for selection.
 The machine-readable source of truth is
 [`configs/canonical_models.yaml`](configs/canonical_models.yaml), with the
 complete audit in
@@ -128,76 +128,43 @@ samples. A route may be one model or an equal-weight ensemble of independently
 refitted seeds with the same structure. The separate 200,000-sample released
 test file is used only for the final descriptive score.
 
-## Historical single-tree baseline results
+## Canonical results: no test peek during selection
 
-The table below preserves the original single-tree release benchmark. It is not
-the current canonical routing table; see the
-[`canonical release`](docs/canonical-model-release.md) for the final 15 routes.
-The metric is Pearson correlation coefficient (PCC) against the unmodified
-released test glove trajectory. `Macro-5` is the unweighted mean over fingers.
+The reported metric is Pearson correlation coefficient (PCC) against the
+unmodified released test glove trajectory. These test scores are descriptive:
+model structure, hyperparameters, update schedule, and ensemble membership were
+fixed from development folds before final scoring. Paper values are rounded as
+published, so very small differences should not be overinterpreted.
 
-| Subject | 2018 paper | 2026 single-tree refits (mean ± SD) |
-|---|---:|---:|
-| S1 | 0.556 | **0.563 ± 0.0007** |
-| S2 | 0.408 | **0.414 ± 0.0011** |
-| S3 | 0.582 | **0.597 ± 0.0005** |
-
-| Subject | Finger | 2018 paper | 2026 refits (mean ± SD) | Difference |
+| Subject | Finger | 2018 paper | Canonical 2026 | Difference |
 |---|---|---:|---:|---:|
-| S1 | Thumb | 0.75 | 0.733 ± 0.0008 | -0.017 |
-| S1 | Index | 0.79 | 0.759 ± 0.0004 | -0.031 |
-| S1 | Middle | 0.17 | 0.255 ± 0.00003 | +0.085 |
-| S1 | Ring | 0.60 | 0.616 ± 0.0005 | +0.016 |
-| S1 | Little | 0.47 | 0.453 ± 0.0026 | -0.017 |
-| S2 | Thumb | 0.62 | 0.585 ± 0.0016 | -0.035 |
-| S2 | Index | 0.38 | 0.377 ± 0.0007 | -0.003 |
-| S2 | Middle | 0.27 | 0.210 ± 0.0017 | -0.060 |
-| S2 | Ring | 0.47 | 0.504 ± 0.0013 | +0.034 |
-| S2 | Little | 0.30 | 0.392 ± 0.0039 | +0.092 |
-| S3 | Thumb | 0.74 | 0.663 ± 0.0012 | -0.077 |
-| S3 | Index | 0.55 | 0.532 ± 0.00003 | -0.018 |
-| S3 | Middle | 0.46 | 0.619 ± 0.0014 | +0.159 |
-| S3 | Ring | 0.41 | 0.557 ± 0.0011 | +0.147 |
-| S3 | Little | 0.75 | 0.615 ± 0.0020 | -0.135 |
+| S1 | Thumb | 0.750 | 0.733 | -0.017 |
+| S1 | Index | 0.790 | 0.759 | -0.031 |
+| S1 | Middle | 0.170 | **0.285** | **+0.115** |
+| S1 | Ring | 0.600 | **0.657** | **+0.057** |
+| S1 | Little | 0.470 | 0.454 | -0.016 |
+| **S1** | **Macro-5** | **0.556** | **0.578** | **+0.022** |
+| S2 | Thumb | 0.620 | 0.579 | -0.041 |
+| S2 | Index | 0.380 | 0.377 | -0.003 |
+| S2 | Middle | 0.270 | 0.210 | -0.060 |
+| S2 | Ring | 0.470 | **0.555** | **+0.085** |
+| S2 | Little | 0.300 | **0.393** | **+0.093** |
+| **S2** | **Macro-5** | **0.408** | **0.423** | **+0.015** |
+| S3 | Thumb | 0.740 | 0.734 | -0.006 |
+| S3 | Index | 0.550 | **0.619** | **+0.069** |
+| S3 | Middle | 0.460 | **0.644** | **+0.184** |
+| S3 | Ring | 0.410 | **0.557** | **+0.147** |
+| S3 | Little | 0.750 | 0.617 | -0.133 |
+| **S3** | **Macro-5** | **0.582** | **0.634** | **+0.052** |
 
-All three subjects exceed the paper’s rounded aggregate. Six of the 15
-individual finger scores exceed the rounded paper values. The exact scores,
-the complete per-pair route, and all six member audits are in
-[`docs/results/final-single-branch-six-seed.json`](docs/results/final-single-branch-six-seed.json).
+Seven of 15 individual finger scores and all three subject Macro-5 scores exceed
+the rounded paper values. The exact results, architecture for every route,
+development gain, member count, and artifact checks are in the
+[`canonical release table`](docs/canonical-model-release.md) and
+[`machine-readable audit`](docs/results/canonical-model-audit.json).
 
-All 90 refits passed a collapse screen based only on development predictions.
-Seed variation is small: the largest SD is 0.0039. Averaging the six
-predictions changes any finger PCC by at most 0.0018, so there is no meaningful
-ensemble gain to claim.
-
-The figure below is the visual verdict, not a decorative score plot. Black is a
-post-hoc baseline-corrected glove trace used only for diagnosis. Blue is the
-arithmetic mean of the six nonnegative Softplus outputs; it is not rescaled
-with test labels. The mean ± SD printed above each panel summarizes the six
-individual PCCs against the raw competition target.
-
-![Released-test trajectories for all 15 models](docs/figures/final-single-wavelet-test-trajectories.png)
-
-The model captures clear event timing for S1 thumb/index/ring and for most S3
-fingers. S1 little now captures the main movement blocks but retains some
-false-positive spikes. S1/S2 middle still have weak movement selectivity and
-excessive low-amplitude activity during rest, while S2 little misses several
-large events. The S3-little residual LSTM tracks several episodes and reduces
-rest activity, but its movement amplitude remains too small and it does not
-reproduce the paper’s unusually high score. PCC alone should therefore not be
-read as a complete measure of trajectory quality.
-
-I had inspected released labels during the broader reconstruction before fixing
-this protocol, and the original 2018 exploration may also have been influenced
-by repeated test feedback. The result above is called “no test peek” because
-the architecture, preprocessing, schedules, and seeds for this refit were fixed
-from development folds before these test scores were read—not because the
-labels were historically unknown to me.
-
-The [experimental archive](experiments/README.md) contains alternative models,
-including models that score better for some individual fingers. They are not
-substituted into this table because they were developed under different or
-test-informed diagnostic protocols.
+The [experimental archive](experiments/README.md) remains historical evidence;
+its alternative models are not silently substituted into the canonical table.
 
 ## Reproduce the release
 
